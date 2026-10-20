@@ -1,0 +1,10 @@
+#AncestryDNA raw data download
+#Data was collected using AncestryDNA array version: V2.0
+#Data is formatted using AncestryDNA converter version: V1.0
+#using human reference build 37.1 coordinates.
+rsid	chromosome	position	allele1	allele2
+rsX1	23	1000000	A	A
+rsX2	23	2000000	G	G
+rsY1	24	3000000	T	T
+rsMT1	26	4000000	C	C
+rs4988235	2	136608646	A	G

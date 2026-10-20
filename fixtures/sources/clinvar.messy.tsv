@@ -1,0 +1,4 @@
+Name	GeneSymbol	RS# (dbSNP)	Assembly	Chromosome	Start	ReferenceAlleleVCF	AlternateAlleleVCF	ReviewStatus	ClinicalSignificance
+NM_000410.4(HFE):c.845G>A (p.Cys282Tyr)	HFE	1800562	GRCh37.p13	6	26093141	G	A	criteria provided, multiple submitters, no conflicts	Pathogenic
+NM_000410.4(HFE):c.187C>G (p.His63Asp)	HFE	1799945	GRCh38	6	26091179	C	G	criteria provided, conflicting interpretations	Conflicting interpretations of pathogenicity
+NM_000130.5(F5):c.1601G>A (p.Arg534Gln)	F5	6025	GRCh37	1	169519049	G	A	reviewed by expert panel	Pathogenic

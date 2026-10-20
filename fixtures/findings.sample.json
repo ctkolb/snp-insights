@@ -1,0 +1,238 @@
+{
+  "schema_version": "1.0.0",
+  "provenance": {
+    "input_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "array_version": "AncestryDNA V2.0",
+    "converter_version": "V1.0",
+    "genome_build": "GRCh37",
+    "strand": "forward",
+    "manifest_row_count": 677420,
+    "generated_at": "2026-10-20T00:00:00Z",
+    "pipeline_version": "0.1.0",
+    "annotation_snapshots": [
+      { "source": "dbSNP", "release": "b156", "retrieved_at": "2026-10-01T00:00:00Z", "license": "public domain (NCBI)" },
+      { "source": "ClinVar", "release": "2026-09", "retrieved_at": "2026-10-01T00:00:00Z", "license": "public domain (NCBI)" },
+      { "source": "gnomAD", "release": "v4.0", "retrieved_at": "2026-10-01T00:00:00Z", "license": "free (Broad)" }
+    ]
+  },
+  "findings": [
+    {
+      "finding_id": "f_000000000001",
+      "rsid": "rs4988235",
+      "probe_id": null,
+      "chromosome": "2",
+      "position": 136608646,
+      "gene": "MCM6",
+      "condition": null,
+      "assayability": "snp",
+      "coverage": { "state": "covered", "source": "AncestryDNA V2.0 file manifest" },
+      "call": { "state": "called", "allele1": "A", "allele2": "G", "zygosity": "het", "strand": "forward" },
+      "confidence": {
+        "annotation_mapping": { "level": "high", "basis": ["rsID+position agree", "dbSNP merge map applied", "build GRCh37 match"] },
+        "array_reliability": { "rarity_class": "common", "ppv_note": null }
+      },
+      "evidence": {
+        "clinvar": null,
+        "snpedia": null,
+        "association": "established"
+      },
+      "state": "detected",
+      "caveats": ["Array-based genotyping covers a small fraction of the genome and is not diagnostic grade."]
+    },
+    {
+      "finding_id": "f_000000000002",
+      "rsid": "rs6025",
+      "probe_id": null,
+      "chromosome": "1",
+      "position": 169519049,
+      "gene": "F5",
+      "condition": "Factor V Leiden thrombophilia",
+      "assayability": "snp",
+      "coverage": { "state": "covered", "source": "AncestryDNA V2.0 file manifest" },
+      "call": { "state": "called", "allele1": "G", "allele2": "G", "zygosity": "hom_ref", "strand": "forward" },
+      "confidence": {
+        "annotation_mapping": { "level": "high", "basis": ["rsID+position agree", "build GRCh37 match"] },
+        "array_reliability": { "rarity_class": "low_frequency", "ppv_note": null }
+      },
+      "evidence": {
+        "clinvar": { "significance": "Pathogenic", "review_stars": 3, "review_status_text": "reviewed by expert panel", "source_version": "ClinVar 2026-09" },
+        "snpedia": null,
+        "association": "established"
+      },
+      "state": "covered_reference",
+      "caveats": ["Array-based genotyping covers a small fraction of the genome and is not diagnostic grade.", "This position is on the array; the genotype shows no variant."]
+    },
+    {
+      "finding_id": "f_000000000003",
+      "rsid": "rs429358",
+      "probe_id": null,
+      "chromosome": "19",
+      "position": 45411941,
+      "gene": "APOE",
+      "condition": null,
+      "assayability": "snp",
+      "coverage": { "state": "covered", "source": "AncestryDNA V2.0 file manifest" },
+      "call": { "state": "no_call", "zygosity": "unknown", "strand": "forward" },
+      "confidence": {
+        "annotation_mapping": { "level": "high", "basis": ["rsID+position agree", "build GRCh37 match"] },
+        "array_reliability": { "rarity_class": "unknown", "ppv_note": null }
+      },
+      "evidence": {
+        "clinvar": null,
+        "snpedia": null,
+        "association": "none"
+      },
+      "state": "covered_nocall",
+      "caveats": ["This position is on the array but genotyping did not return a call.", "Array-based genotyping covers a small fraction of the genome and is not diagnostic grade."]
+    },
+    {
+      "finding_id": "f_000000000004",
+      "rsid": "rs80357906",
+      "probe_id": null,
+      "chromosome": "17",
+      "position": 41209079,
+      "gene": "BRCA1",
+      "condition": "Hereditary breast and ovarian cancer",
+      "assayability": "snp",
+      "coverage": { "state": "not_covered", "source": "AncestryDNA V2.0 file manifest" },
+      "call": { "state": "not_applicable" },
+      "confidence": {
+        "annotation_mapping": { "level": "high", "basis": ["rsID+position agree", "build GRCh37 match"] },
+        "array_reliability": { "rarity_class": "rare", "ppv_note": null }
+      },
+      "evidence": {
+        "clinvar": { "significance": "Pathogenic", "review_stars": 4, "review_status_text": "practice guideline", "source_version": "ClinVar 2026-09" },
+        "snpedia": null,
+        "association": "established"
+      },
+      "state": "not_covered",
+      "caveats": ["This marker was not measured by the AncestryDNA V2.0 array; no genotype or confidence applies.", "Absence from the array is not evidence of absence of the variant."]
+    },
+    {
+      "finding_id": "f_000000000005",
+      "rsid": null,
+      "probe_id": null,
+      "chromosome": "4",
+      "position": 3076604,
+      "gene": "HTT",
+      "condition": "Huntington disease",
+      "assayability": "not_assayable",
+      "coverage": { "state": "not_covered", "source": "AncestryDNA V2.0 file manifest" },
+      "call": { "state": "not_applicable" },
+      "confidence": {
+        "annotation_mapping": { "level": "high", "basis": ["gene locus GRCh37"] },
+        "array_reliability": { "rarity_class": "rare", "ppv_note": null }
+      },
+      "evidence": {
+        "clinvar": null,
+        "snpedia": null,
+        "association": "established"
+      },
+      "state": "not_assayable",
+      "caveats": ["CAG repeat-expansion loci cannot be assessed from SNP-array data.", "Array-based genotyping covers a small fraction of the genome and is not diagnostic grade."]
+    },
+    {
+      "finding_id": "f_000000000006",
+      "rsid": "rs1800562",
+      "probe_id": null,
+      "chromosome": "6",
+      "position": 26093141,
+      "gene": "HFE",
+      "condition": "Hereditary hemochromatosis",
+      "assayability": "snp",
+      "coverage": { "state": "covered", "source": "AncestryDNA V2.0 file manifest" },
+      "call": { "state": "called", "allele1": "A", "allele2": "G", "zygosity": "het", "strand": "forward" },
+      "confidence": {
+        "annotation_mapping": { "level": "high", "basis": ["rsID+position agree", "build GRCh37 match"] },
+        "array_reliability": { "rarity_class": "low_frequency", "ppv_note": null }
+      },
+      "evidence": {
+        "clinvar": { "significance": "Pathogenic", "review_stars": 2, "review_status_text": "multiple submitters, no conflicts", "source_version": "ClinVar 2026-09" },
+        "snpedia": null,
+        "association": "established"
+      },
+      "state": "detected",
+      "caveats": ["Array-based genotyping covers a small fraction of the genome and is not diagnostic grade."]
+    },
+    {
+      "finding_id": "f_000000000007",
+      "rsid": "rs1799945",
+      "probe_id": null,
+      "chromosome": "6",
+      "position": 26091179,
+      "gene": "HFE",
+      "condition": "Hereditary hemochromatosis",
+      "assayability": "snp",
+      "coverage": { "state": "covered", "source": "AncestryDNA V2.0 file manifest" },
+      "call": { "state": "called", "allele1": "C", "allele2": "G", "zygosity": "het", "strand": "forward" },
+      "confidence": {
+        "annotation_mapping": { "level": "medium", "basis": ["rsID+position agree", "build GRCh37 match", "rsID has conflicting legacy mappings"] },
+        "array_reliability": { "rarity_class": "common", "ppv_note": null }
+      },
+      "evidence": {
+        "clinvar": { "significance": "Conflicting interpretations of pathogenicity", "review_stars": 1, "review_status_text": "criteria provided, conflicting interpretations", "source_version": "ClinVar 2026-09" },
+        "snpedia": null,
+        "association": "conflicting"
+      },
+      "state": "detected",
+      "caveats": ["Array-based genotyping covers a small fraction of the genome and is not diagnostic grade."]
+    },
+    {
+      "finding_id": "f_000000000008",
+      "rsid": "rs1333049",
+      "probe_id": null,
+      "chromosome": "9",
+      "position": 22125504,
+      "gene": "CDKN2B-AS1",
+      "condition": "Coronary artery disease",
+      "assayability": "snp",
+      "coverage": { "state": "covered", "source": "AncestryDNA V2.0 file manifest" },
+      "call": { "state": "called", "allele1": "C", "allele2": "G", "zygosity": "het", "strand": "ambiguous" },
+      "confidence": {
+        "annotation_mapping": { "level": "medium", "basis": ["rsID+position agree", "palindromic C/G site"] },
+        "array_reliability": { "rarity_class": "common", "ppv_note": null }
+      },
+      "evidence": {
+        "clinvar": null,
+        "snpedia": null,
+        "association": "single_study"
+      },
+      "state": "detected",
+      "caveats": ["Palindromic site (C/G): allele orientation cannot be resolved from array data alone.", "Array-based genotyping covers a small fraction of the genome and is not diagnostic grade."]
+    },
+    {
+      "finding_id": "f_000000000009",
+      "rsid": "rs121918897",
+      "probe_id": null,
+      "chromosome": "2",
+      "position": 21232195,
+      "gene": "APOB",
+      "condition": "Familial hypercholesterolemia",
+      "assayability": "snp",
+      "coverage": { "state": "covered", "source": "AncestryDNA V2.0 file manifest" },
+      "call": { "state": "called", "allele1": "A", "allele2": "G", "zygosity": "het", "strand": "forward" },
+      "confidence": {
+        "annotation_mapping": { "level": "high", "basis": ["rsID+position agree", "build GRCh37 match"] },
+        "array_reliability": {
+          "rarity_class": "rare",
+          "ppv_note": "Rare pathogenic heterozygous array calls have low positive predictive value and warrant clinical-grade confirmation."
+        }
+      },
+      "evidence": {
+        "clinvar": { "significance": "Likely pathogenic", "review_stars": 2, "review_status_text": "multiple submitters, no conflicts", "source_version": "ClinVar 2026-09" },
+        "snpedia": null,
+        "association": "single_study"
+      },
+      "state": "detected",
+      "caveats": ["Array-based genotyping covers a small fraction of the genome and is not diagnostic grade.", "Rare variant: confirm with a clinical-grade test before acting on this result."]
+    }
+  ],
+  "contradictions": [
+    {
+      "contradiction_id": "c_000000000001",
+      "finding_ids": ["f_000000000006", "f_000000000007"],
+      "kind": "overlapping_condition_mixed_evidence",
+      "description": "Two HFE variants are reported for the same condition (hereditary hemochromatosis) with different evidence strengths: rs1800562 has 2-star pathogenic classification, while rs1799945 has a 1-star conflicting interpretation. Both are reported as-is; they are not reconciled."
+    }
+  ]
+}

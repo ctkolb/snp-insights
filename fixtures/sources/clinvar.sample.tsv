@@ -1,0 +1,7 @@
+#AlleleID	Type	Name	GeneID	GeneSymbol	ClinicalSignificance	RS# (dbSNP)	Assembly	Chromosome	Start	Stop	ReferenceAllele	AlternateAllele	ReviewStatus
+1001	single nucleotide variant	NM_000130.5(F5):c.1601G>A (p.Arg534Gln)	2266	F5	Pathogenic	6025	GRCh37	1	169519049	169519049	G	A	reviewed by expert panel
+1002	single nucleotide variant	NM_007294.4(BRCA1):c.5266dupC (p.Gln1756Profs)	672	BRCA1	Pathogenic	80357906	GRCh37	17	41209079	41209079	A	G	practice guideline
+1003	single nucleotide variant	NM_000410.4(HFE):c.845G>A (p.Cys282Tyr)	3077	HFE	Pathogenic	1800562	GRCh37	6	26093141	26093141	G	A	criteria provided, multiple submitters, no conflicts
+1004	single nucleotide variant	NM_000410.4(HFE):c.187C>G (p.His63Asp)	3077	HFE	Conflicting interpretations of pathogenicity	1799945	GRCh37	6	26091179	26091179	C	G	criteria provided, conflicting interpretations
+1005	single nucleotide variant	NM_000384.3(APOB):c.10580G>A (p.Arg3527Gln)	338	APOB	Likely pathogenic	121918897	GRCh37	2	21232195	21232195	A	G	criteria provided, multiple submitters, no conflicts
+1006	Deletion	NM_000492.4(CFTR):c.1521_1523del (p.Phe508del)	1080	CFTR	Pathogenic	113993960	GRCh37	7	117199644	117199646	A	G	reviewed by expert panel

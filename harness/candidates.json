@@ -1,0 +1,13 @@
+{
+  "live_defaults": {
+    "base_url_env": "OPENROUTER_BASE_URL",
+    "api_key_env": "OPENROUTER_API_KEY"
+  },
+  "candidates": [
+    { "name": "narrator_good", "file": "fixtures/candidates/narrator_good.json" },
+    { "name": "narrator_sloppy", "file": "fixtures/candidates/narrator_sloppy.json" },
+    { "name": "narrator_refusal", "file": "fixtures/candidates/narrator_refusal.txt" },
+    { "name": "local_ollama_example", "endpoint": "ollama", "model": "qwen2.5:14b", "live": true },
+    { "name": "online_openrouter_example", "endpoint": "openrouter", "model": "example/model-id", "live": true }
+  ]
+}

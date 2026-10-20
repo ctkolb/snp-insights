@@ -1,0 +1,31 @@
+{
+  "_comment": "Canonical condition -> equivalent labels. Used to group findings for contradiction detection so differently-worded labels for the same condition are compared. Keys and values are matched case-insensitively after punctuation is stripped. Keys beginning with '_' are ignored.",
+  "hereditary hemochromatosis": [
+    "hemochromatosis",
+    "haemochromatosis",
+    "hereditary haemochromatosis"
+  ],
+  "factor v leiden thrombophilia": [
+    "factor v leiden",
+    "factor v leiden mutation"
+  ],
+  "hereditary breast and ovarian cancer": [
+    "hereditary breast and ovarian cancer syndrome",
+    "hboc"
+  ],
+  "coronary artery disease": [
+    "cad",
+    "coronary heart disease"
+  ],
+  "familial hypercholesterolemia": [
+    "familial hypercholesterolaemia",
+    "fh"
+  ],
+  "huntington disease": [
+    "huntington's disease",
+    "huntingtons disease"
+  ],
+  "cystic fibrosis": [
+    "cf"
+  ]
+}

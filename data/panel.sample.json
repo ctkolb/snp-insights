@@ -1,0 +1,209 @@
+{
+  "panel_version": "0.1.0",
+  "genome_build": "GRCh37",
+  "strand": "forward",
+  "sources": [
+    {
+      "source": "dbSNP",
+      "release": "b156",
+      "retrieved_at": "2026-10-01T00:00:00Z",
+      "license": "public domain (NCBI)"
+    },
+    {
+      "source": "ClinVar",
+      "release": "2026-09",
+      "retrieved_at": "2026-10-01T00:00:00Z",
+      "license": "public domain (NCBI)"
+    },
+    {
+      "source": "gnomAD",
+      "release": "v4.0",
+      "retrieved_at": "2026-10-01T00:00:00Z",
+      "license": "free (Broad)"
+    }
+  ],
+  "merges": {},
+  "variants": [
+    {
+      "rsid": "rs4988235",
+      "chromosome": "2",
+      "position": 136608646,
+      "gene": "MCM6",
+      "condition": null,
+      "assayability": "snp",
+      "reference_allele": "G",
+      "alternate_allele": "A",
+      "cls": "risk",
+      "association": "established",
+      "gnomad_af": 0.25,
+      "clinvar": null,
+      "snpedia": null
+    },
+    {
+      "rsid": "rs6025",
+      "chromosome": "1",
+      "position": 169519049,
+      "gene": "F5",
+      "condition": "Factor V Leiden thrombophilia",
+      "assayability": "snp",
+      "reference_allele": "G",
+      "alternate_allele": "A",
+      "cls": "risk",
+      "association": "established",
+      "gnomad_af": 0.015,
+      "clinvar": {
+        "significance": "Pathogenic",
+        "review_stars": 3,
+        "review_status_text": "reviewed by expert panel",
+        "source_version": "ClinVar 2026-09"
+      },
+      "snpedia": null
+    },
+    {
+      "rsid": "rs429358",
+      "chromosome": "19",
+      "position": 45411941,
+      "gene": "APOE",
+      "condition": null,
+      "assayability": "snp",
+      "reference_allele": "T",
+      "alternate_allele": "C",
+      "cls": "risk",
+      "association": "none",
+      "gnomad_af": 0.15,
+      "clinvar": null,
+      "snpedia": null
+    },
+    {
+      "rsid": "rs80357906",
+      "chromosome": "17",
+      "position": 41209079,
+      "gene": "BRCA1",
+      "condition": "Hereditary breast and ovarian cancer",
+      "assayability": "snp",
+      "reference_allele": "A",
+      "alternate_allele": "G",
+      "cls": "pathogenic",
+      "association": "established",
+      "gnomad_af": 2e-05,
+      "clinvar": {
+        "significance": "Pathogenic",
+        "review_stars": 4,
+        "review_status_text": "practice guideline",
+        "source_version": "ClinVar 2026-09"
+      },
+      "snpedia": null
+    },
+    {
+      "rsid": null,
+      "chromosome": "4",
+      "position": 3076604,
+      "gene": "HTT",
+      "condition": "Huntington disease",
+      "assayability": "not_assayable",
+      "reference_allele": null,
+      "alternate_allele": null,
+      "cls": null,
+      "association": "established",
+      "gnomad_af": null,
+      "clinvar": null,
+      "snpedia": null
+    },
+    {
+      "rsid": "rs1800562",
+      "chromosome": "6",
+      "position": 26093141,
+      "gene": "HFE",
+      "condition": "Hereditary hemochromatosis",
+      "assayability": "snp",
+      "reference_allele": "G",
+      "alternate_allele": "A",
+      "cls": "pathogenic",
+      "association": "established",
+      "gnomad_af": 0.02,
+      "clinvar": {
+        "significance": "Pathogenic",
+        "review_stars": 2,
+        "review_status_text": "criteria provided, multiple submitters, no conflicts",
+        "source_version": "ClinVar 2026-09"
+      },
+      "snpedia": null
+    },
+    {
+      "rsid": "rs1799945",
+      "chromosome": "6",
+      "position": 26091179,
+      "gene": "HFE",
+      "condition": "Hereditary hemochromatosis",
+      "assayability": "snp",
+      "reference_allele": "C",
+      "alternate_allele": "G",
+      "cls": "risk",
+      "association": "conflicting",
+      "gnomad_af": 0.1,
+      "clinvar": {
+        "significance": "Conflicting interpretations of pathogenicity",
+        "review_stars": 1,
+        "review_status_text": "criteria provided, conflicting interpretations",
+        "source_version": "ClinVar 2026-09"
+      },
+      "snpedia": null
+    },
+    {
+      "rsid": "rs1333049",
+      "chromosome": "9",
+      "position": 22125504,
+      "gene": "CDKN2B-AS1",
+      "condition": "Coronary artery disease",
+      "assayability": "snp",
+      "reference_allele": "C",
+      "alternate_allele": "G",
+      "strand": "ambiguous",
+      "cls": "risk",
+      "association": "single_study",
+      "gnomad_af": 0.47,
+      "clinvar": null,
+      "snpedia": null
+    },
+    {
+      "rsid": "rs121918897",
+      "chromosome": "2",
+      "position": 21232195,
+      "gene": "APOB",
+      "condition": "Familial hypercholesterolemia",
+      "assayability": "snp",
+      "reference_allele": "A",
+      "alternate_allele": "G",
+      "cls": "pathogenic",
+      "association": "single_study",
+      "gnomad_af": 8e-05,
+      "clinvar": {
+        "significance": "Likely pathogenic",
+        "review_stars": 2,
+        "review_status_text": "criteria provided, multiple submitters, no conflicts",
+        "source_version": "ClinVar 2026-09"
+      },
+      "snpedia": null
+    },
+    {
+      "rsid": "rs113993960",
+      "chromosome": "7",
+      "position": 117199644,
+      "gene": "CFTR",
+      "condition": "Cystic fibrosis",
+      "assayability": "indel",
+      "reference_allele": "A",
+      "alternate_allele": "G",
+      "cls": "pathogenic",
+      "association": "established",
+      "gnomad_af": 0.0001,
+      "clinvar": {
+        "significance": "Pathogenic",
+        "review_stars": 3,
+        "review_status_text": "reviewed by expert panel",
+        "source_version": "ClinVar 2026-09"
+      },
+      "snpedia": null
+    }
+  ]
+}

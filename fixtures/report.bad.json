@@ -1,0 +1,50 @@
+{
+  "ir_version": "1.0.0",
+  "report_id": "r_bad",
+  "findings_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "sections": [
+    {
+      "section_id": "s_bad",
+      "title": "Deliberately broken report",
+      "caveat_ids": ["array_limits"],
+      "claims": [
+        {
+          "claim_id": "cl_b1",
+          "text": "rs1800562 is 82% confident and the variant is present.",
+          "citations": [
+            { "finding_id": "f_000000000006", "field_path": "evidence.clinvar.significance" }
+          ]
+        },
+        {
+          "claim_id": "cl_b2",
+          "text": "rs1799945 is confirmed to cause hemochromatosis.",
+          "citations": [
+            { "finding_id": "f_000000000007", "field_path": "evidence.clinvar.review_stars" }
+          ]
+        },
+        {
+          "claim_id": "cl_b3",
+          "text": "You should start taking iron supplements.",
+          "citations": [
+            { "finding_id": "f_000000000006", "field_path": "evidence.association" }
+          ]
+        },
+        {
+          "claim_id": "cl_b4",
+          "text": "rs80357906 in BRCA1 was not measured.",
+          "citations": [
+            { "finding_id": "f_000000000004", "field_path": "coverage.state" }
+          ]
+        },
+        {
+          "claim_id": "cl_b5",
+          "text": "See f_deadbeefdead for further context.",
+          "citations": [
+            { "finding_id": "f_deadbeefdead", "field_path": "state" }
+          ]
+        }
+      ]
+    }
+  ],
+  "omitted_findings": []
+}

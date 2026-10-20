@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://snp-insights.local/schema/report_ir.schema.json",
+  "title": "SNP Insights report IR",
+  "description": "Structured intermediate representation of the Stage 3 narrative. The LLM produces this; a deterministic renderer turns it into prose. Every claim must cite a resolvable finding_id + field_path from findings.json. No free-floating assertions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ir_version", "findings_hash", "sections", "omitted_findings"],
+  "properties": {
+    "ir_version": { "const": "1.0.0" },
+    "report_id": { "type": "string" },
+    "findings_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 hex of the exact findings.json this report was generated from" },
+    "sections": { "type": "array", "items": { "$ref": "#/$defs/section" } },
+    "omitted_findings": { "type": "array", "items": { "$ref": "#/$defs/omission" } }
+  },
+  "$defs": {
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding_id", "field_path"],
+      "properties": {
+        "finding_id": { "type": "string", "description": "A finding_id from findings.json, or the literal 'provenance'" },
+        "field_path": { "type": "string", "description": "Dot notation into the cited object, e.g. 'evidence.clinvar.review_stars'" }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "text", "citations"],
+      "properties": {
+        "claim_id": { "type": "string" },
+        "text": { "type": "string", "minLength": 1 },
+        "citations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/citation" } }
+      }
+    },
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["section_id", "title", "claims", "caveat_ids"],
+      "properties": {
+        "section_id": { "type": "string" },
+        "title": { "type": "string" },
+        "claims": { "type": "array", "items": { "$ref": "#/$defs/claim" } },
+        "caveat_ids": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Caveats drawn from the registry; renderer expands them. 'array_limits' is mandatory per section." },
+        "contradiction_ids": { "type": "array", "items": { "type": "string" }, "description": "contradiction_id values from findings.json that this section reports" }
+      }
+    },
+    "omission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding_id", "reason"],
+      "properties": {
+        "finding_id": { "type": "string" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

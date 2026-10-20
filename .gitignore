@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+
+# Generated outputs (reproducible; not tracked)
+fixtures/*.generated.*

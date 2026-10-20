@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://snp-insights.local/schema/findings.schema.json",
+  "title": "SNP Insights findings.json",
+  "description": "Stage 2 -> Stage 3 handoff contract. Deterministic annotation output. The Stage 3 narrator may only cite finding_id values and field paths defined here; it computes nothing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "provenance", "findings", "contradictions"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "contradictions": { "type": "array", "items": { "$ref": "#/$defs/contradiction" } }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_hash", "array_version", "genome_build", "strand",
+        "manifest_row_count", "generated_at", "pipeline_version",
+        "annotation_snapshots"
+      ],
+      "properties": {
+        "input_hash": { "type": "string", "description": "sha256 hex of the raw input file" },
+        "array_version": { "type": "string", "examples": ["AncestryDNA V2.0"] },
+        "converter_version": { "type": ["string", "null"] },
+        "genome_build": { "const": "GRCh37" },
+        "strand": { "const": "forward" },
+        "inferred_sex": { "enum": ["male", "female", "unknown"], "description": "Inferred from the raw file (Y calls and X heterozygosity); determines hemizygous calls on X/Y." },
+        "manifest_row_count": { "type": "integer", "minimum": 1 },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "pipeline_version": { "type": "string" },
+        "annotation_snapshots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "release", "retrieved_at", "license"],
+            "properties": {
+              "source": { "type": "string" },
+              "release": { "type": "string" },
+              "retrieved_at": { "type": "string", "format": "date-time" },
+              "license": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "allele": { "enum": ["A", "C", "G", "T", "I", "D"] },
+    "chromosome": {
+      "description": "Normalized from AncestryDNA numeric labels. 23->X, 24->Y, 25->PAR, 26->MT.",
+      "enum": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "X", "Y", "PAR", "MT"]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "source"],
+      "properties": {
+        "state": { "enum": ["covered", "not_covered"] },
+        "source": { "type": "string", "description": "Manifest provenance, e.g. 'AncestryDNA V2.0 file manifest'" }
+      }
+    },
+    "call": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": { "enum": ["called", "no_call", "uninterpretable", "not_applicable"] },
+        "allele1": { "$ref": "#/$defs/allele" },
+        "allele2": { "$ref": "#/$defs/allele" },
+        "zygosity": { "enum": ["hom_ref", "het", "hom_alt", "hemizygous", "homoplasmic", "unknown"] },
+        "strand": {
+          "description": "forward = reported as-is; ambiguous = palindromic A/T or C/G unresolved from array data alone.",
+          "enum": ["forward", "resolved", "ambiguous"]
+        }
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "description": "Named sub-scores only. There is no aggregate confidence number by construction.",
+      "additionalProperties": false,
+      "required": ["annotation_mapping", "array_reliability"],
+      "properties": {
+        "annotation_mapping": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["level", "basis"],
+          "properties": {
+            "level": { "enum": ["high", "medium", "low"] },
+            "basis": { "type": "array", "items": { "type": "string" }, "description": "e.g. 'rsID+position agree', 'dbSNP merge map applied', 'build GRCh37 match'" }
+          }
+        },
+        "array_reliability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rarity_class"],
+          "properties": {
+            "rarity_class": { "enum": ["common", "low_frequency", "rare", "ultra_rare", "unknown"] },
+            "ppv_note": { "type": ["string", "null"], "description": "Set when reporting a rare pathogenic heterozygous call; states the low positive predictive value of array calls at this rarity." }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["association"],
+      "properties": {
+        "clinvar": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["significance", "review_stars", "source_version"],
+          "properties": {
+            "significance": { "type": "string" },
+            "review_stars": { "type": "integer", "minimum": 0, "maximum": 4 },
+            "review_status_text": { "type": "string" },
+            "source_version": { "type": "string" }
+          }
+        },
+        "snpedia": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["magnitude", "source_version"],
+          "properties": {
+            "magnitude": { "type": "integer", "minimum": 0, "maximum": 10 },
+            "page": { "type": "string" },
+            "source_version": { "type": "string" }
+          }
+        },
+        "association": { "enum": ["established", "single_study", "conflicting", "none"] }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_id", "rsid", "chromosome", "position",
+        "assayability", "coverage", "call", "confidence", "evidence", "state", "caveats"
+      ],
+      "properties": {
+        "finding_id": { "type": "string", "pattern": "^f_[0-9a-f]{12,}$" },
+        "rsid": { "type": ["string", "null"], "pattern": "^rs[0-9]+$" },
+        "probe_id": { "type": ["string", "null"] },
+        "chromosome": { "$ref": "#/$defs/chromosome" },
+        "position": { "type": "integer", "minimum": 1 },
+        "gene": { "type": ["string", "null"] },
+        "condition": { "type": ["string", "null"] },
+        "assayability": {
+          "description": "snp/indel are measurable by this array; not_assayable marks loci (repeat expansions, copy-number variants) no SNP array can call regardless of coverage.",
+          "enum": ["snp", "indel", "not_assayable"]
+        },
+        "coverage": { "$ref": "#/$defs/coverage" },
+        "call": { "$ref": "#/$defs/call" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "evidence": { "$ref": "#/$defs/evidence" },
+        "state": {
+          "description": "Derived report state. Computed deterministically by Stage 2; never inferred by the LLM.",
+          "enum": ["detected", "covered_reference", "covered_nocall", "covered_uninterpretable", "not_covered", "not_assayable"]
+        },
+        "caveats": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Required per-finding caveat text for array-based genotyping limits."
+        }
+      }
+    },
+    "contradiction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contradiction_id", "finding_ids", "kind", "description"],
+      "properties": {
+        "contradiction_id": { "type": "string" },
+        "finding_ids": { "type": "array", "items": { "type": "string" }, "minItems": 2 },
+        "kind": {
+          "enum": ["conflicting_significance", "overlapping_condition_mixed_evidence", "gene_condition_conflict", "other"]
+        },
+        "description": {
+          "type": "string",
+          "description": "Deterministic, factual statement of the conflict. The LLM must reproduce this, not reconcile it."
+        }
+      }
+    }
+  }
+}
