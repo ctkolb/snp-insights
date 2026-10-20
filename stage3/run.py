@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Stage 3: synthesize a report from findings.json.
 
 Default endpoint is a LOCAL Ollama model, so nothing leaves the machine:

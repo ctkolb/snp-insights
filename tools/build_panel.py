@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """ETL: build an enriched panel snapshot from curated targets + public sources.
 
     python tools/build_panel.py \

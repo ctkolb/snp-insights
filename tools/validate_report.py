@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Validate a Stage 3 report IR against its source findings.json.
 
 Usage:

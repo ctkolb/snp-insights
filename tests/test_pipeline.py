@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Pipeline tests. No framework; run with:  python tests/test_pipeline.py
 
 Covers the AncestryDNA parser, the deterministic annotator, ETL robustness

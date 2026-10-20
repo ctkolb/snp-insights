@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Parse AncestryDNA raw data files (five-column TSV, GRCh37, forward strand).
 
 Handles the conventions that break naive parsers:

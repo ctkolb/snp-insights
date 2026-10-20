@@ -58,6 +58,7 @@ data/       panel snapshots (annotations); targets for the ETL
 fixtures/   synthetic raw file, findings, report IRs, candidate outputs
 harness/    narrator candidate config and sample scorecard
 DESIGN.md   design decisions, rationale, and known limitations
+LICENSE     GNU GPL v3.0-or-later
 ```
 
 ## Requirements
@@ -206,4 +207,13 @@ rules should update it.
 
 ## License
 
-TBD.
+Licensed under the **GNU General Public License, version 3 or later**
+(`GPL-3.0-or-later`). See [`LICENSE`](LICENSE) for the full text.
+
+You are free to use, study, share, and modify this software. If you
+distribute it, or a work based on it, you must pass on the same freedoms
+and make the corresponding source available under the same license.
+
+This program is distributed in the hope that it will be useful, but
+**without any warranty**; without even the implied warranty of
+merchantability or fitness for a particular purpose.

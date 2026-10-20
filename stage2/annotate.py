@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Stage 2: deterministically annotate an AncestryDNA raw file into findings.json.
 
     python stage2/annotate.py <raw.txt> <panel.json> [-o findings.json]

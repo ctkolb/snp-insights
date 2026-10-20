@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Build the Stage 3 narrator prompt.
 
 The findings payload is passed as untrusted data: the model may only cite it,

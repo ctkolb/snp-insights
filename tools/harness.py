@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Golden harness: score narrator candidates on the fixtures.
 
 Each candidate is a stored report IR (offline mode) or a live model call

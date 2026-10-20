@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Single source of truth for caveat text.
 
 The narrator selects caveat IDs; the renderer expands them here, so caveat

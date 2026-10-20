@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Minimal OpenAI-compatible chat client.
 
 Works with any endpoint speaking OpenAI's /chat/completions: OpenRouter, Ollama

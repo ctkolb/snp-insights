@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Inspect a real AncestryDNA raw file offline, with self-checks.
 
 Run this yourself and read the output before sharing anything. It uses the same
