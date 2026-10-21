@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
 from caveats import CAVEAT_REGISTRY  # noqa: E402
+from references import references_for  # noqa: E402
 from ancestry import parse_ancestry  # noqa: E402
 
 PIPELINE_VERSION = "0.1.0"
@@ -208,6 +209,8 @@ def annotate_variant(variant, raw, merges=None, sex="unknown"):
         },
         "state": state,
         "caveats": [CAVEAT_REGISTRY[k] for k in caveat_keys],
+        "references": references_for(variant["rsid"], variant["gene"], variant["condition"],
+                                     chrom, pos, ref, alt, variant["assayability"]),
     }
 
 

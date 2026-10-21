@@ -53,6 +53,14 @@ ABSOLUTE_PAT = re.compile(
 )
 
 
+def strong_wording_forbidden(fobj):
+    """Strong wording is allowed only for 'established' evidence."""
+    clin = fobj.get("evidence", {}).get("clinvar") or {}
+    stars = clin.get("review_stars")
+    assoc = fobj.get("evidence", {}).get("association")
+    return assoc != "established" or (stars is not None and stars <= 1)
+
+
 def semantic_violations(text, cited_findings):
     out = []
     if GLOBAL_BANS.search(text):
@@ -223,14 +231,11 @@ def check(findings_path, report, findings=None):
                 rarity = fobj.get("confidence", {}).get("array_reliability", {}).get("rarity_class")
                 if rarity in ("rare", "ultra_rare") and state == "detected" and "rare_ppv" not in caveat_ids:
                     err("R2", f"{sid}/{cid}: rare finding {fid} requires caveat_id 'rare_ppv'")
-                clin = fobj.get("evidence", {}).get("clinvar") or {}
-                stars = clin.get("review_stars")
-                assoc = fobj.get("evidence", {}).get("association")
-                if (stars is not None and stars <= 1) or assoc == "single_study":
+                if strong_wording_forbidden(fobj):
                     low = text.lower()
                     for w in STRONG_WORDS:
                         if w in low:
-                            err("R3", f"{sid}/{cid}: strong wording {w!r} on weak evidence (finding {fid}: stars={stars}, assoc={assoc})")
+                            err("R3", f"{sid}/{cid}: strong wording {w!r} on non-established evidence (finding {fid})")
 
             for n in numbers_in(text):
                 if n not in allowed:

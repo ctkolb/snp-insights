@@ -21,6 +21,7 @@ import validate_report
 def render(findings, report):
     p = findings["provenance"]
     contra_by_id = {c["contradiction_id"]: c for c in findings["contradictions"]}
+    findings_by_id = {f["finding_id"]: f for f in findings["findings"]}
 
     lines = ["# Genetic findings report", ""]
     lines += [f"> {STANDING_NOTICE}", ""]
@@ -52,6 +53,21 @@ def render(findings, report):
         lines += ["", "**Caveats**"]
         for cid in sec["caveat_ids"]:
             lines.append(f"- {CAVEAT_REGISTRY.get(cid, cid)}")
+
+        cited = []
+        for claim in sec["claims"]:
+            for c in claim["citations"]:
+                fid = c["finding_id"]
+                if fid in findings_by_id and all(x["finding_id"] != fid for x in cited):
+                    cited.append(findings_by_id[fid])
+        link_rows = []
+        for f in cited:
+            links = " · ".join(f"[{r['source']}]({r['url']})" for r in f.get("references", []))
+            if links:
+                link_rows.append(f"- {f.get('rsid') or f.get('gene')}: {links}")
+        if link_rows:
+            lines += ["", "**Read more**"]
+            lines += link_rows
         lines.append("")
 
     omissions = report.get("omitted_findings", [])

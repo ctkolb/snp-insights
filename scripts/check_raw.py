@@ -106,6 +106,7 @@ def format_report(s, raw, findings, findings_ok, schema_msg, redact, show_hash, 
     out.append("Structural self-checks")
     out.append("-" * 40)
     rate = (s["no_calls"] / s["row_count"] * 100) if s["row_count"] else 0
+    chrom_sum = sum(s["chrom_counts"].values())
     checks = [
         ("header row present", s["header_seen"], True),
         ("all rows have 5 columns", s["malformed_rows"] == 0, f"{s['malformed_rows']} malformed"),
@@ -113,6 +114,7 @@ def format_report(s, raw, findings, findings_ok, schema_msg, redact, show_hash, 
         ("chromosomes recognized", not s["bad_chromosomes"], f"unexpected: {dict(s['bad_chromosomes'])}"),
         ("alleles in A/C/G/T/I/D/0", not s["unknown_alleles"], f"unexpected: {dict(s['unknown_alleles'])}"),
         ("no-call rate sane (<5%)", rate < 5, f"{rate:.2f}%"),
+        ("chromosome counts sum to row total", chrom_sum == s["row_count"], f"{chrom_sum} vs {s['row_count']}"),
         ("build is GRCh37", m.get("genome_build") == "GRCh37", m.get("genome_build")),
     ]
     for name, ok, detail in checks:

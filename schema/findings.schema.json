@@ -128,7 +128,7 @@
             "source_version": { "type": "string" }
           }
         },
-        "association": { "enum": ["established", "single_study", "conflicting", "none"] }
+        "association": { "enum": ["established", "replicated", "single_study", "conflicting", "none", "unknown"] }
       }
     },
     "finding": {
@@ -162,6 +162,19 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "Required per-finding caveat text for array-based genotyping limits."
+        },
+        "references": {
+          "type": "array",
+          "description": "Code-generated external links (never model-authored).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "url"],
+            "properties": {
+              "source": { "type": "string" },
+              "url": { "type": "string" }
+            }
+          }
         }
       }
     },

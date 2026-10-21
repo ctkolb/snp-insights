@@ -1,0 +1,17 @@
+{
+  "_note": "DRAFT starter set for review, not a clinical panel. Coordinates/alleles are filled from dbSNP (--dbsnp); evidence from ClinVar/gnomAD. Verify each rsID<->condition pairing before relying on it.",
+  "panel_version": "0.1.0",
+  "genome_build": "GRCh37",
+  "strand": "forward",
+  "variants": [
+    { "rsid": "rs334", "gene": "HBB", "condition": "Sickle cell disease", "assayability": "snp", "cls": "pathogenic" },
+    { "rsid": "rs33930165", "gene": "HBB", "condition": "Hemoglobin C disease", "assayability": "snp", "cls": "pathogenic" },
+    { "rsid": "rs113993960", "gene": "CFTR", "condition": "Cystic fibrosis", "assayability": "indel", "cls": "pathogenic" },
+    { "rsid": "rs1800562", "gene": "HFE", "condition": "Hereditary hemochromatosis", "assayability": "snp", "cls": "pathogenic" },
+    { "rsid": "rs1799945", "gene": "HFE", "condition": "Hereditary hemochromatosis", "assayability": "snp", "cls": "risk" },
+    { "rsid": "rs6025", "gene": "F5", "condition": "Factor V Leiden thrombophilia", "assayability": "snp", "cls": "risk" },
+    { "rsid": "rs1799963", "gene": "F2", "condition": "Prothrombin thrombophilia", "assayability": "snp", "cls": "risk" },
+    { "rsid": "rs1050828", "gene": "G6PD", "condition": "G6PD deficiency", "assayability": "snp", "cls": "pathogenic" },
+    { "rsid": "rs28929474", "gene": "SERPINA1", "condition": "Alpha-1 antitrypsin deficiency", "assayability": "snp", "cls": "pathogenic" }
+  ]
+}

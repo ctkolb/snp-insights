@@ -47,6 +47,9 @@ Stage 3  Narrate   (local)   findings.json ─▶ [LLM] ─▶ report_ir.json
   contradictions are owned by code.
 - **Every claim cites a `finding_id` + `field_path`.** If it isn't in
   `findings.json`, it can't reach the report.
+- **Links are code-generated.** Each finding points to dbSNP, ClinVar, gnomAD,
+  OMIM, SNPedia, MedlinePlus, and GeneReviews so you can read more — the model
+  never writes URLs.
 
 ## Repository layout
 
@@ -176,6 +179,68 @@ By default it reports panel **states only** and withholds the raw allele letters
 (`--no-redact` to include them), and never prints genome-wide genotypes — just
 aggregate counts and the curated panel. `--no-hash` omits the file fingerprint.
 The script performs no network access.
+
+## Fetching reference data
+
+Stage 2 never touches the network. Reference data is fetched by a separate,
+explicit step into a local cache (outside the repo):
+
+```bash
+# see exactly what would be fetched, no network
+python tools/fetch_reference.py --targets data/targets.carrier.json --dry-run
+
+# fetch ONLY the records your targets need (default)
+python tools/fetch_reference.py \
+    --targets data/targets.carrier.json \
+    --targets data/targets.traits.json \
+    --email you@example.com
+
+# or download the complete official files (GiB-scale)
+python tools/fetch_reference.py --full --email you@example.com
+```
+
+The **small set = the rsIDs in your targets files.** Add a variant to a targets
+file and re-run fetch to pull just that record — there is nothing else to
+configure. Small mode queries each source's API directly (dbSNP variation API,
+ClinVar E-utilities, gnomAD GraphQL, SNPedia MediaWiki); each writes normalized
+files plus a `manifest.json` (source, URL, date, sha256).
+
+> **Privacy.** A small fetch tells each source *which variants you asked about*
+> (an interest signal), but never your genotype. The User-Agent carries no
+> identity (`--email` is optional). For a sensitive panel, use `--full` so
+> nothing selective is revealed. Never derive the fetch list from your own file.
+> See [DESIGN.md](DESIGN.md) D24.
+
+Build a panel from the cache:
+
+```bash
+python tools/build_panel.py --targets data/targets.carrier.json \
+    --cache ~/.cache/snp-insights -o data/panel.carrier.json
+```
+
+`--dbsnp` fills coordinates/alleles; association tiers are derived from ClinVar
+(carrier) and GWAS (traits). GWAS Catalog has no per-rsID API, so small mode
+downloads its full associations file (~hundreds of MB) once and filters it to
+your targets locally; pass `--no-gwas` to skip it. `--sizes` HEADs the full-file
+URLs to report actual download sizes. Full-file landing pages, if you prefer
+manual downloads:
+
+- **ClinVar** `variant_summary.txt.gz` — <https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz>
+- **dbSNP** GRCh37 VCF `GCF_000001405.25.gz` (large) — <https://ftp.ncbi.nlm.nih.gov/snp/latest_release/VCF/>
+- **dbSNP** `RsMergeArch` — <https://ftp.ncbi.nlm.nih.gov/snp/>
+- **gnomAD** VCF, GRCh37 — <https://gnomad.broadinstitute.org/downloads>
+- **GWAS Catalog** associations TSV — <https://www.ebi.ac.uk/gwas/docs/file-downloads>
+
+Terms (verify the current terms of each source; not legal advice):
+**ClinVar/dbSNP** public domain (NCBI; identify yourself, be polite) ·
+**gnomAD** free, some datasets carry extra terms · **GWAS Catalog** free
+(EMBL-EBI) · **SNPedia** CC BY-NC-SA 3.0 — non-commercial, needs
+`--accept-license` · **OMIM** not downloaded (link-only).
+
+`data/targets.carrier.json` and `data/targets.traits.json` are **draft** starter
+sets — verify the rsID↔condition/trait pairings and trim them. Then
+`scripts/check_raw.py --panel <panel>` shows which targets your array actually
+covers.
 
 ## Testing
 

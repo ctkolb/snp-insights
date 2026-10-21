@@ -18,7 +18,11 @@ sys.path.insert(0, os.path.join(ROOT, "stage2"))
 import ancestry  # noqa: E402
 import annotate  # noqa: E402
 import build_panel  # noqa: E402
+import fetch_reference  # noqa: E402
 import validate_report  # noqa: E402
+
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import check_raw  # noqa: E402
 
 FIX = os.path.join(ROOT, "fixtures")
 DATA = os.path.join(ROOT, "data")
@@ -173,6 +177,96 @@ def test_sex_chromosomes():
         os.unlink(tmp)
 
 
+def test_references_and_scan():
+    panel = load(os.path.join(DATA, "panel.sample.json"))
+    doc = annotate.build_findings(os.path.join(FIX, "raw.sample.txt"), panel, annotate.load_aliases(ALIASES))
+    by = {f["rsid"]: f for f in doc["findings"] if f["rsid"]}
+    srcs = {r["source"] for r in by["rs4988235"]["references"]}
+    check("references include dbSNP/ClinVar/gnomAD", {"dbSNP", "ClinVar", "gnomAD"} <= srcs)
+    cftr = next(f for f in doc["findings"] if f.get("gene") == "CFTR")
+    check("indel has no gnomAD link", all(r["source"] != "gnomAD" for r in cftr["references"]))
+    s = check_raw.structural_scan(os.path.join(FIX, "raw.sample.txt"))
+    check("scan chrom sum equals rows", sum(s["chrom_counts"].values()) == s["row_count"])
+
+
+def test_evidence_tiers():
+    schema = load(os.path.join(ROOT, "schema", "findings.schema.json"))
+    enum = schema["$defs"]["evidence"]["properties"]["association"]["enum"]
+    check("association tiers", set(enum) == {"established", "replicated", "single_study", "conflicting", "none", "unknown"})
+
+    swf = validate_report.strong_wording_forbidden
+
+    def f(assoc, stars=None):
+        return {"evidence": {"association": assoc,
+                             "clinvar": ({"review_stars": stars} if stars is not None else None)}}
+
+    check("strong allowed only when established", not swf(f("established", 3)))
+    check("strong blocked for replicated", swf(f("replicated", 2)))
+    check("strong blocked for single_study", swf(f("single_study", None)))
+    check("strong blocked for conflicting", swf(f("conflicting", 1)))
+    check("strong blocked for unknown", swf(f("unknown", None)))
+    check("strong blocked for established-with-1-star", swf(f("established", 1)))
+
+
+def test_etl_sources():
+    vcf = os.path.join(FIX, "sources/dbsnp.sample.vcf")
+    db = build_panel.load_dbsnp(vcf, {"rs4988235", "rs1333049"})
+    check("dbsnp vcf coords", db["rs4988235"]["position"] == 136608646 and db["rs4988235"]["reference_allele"] == "G")
+    dbt = build_panel.load_dbsnp(os.path.join(FIX, "sources/dbsnp.sample.tsv"), {"rs6025"})
+    check("dbsnp tsv coords", dbt["rs6025"]["position"] == 169519049)
+
+    gwas = build_panel.load_gwas(os.path.join(FIX, "sources/gwas.sample.tsv"), {"rs1333049", "rs4988235"})
+    check("gwas study count", gwas["rs1333049"] == 2 and gwas["rs4988235"] == 1)
+    check("gwas tier mapping", build_panel.assoc_from_gwas(2) == "replicated" and build_panel.assoc_from_gwas(1) == "single_study")
+    check("clinvar tier established", build_panel.assoc_from_clinvar({"review_stars": 3, "significance": "Pathogenic"}) == "established")
+    check("clinvar tier replicated", build_panel.assoc_from_clinvar({"review_stars": 2, "significance": "Pathogenic"}) == "replicated")
+    check("clinvar tier conflicting", build_panel.assoc_from_clinvar({"review_stars": 1, "significance": "Conflicting interpretations of pathogenicity"}) == "conflicting")
+
+    sp = build_panel.load_snpedia(os.path.join(FIX, "sources/snpedia.sample.tsv"))
+    check("snpedia magnitude", sp.get("rs4988235", {}).get("magnitude") == 2)
+
+    targets = {"variants": [
+        {"rsid": "rs1333049", "gene": "CDKN2B-AS1", "condition": "Coronary artery disease", "assayability": "snp", "cls": "risk"},
+        {"rsid": "rs4988235", "gene": "MCM6", "condition": None, "assayability": "snp", "cls": "risk"},
+    ]}
+    panel = build_panel.build(targets, sources=[], dbsnp=build_panel.load_dbsnp(vcf, {"rs1333049", "rs4988235"}),
+                              gwas=gwas, snpedia=sp)
+    by = {x["rsid"]: x for x in panel["variants"]}
+    check("dbsnp fill in build", by["rs1333049"]["chromosome"] == "9" and by["rs1333049"]["position"] == 22125504)
+    check("association derived from gwas",
+          by["rs1333049"]["association"] == "replicated" and by["rs4988235"]["association"] == "single_study")
+    check("snpedia attached", by["rs4988235"]["snpedia"] == {"magnitude": 2})
+
+
+def test_fetch_reference():
+    import tempfile
+    check("accession map chr2", fetch_reference.GRCH37_ACCESSIONS["NC_000002.11"] == "2")
+    check("accession map X", fetch_reference.GRCH37_ACCESSIONS["NC_000023.10"] == "X")
+    rs = fetch_reference.load_target_rsids([os.path.join(DATA, "targets.carrier.json"),
+                                            os.path.join(DATA, "targets.traits.json")])
+    check("target rsids collected + deduped", "rs334" in rs and "rs12913832" in rs and len(rs) == len(set(rs)))
+
+    d = tempfile.mkdtemp()
+    coords = {"rs4988235": ("2", 136608646, "G", "A")}
+    fetch_reference.write_dbsnp_tsv(os.path.join(d, "dbsnp.tsv"), coords)
+    check("fetch dbsnp tsv -> etl", build_panel.load_dbsnp(os.path.join(d, "dbsnp.tsv"), {"rs4988235"})["rs4988235"]["position"] == 136608646)
+    fetch_reference.write_clinvar_tsv(os.path.join(d, "clinvar.tsv"),
+                                      {"rs1800562": ("Pathogenic", "criteria provided, multiple submitters, no conflicts")})
+    check("fetch clinvar tsv -> etl", build_panel.load_clinvar(os.path.join(d, "clinvar.tsv"), "test")["rs1800562"]["review_stars"] == 2)
+    fetch_reference.write_snpedia_tsv(os.path.join(d, "snpedia.tsv"), {"rs1805007": 3})
+    check("fetch snpedia tsv -> etl", build_panel.load_snpedia(os.path.join(d, "snpedia.tsv"))["rs1805007"]["magnitude"] == 3)
+    fetch_reference.write_gnomad_vcf(os.path.join(d, "g.vcf"), coords, {"rs4988235": 0.25})
+    check("fetch gnomad vcf -> etl", build_panel.load_gnomad(os.path.join(d, "g.vcf"))["rs4988235"]["af"] == 0.25)
+
+    header = ["SNPS", "PUBMEDID", "DISEASE/TRAIT"]
+    lines = ["rs1333049\t1\tTrait A", "rs999\t2\tTrait B", "rs1333049 x rs4988235\t3\tTrait C"]
+    kept = fetch_reference._filter_gwas(header, lines, {"rs1333049"})
+    check("gwas filter keeps matches", len(kept) == 2)
+
+    unassessed = build_panel.build({"variants": [{"rsid": "rsNOPE", "gene": "X", "condition": "Trait", "assayability": "snp"}]}, sources=[])
+    check("unassessed association is unknown", unassessed["variants"][0]["association"] == "unknown")
+
+
 def test_validator_e2e():
     good = validate_report.check(os.path.join(FIX, "findings.sample.json"), load(os.path.join(FIX, "report.sample.json")))
     check("validator accepts sample", not good[0])
@@ -185,9 +279,13 @@ def main():
     test_annotator()
     test_condition_normalization()
     test_etl_messy()
+    test_etl_sources()
+    test_fetch_reference()
     test_db_merge()
     test_sex_chromosomes()
     test_semantic_lint()
+    test_references_and_scan()
+    test_evidence_tiers()
     test_validator_e2e()
     for name in PASSED:
         print(f"  ok   {name}")
