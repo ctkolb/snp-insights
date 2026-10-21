@@ -19,6 +19,7 @@ import ancestry  # noqa: E402
 import annotate  # noqa: E402
 import build_panel  # noqa: E402
 import fetch_reference  # noqa: E402
+import snpedia_to_tsv  # noqa: E402
 import validate_report  # noqa: E402
 
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
@@ -313,6 +314,25 @@ def test_clinvar_phenotype():
     check("phenotype-matched record preferred", best == ("Pathogenic", "criteria provided, multiple submitters, no conflicts"))
 
 
+def test_snpedia_convert():
+    import tempfile
+    xml = "<mediawiki><page><title>Rs1805007</title><revision><text>{{magnitude=3}}</text></revision></page></mediawiki>"
+    with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False) as fh:
+        fh.write(xml)
+        xp = fh.name
+    try:
+        check("snpedia xml convert", list(snpedia_to_tsv.from_xml(xp)) == [("rs1805007", 3)])
+    finally:
+        os.unlink(xp)
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+        fh.write('{"Rs4988235":"...|magnitude=2|..."}')
+        jp = fh.name
+    try:
+        check("snpedia json convert", list(snpedia_to_tsv.from_json(jp)) == [("rs4988235", 2)])
+    finally:
+        os.unlink(jp)
+
+
 def test_validator_e2e():
     good = validate_report.check(os.path.join(FIX, "findings.sample.json"), load(os.path.join(FIX, "report.sample.json")))
     check("validator accepts sample", not good[0])
@@ -335,6 +355,7 @@ def main():
     test_effect_allele()
     test_clinvar_selection()
     test_clinvar_phenotype()
+    test_snpedia_convert()
     test_validator_e2e()
     for name in PASSED:
         print(f"  ok   {name}")

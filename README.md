@@ -244,6 +244,25 @@ Terms (verify the current terms of each source; not legal advice):
 (EMBL-EBI) · **SNPedia** CC BY-NC-SA 3.0 — non-commercial; user-supplied file
 only, not auto-fetched · **OMIM** not downloaded (link-only).
 
+### SNPedia (optional, manual)
+
+SNPedia adds a *noteworthiness* score (magnitude) for variants — including many
+traits that ClinVar and GWAS don't cover. Its site blocks automated downloads, so
+it is **not auto-fetched**. To include it:
+
+```bash
+# 1. download SNPedia's data in a browser (its site's Download page)
+# 2. convert it to our format (MediaWiki XML export or JSON dump):
+python tools/snpedia_to_tsv.py snpedia_dump.xml -o snpedia.tsv
+# 3. build with it:
+python tools/build_panel.py --targets data/targets.traits.json \
+    --snpedia snpedia.tsv -o data/panel.traits.json
+```
+
+The converter accepts a MediaWiki XML export, a JSON map of title→wikitext, or an
+already-correct `rsid<TAB>magnitude` TSV and passes it through. SNPedia is
+**CC BY-NC-SA 3.0** (non-commercial); don't redistribute it.
+
 `data/targets.carrier.json` and `data/targets.traits.json` are **draft** starter
 sets — verify the rsID↔condition/trait pairings and trim them. Then
 `scripts/check_raw.py --panel <panel>` shows which targets your array actually

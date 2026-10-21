@@ -658,8 +658,13 @@ def main():
             print(f"  gwas: {exc}", file=sys.stderr)
 
     if snpedia_on:
-        print("  snpedia: automatic fetch is not supported (SNPedia's site is behind a bot "
-              "WAF). Supply a rsid<TAB>magnitude file via build_panel --snpedia.", file=sys.stderr)
+        print("  snpedia: SNPedia blocks automated downloads (bot WAF), so it is not fetched here.\n"
+              "    To include it (optional, extra value for traits):\n"
+              "      1) download SNPedia's data in a browser (their site's Download page)\n"
+              "      2) python tools/snpedia_to_tsv.py <dump.xml|dump.json> -o snpedia.tsv\n"
+              "      3) add --snpedia snpedia.tsv when building the panel\n"
+              "    (CC BY-NC-SA 3.0, non-commercial; do not redistribute). See README.",
+              file=sys.stderr)
 
     with open(os.path.join(args.cache, "manifest.json"), "w") as fh:
         json.dump(manifest, fh, indent=2)
