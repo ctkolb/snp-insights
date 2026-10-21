@@ -98,19 +98,66 @@ def load_target_rsids(paths):
     return rsids
 
 
-def http_get(url, email=None, timeout=60):
-    headers = {"User-Agent": f"snp-insights/0.1 ({email or 'no-contact'})"}
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", "replace")
+_LAST = [0.0]
+MIN_INTERVAL = 0.4  # seconds between requests (NCBI allows ~3/s without a key)
+
+
+def _throttle():
+    dt = time.time() - _LAST[0]
+    if dt < MIN_INTERVAL:
+        time.sleep(MIN_INTERVAL - dt)
+    _LAST[0] = time.time()
+
+
+def _ua(email):
+    return {"User-Agent": f"snp-insights/0.1 ({email or 'no-contact'})"}
+
+
+def http_get(url, email=None, timeout=60, retries=5):
+    for attempt in range(retries):
+        _throttle()
+        try:
+            req = urllib.request.Request(url, headers=_ua(email))
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as exc:
+            if exc.code in (429, 500, 502, 503, 504) and attempt < retries - 1:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            raise
 
 
 def http_get_json(url, email=None, timeout=60):
     return json.loads(http_get(url, email=email, timeout=timeout))
 
 
-def polite_sleep():
-    time.sleep(0.4)
+def http_post_json(url, payload, email=None, timeout=60, retries=5):
+    body = json.dumps(payload).encode()
+    for attempt in range(retries):
+        _throttle()
+        try:
+            headers = {"Content-Type": "application/json"}
+            headers.update(_ua(email))
+            req = urllib.request.Request(url, data=body, headers=headers)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode())
+        except urllib.error.HTTPError as exc:
+            if exc.code in (429, 500, 502, 503, 504) and attempt < retries - 1:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            raise
+
+
+def eutils(path, email):
+    """Append NCBI E-utilities tool/email/api_key parameters."""
+    params = ["tool=snp-insights"]
+    if email:
+        params.append(f"email={urllib.parse.quote(email)}")
+    key = os.environ.get("NCBI_API_KEY")
+    if key:
+        params.append(f"api_key={urllib.parse.quote(key)}")
+    sep = "&" if "?" in path else "?"
+    return f"{EUTILS}{path}{sep}{'&'.join(params)}"
 
 
 # --------------------------------------------------------------------------- #
@@ -131,43 +178,63 @@ def fetch_dbsnp_small(rsids, email):
             chrom = GRCH37_ACCESSIONS.get(pl.get("seq_id"))
             if not chrom:
                 continue
-            alleles = pl.get("alleles") or []
-            if not alleles:
-                continue
-            spdi = (alleles[0].get("allele") or {}).get("spdi") or {}
-            ref = spdi.get("deleted_sequence", "")
-            alt = spdi.get("inserted_sequence", "")
-            pos = spdi.get("position")
-            if pos is None:
-                continue
-            out[rsid] = (chrom, int(pos) + 1, ref or ".", alt or ".")
-            break
-        polite_sleep()
+            for a in pl.get("alleles") or []:
+                spdi = (a.get("allele") or {}).get("spdi") or {}
+                ref = spdi.get("deleted_sequence", "")
+                alt = spdi.get("inserted_sequence", "")
+                pos = spdi.get("position")
+                if pos is None or not ref or ref == alt:
+                    continue  # first allele is the reference (deleted == inserted)
+                out[rsid] = (chrom, int(pos) + 1, ref, alt or ".")
+                break
+            if rsid in out:
+                break
     return out
 
 
+def _stars(status):
+    s = (status or "").lower()
+    if "practice guideline" in s:
+        return 4
+    if "expert panel" in s:
+        return 3
+    if "multiple submitters" in s and "no conflict" in s:
+        return 2
+    if "conflicting" in s or "single submitter" in s:
+        return 1
+    return 0
+
+
 def fetch_clinvar_small(rsids, email):
-    """Return {rsid: (significance, review_status)} via NCBI E-utilities."""
+    """Return {rsid: (significance, review_status)} via NCBI E-utilities.
+
+    A variant has one record per submission; pick the strongest (most-reviewed,
+    and not a bare 'other').
+    """
     out = {}
     for rsid in rsids:
         try:
-            search = http_get_json(f"{EUTILS}esearch.fcgi?db=clinvar&term={urllib.parse.quote(rsid)}&retmode=json", email=email)
+            search = http_get_json(eutils(f"esearch.fcgi?db=clinvar&term={urllib.parse.quote(rsid)}&retmode=json", email), email=email)
             ids = (search.get("esearchresult") or {}).get("idlist") or []
             if not ids:
                 continue
-            summ = http_get_json(f"{EUTILS}esummary.fcgi?db=clinvar&id={','.join(ids)}&retmode=json", email=email)
+            summ = http_get_json(eutils(f"esummary.fcgi?db=clinvar&id={','.join(ids)}&retmode=json", email), email=email)
             result = summ.get("result") or {}
+            best, best_score = None, -1
             for uid in result.get("uids", []):
                 rec = result.get(uid) or {}
                 germ = rec.get("germline_classification") or {}
                 sig = germ.get("description")
-                review = germ.get("review_status")
-                if sig:
-                    out[rsid] = (sig, review or "")
-                    break
+                review = germ.get("review_status") or ""
+                if not sig:
+                    continue
+                score = _stars(review) * 2 + (0 if sig.strip().lower() == "other" else 1)
+                if score > best_score:
+                    best_score, best = score, (sig, review)
+            if best:
+                out[rsid] = best
         except Exception as exc:  # noqa: BLE001
             print(f"  clinvar {rsid}: {exc}", file=sys.stderr)
-        polite_sleep()
     return out
 
 
@@ -188,7 +255,6 @@ def fetch_snpedia_small(rsids, email):
                     out[rsid] = int(float(m.group(1)))
         except Exception as exc:  # noqa: BLE001
             print(f"  snpedia {rsid}: {exc}", file=sys.stderr)
-        polite_sleep()
     return out
 
 
@@ -202,12 +268,7 @@ def fetch_gnomad_small(coords, email):
         query = ("query($v: String!){ variant(variantId:$v, dataset:gnomad_r2_1){ "
                  "genome{ af } exome{ af } } }")
         try:
-            body = json.dumps({"query": query, "variables": {"v": variant_id}}).encode()
-            req = urllib.request.Request(GNOMAD_API, data=body,
-                                         headers={"Content-Type": "application/json",
-                                                  "User-Agent": f"snp-insights/0.1 ({email or 'no-contact'})"})
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                data = json.loads(resp.read().decode())
+            data = http_post_json(GNOMAD_API, {"query": query, "variables": {"v": variant_id}}, email=email)
             var = (data.get("data") or {}).get("variant") or {}
             af = (var.get("genome") or {}).get("af")
             if af is None:
@@ -216,7 +277,6 @@ def fetch_gnomad_small(coords, email):
                 out[rsid] = af
         except Exception as exc:  # noqa: BLE001
             print(f"  gnomad {rsid}: {exc}", file=sys.stderr)
-        polite_sleep()
     return out
 
 
