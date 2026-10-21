@@ -350,7 +350,7 @@ def main():
         args.clinvar = resolve(args.clinvar, "clinvar.tsv", "variant_summary.txt.gz")
         args.dbsnp = resolve(args.dbsnp, "dbsnp.tsv", "GCF_000001405.25.gz")
         args.gnomad = resolve(args.gnomad, "gnomad.small.vcf", "gnomad.exomes.r2.1.1.sites.vcf.bgz")
-        args.gwas = resolve(args.gwas, "gwas.tsv")
+        args.gwas = resolve(args.gwas, "gwas.tsv", "gwas-catalog-download-associations-alt-full.tsv")
         args.snpedia = resolve(args.snpedia, "snpedia.tsv")
         args.dbsnp_merge = resolve(args.dbsnp_merge, "RsMergeArch.bcp.gz")
 

@@ -294,7 +294,9 @@ never committed and never fetched during Stage 2. Default mode is *small*: it
 reads the targets' rsIDs and pulls only those records via each source's API;
 `--full` downloads the complete official files instead. A `manifest.json` records
 source/URL/date/sha256 for provenance. SNPedia (non-commercial) requires
-`--accept-license`; OMIM is never downloaded.
+`--accept-license`; OMIM is never downloaded. Full downloads are HEAD-size-checked
+and refuse >5 GB without `--yes`; measured sizes: ClinVar 0.46 GB, dbSNP 28 GB,
+gnomAD exomes 63 GB, GWAS zip 73 MB, RsMergeArch 0.15 GB (~92 GB total).
 
 ### D24 — Reference-fetch metadata exposure
 **Decision (Model, 2026-10-20).** Small-set fetching tells each source (NCBI,
@@ -309,7 +311,7 @@ only the opt-in online LLM does.
 
 ### D25 — Trait association: GWAS full-filter and the `unknown` tier
 **Decision (User, 2026-10-20).** GWAS Catalog has no per-rsID API wired, so small
-mode downloads its full associations file (~hundreds of MB) once and filters to
+mode downloads its full associations file (~70 MB zip) once and filters to
 the target rsIDs (`--no-gwas` opts out). The association ladder gains `unknown`
 (not assessed) so a curated trait with no source data is not mislabeled `none`
 (which means "assessed, no known link"). `fetch_reference.py --sizes` HEADs the

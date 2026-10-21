@@ -35,6 +35,7 @@ Terms (verify the current terms of each source; not legal advice):
 import argparse
 import gzip
 import hashlib
+import io
 import json
 import os
 import sys
@@ -42,6 +43,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
 
 # GRCh37 (hg19) RefSeq chromosome accessions, as returned by the dbSNP API.
@@ -61,7 +63,7 @@ FULL_URLS = {
     "rsmerge": "https://ftp.ncbi.nlm.nih.gov/snp/organisms/human_9606/database/organism_data/RsMergeArch.bcp.gz",
     # gnomAD v2.1.1 exomes (GRCh37). Verify the current path on gnomad.broadinstitute.org.
     "gnomad": "https://storage.googleapis.com/gcp-public-data--gnomad/release/2.1.1/vcf/exomes/gnomad.exomes.r2.1.1.sites.vcf.bgz",
-    "gwas": "https://www.ebi.ac.uk/gwas/api/search/downloads/full",
+    "gwas": "https://ftp.ebi.ac.uk/pub/databases/gwas/releases/latest/gwas-catalog-associations_ontology-annotated-full.zip",
 }
 
 DBSNP_API = "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/"
@@ -250,17 +252,40 @@ def _filter_gwas(header, lines, wanted):
     return [line.rstrip("\n") for line in lines if _gwas_matches(line, idx, wanted)]
 
 
-def fetch_gwas_small(wanted, email, url=None):
-    """Stream the full GWAS Catalog TSV and keep only rows for `wanted` rsIDs."""
-    url = url or FULL_URLS["gwas"]
-    headers = {"User-Agent": f"snp-insights/0.1 ({email or 'no-contact'})"}
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=600) as resp:
-        lines = (ln.decode("utf-8", "replace") for ln in resp)
-        header = next(lines).rstrip("\n").lstrip("#").split("\t")
-        idx = _col_index(header)
-        kept = [ln.rstrip("\n") for ln in lines if _gwas_matches(ln, idx, wanted)]
-    return header, kept
+def fetch_gwas_small(wanted, email, cache):
+    """Download the GWAS Catalog zip, filter its TSV to `wanted`, write gwas.tsv.
+
+    The catalog ships a .zip containing one associations TSV; we extract inline
+    and keep only rows whose SNPS column contains one of our rsIDs (exact token).
+    """
+    url = FULL_URLS["gwas"]
+    zip_path = download_full("gwas", url, cache, email)
+    out_path = os.path.join(cache, "gwas.tsv")
+    header_out = ["SNPS", "PUBMEDID", "DISEASE/TRAIT"]
+    count = 0
+    with zipfile.ZipFile(zip_path) as z:
+        member = next((n for n in z.namelist() if n.endswith(".tsv")), None)
+        if not member:
+            raise RuntimeError("no .tsv inside GWAS zip")
+        with z.open(member) as raw, open(out_path, "w") as out:
+            text = io.TextIOWrapper(raw, encoding="utf-8", errors="replace")
+            header = text.readline().rstrip("\n").lstrip("#").split("\t")
+            idx = _col_index(header)
+            snps_i = _find_col(idx, "SNPS", "SNP", "SNP_ID_CURRENT", "SNP_ID")
+            pub_i = _find_col(idx, "PUBMEDID", "STUDY ACCESSION")
+            trait_i = _find_col(idx, "DISEASE/TRAIT")
+            out.write("\t".join(header_out) + "\n")
+            for line in text:
+                row = line.rstrip("\n").split("\t")
+                snps = row[snps_i] if (snps_i is not None and snps_i < len(row)) else ""
+                if not snps:
+                    continue
+                if any(t in wanted for t in snps.replace(";", " ").replace(" x ", " ").split()):
+                    pub = row[pub_i] if (pub_i is not None and pub_i < len(row)) else ""
+                    tr = row[trait_i] if (trait_i is not None and trait_i < len(row)) else ""
+                    out.write(f"{snps}\t{pub}\t{tr}\n")
+                    count += 1
+    return count
 
 
 def head_size(url, email):
@@ -334,6 +359,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="print the plan and exit")
     ap.add_argument("--no-gwas", action="store_true", help="small mode: skip the GWAS full-file download")
     ap.add_argument("--sizes", action="store_true", help="HEAD the --full URLs, print sizes, and exit")
+    ap.add_argument("--yes", action="store_true", help="allow a >5 GB --full download")
     args = ap.parse_args()
 
     if args.sizes:
@@ -357,12 +383,34 @@ def main():
                 print(f"  {name}: {url}")
             return 0
         os.makedirs(args.cache, exist_ok=True)
+        sizes, total = {}, 0
+        for name, url in plan:
+            try:
+                s = head_size(url, args.email)
+            except Exception:  # noqa: BLE001
+                s = None
+            sizes[name] = s
+            if s:
+                total += s
+        print("planned downloads:")
+        for name, url in plan:
+            print(f"  {name}: {sizes[name] / 1_000_000_000:.2f} GB" if sizes[name] else f"  {name}: size unknown")
+        print(f"  total: {total / 1_000_000_000:.2f} GB")
+        if total > 5_000_000_000 and not args.yes:
+            print("Refusing to download >5 GB without --yes.", file=sys.stderr)
+            return 1
         manifest = {"mode": "full", "generated_at": now(), "files": {}}
         for name, url in plan:
             try:
                 dest = download_full(name, url, args.cache, args.email)
                 manifest["files"][name] = {"url": url, "path": dest, "bytes": os.path.getsize(dest),
                                            "sha256": sha256_file(dest)}
+                if name == "gwas" and dest.endswith(".zip"):
+                    with zipfile.ZipFile(dest) as z:
+                        member = next((n for n in z.namelist() if n.endswith(".tsv")), None)
+                        if member:
+                            z.extract(member, args.cache)
+                            manifest["files"]["gwas_tsv"] = {"path": os.path.join(args.cache, member)}
             except Exception as exc:  # noqa: BLE001
                 print(f"  {name}: FAILED {exc}", file=sys.stderr)
                 manifest["files"][name] = {"url": url, "error": str(exc)}
@@ -382,7 +430,7 @@ def main():
                     "gnomad (GraphQL, via dbSNP coordinates)"]
                    + ([] if args.no_gwas else ["gwas (full file, filtered locally)"])
                    + (["snpedia (MediaWiki API)"] if snpedia_on else []),
-        "note": "GWAS has no per-rsID API; its full file (~hundreds of MB) is downloaded and filtered.",
+        "note": "GWAS has no per-rsID API; its zip (~70 MB) is downloaded and filtered.",
     }
     if args.dry_run:
         print(f"SMALL mode: {len(rsids)} rsIDs")
@@ -411,14 +459,10 @@ def main():
     manifest["files"]["gnomad"] = {"path": "gnomad.small.vcf", "records": len(afs)}
 
     if not args.no_gwas:
-        print("  fetching GWAS full file (filtered locally) ...")
+        print("  downloading GWAS zip and filtering ...")
         try:
-            header, kept = fetch_gwas_small(set(rsids), args.email)
-            with open(os.path.join(args.cache, "gwas.tsv"), "w") as fh:
-                fh.write("\t".join(header) + "\n")
-                for ln in kept:
-                    fh.write(ln + "\n")
-            manifest["files"]["gwas"] = {"path": "gwas.tsv", "records": len(kept)}
+            n = fetch_gwas_small(set(rsids), args.email, args.cache)
+            manifest["files"]["gwas"] = {"path": "gwas.tsv", "records": n}
         except Exception as exc:  # noqa: BLE001
             print(f"  gwas: {exc}", file=sys.stderr)
 
