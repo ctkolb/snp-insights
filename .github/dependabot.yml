@@ -1,0 +1,12 @@
+# Dependabot keeps pinned GitHub Actions current (see docs/security.md).
+# This project has no runtime dependencies, so only the actions ecosystem is
+# configured. Alerts are informative; do not auto-merge generated updates.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"

@@ -1,0 +1,14 @@
+# Gitleaks config for SNP Insights.
+#
+# Extends the default rule set, then allowlists ONLY the guard and its tests,
+# which intentionally contain decoy secret-shaped strings to prove the scanner
+# works. Every other path is scanned normally. Do not broaden this allowlist.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Deliberate decoys in the privacy guard and its tests"
+paths = [
+  '''scripts/guard\.py$''',
+  '''tests/test_guard\.py$''',
+]

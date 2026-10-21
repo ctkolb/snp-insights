@@ -1,0 +1,36 @@
+# Normalize line endings to LF in the repository; checkout is native.
+* text=auto eol=lf
+
+*.py   text diff=python
+*.md   text
+*.json text
+*.jsonl text
+*.tsv  text
+*.vcf  text
+*.txt  text
+*.yml  text
+*.yaml text
+*.sh   text eol=lf
+
+# Binary markers so diffs stay readable and Git never normalizes them.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.pdf  binary
+*.gz   binary
+*.zip  binary
+*.sqlite binary
+*.db   binary
+
+# Keep dev-only material out of source archives (git archive / release zips).
+/.github/  export-ignore
+/docs/     export-ignore
+/hooks/    export-ignore
+/tests/    export-ignore
+/fixtures/ export-ignore
+/.editorconfig   export-ignore
+/.gitattributes  export-ignore
+/.gitignore      export-ignore
+/CONTRIBUTING.md export-ignore
+/SECURITY.md     export-ignore

@@ -1,0 +1,17 @@
+# Example denylist for owner-specific PRIVATE terms (real name, city, handles,
+# private page titles, project codenames, ...). Nothing here is scanned unless
+# you copy this file to `.sensitive-terms` (gitignored) or set the
+# SENSITIVE_TERMS environment variable. The real list is NEVER committed.
+#
+# Format: one term per line. Blank lines and lines starting with '#' are ignored.
+#   - a plain term is matched case-insensitively against tracked file contents,
+#     commit messages, and the current branch name;
+#   - `sha256:<hex>` matches a lowercased whole word whose SHA-256 is <hex>, so
+#     the term itself never appears in the list or in CI logs.
+#
+# Generate a digest without revealing the term (prints only the hash):
+#     python scripts/guard.py --hash "example term"
+#
+# --- placeholders below are NOT real; copy this file to .sensitive-terms ------
+# example tab name
+# sha256:0000000000000000000000000000000000000000000000000000000000000000

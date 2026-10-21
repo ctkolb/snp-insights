@@ -1,5 +1,58 @@
-__pycache__/
-*.pyc
+# Deny by default. Only the entries explicitly re-included below are tracked.
+# This means a new local file, generated artifact, or stray export is ignored
+# until someone deliberately allowlists it — not the other way around.
+/*
+!/.github/
+!/docs/
+!/hooks/
+!/schema/
+!/scripts/
+!/stage2/
+!/stage3/
+!/tools/
+!/tests/
+!/harness/
+!/fixtures/
+!/data/
+!/.editorconfig
+!/.env.example
+!/.gitattributes
+!/.gitleaks.toml
+!/.gitignore
+!/.mailmap
+!/.sensitive-terms.example
+!/AGENTS.md
+!/CONTRIBUTING.md
+!/DESIGN.md
+!/LICENSE
+!/README.md
+!/SECURITY.md
 
-# Generated outputs (reproducible; not tracked)
+# Local state inside re-included trees ---------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Owner-specific local files (never tracked) ----------------------------------
+# Real private terms live here or in the SENSITIVE_TERMS env var, never in git.
+.sensitive-terms
+.env
+.env.*
+!.env.example
+*.local
+*.private
+
+# Generated / derived artifacts inside tracked trees --------------------------
+# Panels are reproducible from the ETL; only panel.sample.json is a fixture.
 fixtures/*.generated.*
+data/panel.carrier.json
+data/panel.traits.json
+*.generated.json
+
+# OS / editor / agent cruft ----------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
