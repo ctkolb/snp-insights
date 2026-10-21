@@ -301,6 +301,18 @@ def test_clinvar_selection():
     check("clinvar gene filter drops unrelated record", best == ("drug response", "reviewed by expert panel"))
 
 
+def test_clinvar_phenotype():
+    aliases = fetch_reference.load_condition_aliases()
+    check("condition matches alias", fetch_reference._condition_matches("Hemochromatosis|not provided", "Hereditary hemochromatosis", aliases))
+    check("condition no match", not fetch_reference._condition_matches("Cystic fibrosis", "Hereditary hemochromatosis", {}))
+    rows = [
+        {"sig": "drug response", "review": "reviewed by expert panel", "phenotype": "not provided"},
+        {"sig": "Pathogenic", "review": "criteria provided, multiple submitters, no conflicts", "phenotype": "Hereditary hemochromatosis"},
+    ]
+    best = fetch_reference._select_clinvar_summary(rows, "Hereditary hemochromatosis", aliases)
+    check("phenotype-matched record preferred", best == ("Pathogenic", "criteria provided, multiple submitters, no conflicts"))
+
+
 def test_validator_e2e():
     good = validate_report.check(os.path.join(FIX, "findings.sample.json"), load(os.path.join(FIX, "report.sample.json")))
     check("validator accepts sample", not good[0])
@@ -322,6 +334,7 @@ def main():
     test_evidence_tiers()
     test_effect_allele()
     test_clinvar_selection()
+    test_clinvar_phenotype()
     test_validator_e2e()
     for name in PASSED:
         print(f"  ok   {name}")

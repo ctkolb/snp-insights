@@ -221,12 +221,16 @@ python tools/build_panel.py --targets data/targets.carrier.json \
 `--dbsnp` fills coordinates/alleles; association tiers are derived from ClinVar
 (carrier) and GWAS (traits). Targets may also set **`effect_allele`** — the
 allele associated with the condition — because dbSNP's alt is not always the
-risk allele; detection keys on it when present. GWAS Catalog has no per-rsID API,
-so small mode downloads its zip (~70 MB) once and filters it to your targets
-locally; pass `--no-gwas` to skip it. `--sizes` HEADs the full-file URLs to
-report actual download sizes, and `--full` refuses to pull more than 5 GB without
-`--yes` (dbSNP + gnomAD alone are ~90 GB). Full-file landing pages, if you prefer
-manual downloads:
+risk allele; detection keys on it when present. In small mode ClinVar is fetched
+from `variant_summary` (~0.5 GB, downloaded once) so the record is matched to the
+curated condition; `--clinvar-mode api` uses the lighter E-utilities instead
+(no phenotype). GWAS Catalog has no per-rsID API, so small mode downloads its zip
+(~70 MB) and filters it locally; `--no-gwas` skips it. **SNPedia is not
+auto-fetched** (its site blocks programmatic access) — supply a
+`rsid<TAB>magnitude` file to `build_panel --snpedia`. `--sizes` HEADs the
+full-file URLs to report actual download sizes, and `--full` refuses to pull more
+than 5 GB without `--yes` (dbSNP + gnomAD alone are ~90 GB). Full-file landing
+pages, if you prefer manual downloads:
 
 - **ClinVar** `variant_summary.txt.gz` — <https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz>
 - **dbSNP** GRCh37 VCF `GCF_000001405.25.gz` (large) — <https://ftp.ncbi.nlm.nih.gov/snp/latest_release/VCF/>
@@ -237,8 +241,8 @@ manual downloads:
 Terms (verify the current terms of each source; not legal advice):
 **ClinVar/dbSNP** public domain (NCBI; identify yourself, be polite) ·
 **gnomAD** free, some datasets carry extra terms · **GWAS Catalog** free
-(EMBL-EBI) · **SNPedia** CC BY-NC-SA 3.0 — non-commercial, needs
-`--accept-license` · **OMIM** not downloaded (link-only).
+(EMBL-EBI) · **SNPedia** CC BY-NC-SA 3.0 — non-commercial; user-supplied file
+only, not auto-fetched · **OMIM** not downloaded (link-only).
 
 `data/targets.carrier.json` and `data/targets.traits.json` are **draft** starter
 sets — verify the rsID↔condition/trait pairings and trim them. Then

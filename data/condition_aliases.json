@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical condition -> equivalent labels. Used to group findings for contradiction detection so differently-worded labels for the same condition are compared. Keys and values are matched case-insensitively after punctuation is stripped. Keys beginning with '_' are ignored.",
+  "_comment": "Canonical condition -> equivalent labels. Used to group findings for contradiction detection and to match ClinVar phenotypes so differently-worded labels for the same condition are compared. Keys and values are matched case-insensitively after punctuation is stripped. Keys beginning with '_' are ignored.",
   "hereditary hemochromatosis": [
     "hemochromatosis",
     "haemochromatosis",
@@ -7,7 +7,10 @@
   ],
   "factor v leiden thrombophilia": [
     "factor v leiden",
-    "factor v leiden mutation"
+    "factor v leiden mutation",
+    "thrombophilia due to activated protein c resistance",
+    "activated protein c resistance",
+    "apc resistance"
   ],
   "hereditary breast and ovarian cancer": [
     "hereditary breast and ovarian cancer syndrome",
@@ -27,5 +30,31 @@
   ],
   "cystic fibrosis": [
     "cf"
+  ],
+  "sickle cell disease": [
+    "sickle cell anemia",
+    "sickle cell anaemia",
+    "hemoglobin s disease",
+    "haemoglobin s disease"
+  ],
+  "hemoglobin c disease": [
+    "hemoglobin c",
+    "haemoglobin c"
+  ],
+  "prothrombin thrombophilia": [
+    "prothrombin g20210a",
+    "prothrombin deficiency",
+    "thrombophilia due to prothrombin",
+    "factor ii deficiency"
+  ],
+  "g6pd deficiency": [
+    "glucose-6-phosphate dehydrogenase deficiency",
+    "glucose 6 phosphate dehydrogenase deficiency"
+  ],
+  "alpha-1 antitrypsin deficiency": [
+    "alpha 1 antitrypsin deficiency",
+    "alpha1-antitrypsin deficiency",
+    "alpha-1 antitrypsin",
+    "serpina1 deficiency"
   ]
 }

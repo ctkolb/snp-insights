@@ -328,6 +328,17 @@ records whose title lacks the target gene, and synonymous `=` records, are
 dropped before choosing the strongest. `build_panel.py` warns when a curated
 effect allele is not one of the ref/alt alleles (possible strand mismatch).
 
+### D27 — Phenotype-aware ClinVar and SNPedia handling
+**Decision (User, 2026-10-20).** Small-mode ClinVar now downloads
+`variant_summary` (~0.5 GB, cached) so each rsID can be matched to a record with
+a `PhenotypeList`; `--clinvar-mode api` keeps the lighter E-utilities path. Record
+selection ranks by **disease relevance of the significance** (pathogenic/risk
+over drug-response/benign), then phenotype match to the curated condition, then
+review stars — so `rs6025` resolves to its thrombophilia (conflicting) record,
+not its warfarin drug-response record. **SNPedia is not auto-fetched**: its site
+is behind a bot WAF (Incapsula), so it must be supplied as a
+`rsid<TAB>magnitude` file to `build_panel --snpedia` under its CC BY-NC-SA terms.
+
 ---
 
 ## 4. Design limitations and known gaps
@@ -390,11 +401,10 @@ effect allele is not one of the ref/alt alleles (possible strand mismatch).
 - **GWAS association tiers** count distinct studies per rsID, not per rsID+trait,
   and ignore sample size and p-value; treat trait tiers as rough. GWAS absence
   yields `unknown`, not `none`.
-- **ClinVar association tiers** come from the variant's *strongest* record, which
-  may concern a different aspect than the curated condition (e.g. rs6025's
-  expert-panel record is warfarin drug-response, not thrombophilia). ClinVar's
-  E-utilities summary carries no phenotype field, so condition-level matching is
-  not possible there; a future variant_summary-based source could add it.
+- **ClinVar association tiers** are phenotype-aware (D27) but selection still
+  ranks disease relevance first, then condition match; an unusual variant whose
+  condition terms are absent from `data/condition_aliases.json` may resolve to a
+  less apt record. SNPedia cannot be auto-fetched (bot WAF) and is user-supplied.
 
 ### Model and privacy
 - **Refusals and hedging.** Health/genetics content can trigger refusals or
@@ -449,3 +459,4 @@ effect allele is not one of the ref/alt alleles (possible strand mismatch).
 | D24 | Reference-fetch metadata exposure + guardrails | Model | 2026-10-20 |
 | D25 | GWAS full-filter in small mode + `unknown` association tier | User | 2026-10-20 |
 | D26 | Curation-aware fetch: `effect_allele` + gene-aware ClinVar selection | User | 2026-10-20 |
+| D27 | Phenotype-aware ClinVar (variant_summary); SNPedia user-supplied | User | 2026-10-20 |

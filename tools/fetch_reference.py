@@ -45,6 +45,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+from collections import defaultdict
 from datetime import datetime, timezone
 
 # GRCh37 (hg19) RefSeq chromosome accessions, as returned by the dbSNP API.
@@ -111,6 +112,14 @@ def load_target_entries(paths):
                 seen.add(rsid)
                 entries.append({"rsid": rsid, "gene": v.get("gene"), "condition": v.get("condition")})
     return entries
+
+
+def load_condition_aliases():
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "condition_aliases.json")
+    if os.path.exists(p):
+        with open(p) as fh:
+            return json.load(fh)
+    return {}
 
 
 _LAST = [0.0]
@@ -220,6 +229,20 @@ def _stars(status):
     return 0
 
 
+def _sig_rank(sig):
+    """Rank a ClinVar significance by disease relevance (not clinical confidence)."""
+    s = (sig or "").lower()
+    if "drug response" in s or "benign" in s or "protective" in s or s.strip() == "association":
+        return 0
+    if "pathogenic" in s and "conflicting" not in s:
+        return 4
+    if "risk factor" in s or "risk allele" in s:
+        return 3
+    if "conflicting" in s:
+        return 2
+    return 1
+
+
 def _select_clinvar(records, gene):
     """Pick the best ClinVar record: prefer the target gene and a real change.
 
@@ -242,7 +265,7 @@ def _select_clinvar(records, gene):
         if not sig:
             continue
         review = r.get("review") or ""
-        score = _stars(review) * 2 + (0 if sig.strip().lower() == "other" else 1)
+        score = _sig_rank(sig) * 10 + _stars(review)
         if score > best_score:
             best_score, best = score, (sig, review)
     return best
@@ -274,23 +297,85 @@ def fetch_clinvar_small(entries, email):
     return out
 
 
-def fetch_snpedia_small(rsids, email):
-    """Return {rsid: magnitude} via the SNPedia MediaWiki API."""
-    import re
+def _norm_cond(text):
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", (text or "").lower())).strip()
+
+
+def _condition_matches(phenotypes, condition, aliases):
+    if not condition:
+        return False
+    p = _norm_cond(phenotypes)
+    c = _norm_cond(condition)
+    variants = {c}
+    for canon, al in (aliases or {}).items():
+        if canon.startswith("_"):
+            continue
+        norm_al = {_norm_cond(v) for v in al}
+        if c == canon or c in norm_al:
+            variants |= {canon} | norm_al
+    return any(v and v in p for v in variants)
+
+
+def _select_clinvar_summary(rows, condition, aliases):
+    """Pick the ClinVar row most relevant to the curated condition.
+
+    Priority: disease-relevant significance (pathogenic/risk over drug-response),
+    then a phenotype match to the condition, then review stars.
+    rows: [{'sig','review','phenotype'}]. Returns (sig, review) or None.
+    """
+    best, best_score = None, -1
+    for r in rows:
+        sig = (r.get("sig") or "").strip()
+        if not sig:
+            continue
+        matched = _condition_matches(r.get("phenotype"), condition, aliases)
+        score = _sig_rank(sig) * 100 + (10 if matched else 0) + _stars(r.get("review") or "")
+        if score > best_score:
+            best_score, best = score, (sig, r.get("review") or "")
+    return best
+
+
+def fetch_clinvar_summary(entries, email, cache):
+    """Download ClinVar variant_summary and pick a phenotype-matched record per rsID.
+
+    variant_summary has a PhenotypeList column (which E-utilities' esummary lacks),
+    so we can prefer the record matching the curated condition.
+    """
+    path = download_full("clinvar", FULL_URLS["clinvar"], cache, email)
+    wanted = {e["rsid"]: e.get("condition") for e in entries}
+    aliases = load_condition_aliases()
+    rows = defaultdict(list)
+    with gzip.open(path, "rt") as fh:
+        header = fh.readline().rstrip("\n").lstrip("#").split("\t")
+        idx = _col_index(header)
+        rs_i = _find_col(idx, "RS# (dbSNP)", "RS#(dbSNP)", "RS#")
+        asm_i = _find_col(idx, "Assembly")
+        sig_i = _find_col(idx, "ClinicalSignificance")
+        rev_i = _find_col(idx, "ReviewStatus")
+        ph_i = _find_col(idx, "PhenotypeList")
+        for line in fh:
+            row = line.rstrip("\n").split("\t")
+            if rs_i is None or rs_i >= len(row):
+                continue
+            rs = row[rs_i]
+            if not rs:
+                continue
+            rsid = rs if rs.startswith("rs") else f"rs{rs}"
+            if rsid not in wanted:
+                continue
+            asm = row[asm_i] if (asm_i is not None and asm_i < len(row)) else ""
+            if asm and not asm.startswith("GRCh37"):
+                continue
+            rows[rsid].append({
+                "sig": row[sig_i] if (sig_i is not None and sig_i < len(row)) else "",
+                "review": row[rev_i] if (rev_i is not None and rev_i < len(row)) else "",
+                "phenotype": row[ph_i] if (ph_i is not None and ph_i < len(row)) else "",
+            })
     out = {}
-    for rsid in rsids:
-        try:
-            url = (f"{SNPEDIA_API}?action=query&prop=revisions&rvprop=content&format=json"
-                   f"&titles={urllib.parse.quote(rsid)}")
-            data = http_get_json(url, email=email)
-            pages = (data.get("query") or {}).get("pages") or {}
-            for page in pages.values():
-                content = ((page.get("revisions") or [{}])[0]).get("*", "")
-                m = re.search(r"magnitude\s*=\s*([0-9.]+)", content, re.I)
-                if m:
-                    out[rsid] = int(float(m.group(1)))
-        except Exception as exc:  # noqa: BLE001
-            print(f"  snpedia {rsid}: {exc}", file=sys.stderr)
+    for rsid, rs_rows in rows.items():
+        best = _select_clinvar_summary(rs_rows, wanted.get(rsid), aliases)
+        if best:
+            out[rsid] = best
     return out
 
 
@@ -432,6 +517,9 @@ def write_gnomad_vcf(path, coords, afs):
 
 def download_full(name, url, cache, email):
     dest = os.path.join(cache, os.path.basename(urllib.parse.urlparse(url).path))
+    if os.path.exists(dest) and os.path.getsize(dest) > 0:
+        print(f"  {name}: using cached {os.path.basename(dest)}")
+        return dest
     headers = {"User-Agent": f"snp-insights/0.1 ({email or 'no-contact'})"}
     req = urllib.request.Request(url, headers=headers)
     print(f"  {name}: {url}")
@@ -454,6 +542,8 @@ def main():
     ap.add_argument("--accept-license", action="store_true", help="acknowledge SNPedia CC BY-NC-SA (non-commercial)")
     ap.add_argument("--dry-run", action="store_true", help="print the plan and exit")
     ap.add_argument("--no-gwas", action="store_true", help="small mode: skip the GWAS full-file download")
+    ap.add_argument("--clinvar-mode", choices=["summary", "api"], default="summary",
+                    help="small mode: 'summary' (download variant_summary; phenotype-aware) or 'api' (E-utilities)")
     ap.add_argument("--sizes", action="store_true", help="HEAD the --full URLs, print sizes, and exit")
     ap.add_argument("--yes", action="store_true", help="allow a >5 GB --full download")
     args = ap.parse_args()
@@ -523,11 +613,12 @@ def main():
     snpedia_on = args.accept_license
     plan = {
         "rsids": rsids,
-        "sources": ["dbsnp (NCBI variation API)", "clinvar (E-utilities)",
+        "sources": ["dbsnp (NCBI variation API)",
+                    f"clinvar ({args.clinvar_mode})",
                     "gnomad (GraphQL, via dbSNP coordinates)"]
-                   + ([] if args.no_gwas else ["gwas (full file, filtered locally)"])
-                   + (["snpedia (MediaWiki API)"] if snpedia_on else []),
-        "note": "GWAS has no per-rsID API; its zip (~70 MB) is downloaded and filtered.",
+                   + ([] if args.no_gwas else ["gwas (full file, filtered locally)"]),
+        "note": "GWAS has no per-rsID API; its zip (~70 MB) is downloaded and filtered. "
+                "ClinVar 'summary' downloads variant_summary (~0.5 GB) and is phenotype-aware.",
     }
     if args.dry_run:
         print(f"SMALL mode: {len(rsids)} rsIDs")
@@ -547,7 +638,10 @@ def main():
     write_dbsnp_tsv(os.path.join(args.cache, "dbsnp.tsv"), coords)
     manifest["files"]["dbsnp"] = {"path": "dbsnp.tsv", "records": len(coords)}
 
-    clinvar = fetch_clinvar_small(entries, args.email)
+    if args.clinvar_mode == "summary":
+        clinvar = fetch_clinvar_summary(entries, args.email, args.cache)
+    else:
+        clinvar = fetch_clinvar_small(entries, args.email)
     write_clinvar_tsv(os.path.join(args.cache, "clinvar.tsv"), clinvar)
     manifest["files"]["clinvar"] = {"path": "clinvar.tsv", "records": len(clinvar)}
 
@@ -564,9 +658,8 @@ def main():
             print(f"  gwas: {exc}", file=sys.stderr)
 
     if snpedia_on:
-        snpedia = fetch_snpedia_small(rsids, args.email)
-        write_snpedia_tsv(os.path.join(args.cache, "snpedia.tsv"), snpedia)
-        manifest["files"]["snpedia"] = {"path": "snpedia.tsv", "records": len(snpedia)}
+        print("  snpedia: automatic fetch is not supported (SNPedia's site is behind a bot "
+              "WAF). Supply a rsid<TAB>magnitude file via build_panel --snpedia.", file=sys.stderr)
 
     with open(os.path.join(args.cache, "manifest.json"), "w") as fh:
         json.dump(manifest, fh, indent=2)
