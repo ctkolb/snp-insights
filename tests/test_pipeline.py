@@ -267,6 +267,40 @@ def test_fetch_reference():
     check("unassessed association is unknown", unassessed["variants"][0]["association"] == "unknown")
 
 
+def test_effect_allele():
+    import tempfile
+
+    panel = {"merges": {}, "variants": [{
+        "rsid": "rs6025", "chromosome": "1", "position": 169519049, "gene": "F5",
+        "condition": "Factor V Leiden thrombophilia", "assayability": "snp",
+        "reference_allele": "T", "alternate_allele": "C", "effect_allele": "T",
+        "cls": "risk", "association": "established"}]}
+
+    def state(a1, a2):
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
+            fh.write("rsid\tchromosome\tposition\tallele1\tallele2\n")
+            fh.write(f"rs6025\t1\t169519049\t{a1}\t{a2}\n")
+            path = fh.name
+        try:
+            return annotate.build_findings(path, panel)["findings"][0]
+        finally:
+            os.unlink(path)
+
+    check("effect present homozygous -> detected", state("T", "T")["state"] == "detected")
+    check("effect present heterozygous -> detected", state("T", "C")["state"] == "detected")
+    check("effect absent -> covered_reference", state("C", "C")["state"] == "covered_reference")
+
+
+def test_clinvar_selection():
+    recs = [
+        {"title": "NM_198578.4(LRRK2):c.6055G>A", "sig": "Pathogenic", "review": "criteria provided, multiple submitters, no conflicts"},
+        {"title": "NM_000130.5(F5):c.1601=", "sig": "Conflicting classifications of pathogenicity", "review": "criteria provided, conflicting classifications"},
+        {"title": "NM_000130.4(F5):c.1601G>A", "sig": "drug response", "review": "reviewed by expert panel"},
+    ]
+    best = fetch_reference._select_clinvar(recs, "F5")
+    check("clinvar gene filter drops unrelated record", best == ("drug response", "reviewed by expert panel"))
+
+
 def test_validator_e2e():
     good = validate_report.check(os.path.join(FIX, "findings.sample.json"), load(os.path.join(FIX, "report.sample.json")))
     check("validator accepts sample", not good[0])
@@ -286,6 +320,8 @@ def main():
     test_semantic_lint()
     test_references_and_scan()
     test_evidence_tiers()
+    test_effect_allele()
+    test_clinvar_selection()
     test_validator_e2e()
     for name in PASSED:
         print(f"  ok   {name}")

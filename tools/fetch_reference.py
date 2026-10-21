@@ -38,6 +38,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -96,6 +97,20 @@ def load_target_rsids(paths):
                 seen.add(rsid)
                 rsids.append(rsid)
     return rsids
+
+
+def load_target_entries(paths):
+    """Return [{'rsid','gene','condition'}] deduped by rsid (first wins)."""
+    entries, seen = [], set()
+    for p in paths:
+        with open(p) as fh:
+            data = json.load(fh)
+        for v in data.get("variants", []):
+            rsid = v.get("rsid")
+            if rsid and rsid not in seen:
+                seen.add(rsid)
+                entries.append({"rsid": rsid, "gene": v.get("gene"), "condition": v.get("condition")})
+    return entries
 
 
 _LAST = [0.0]
@@ -205,14 +220,39 @@ def _stars(status):
     return 0
 
 
-def fetch_clinvar_small(rsids, email):
-    """Return {rsid: (significance, review_status)} via NCBI E-utilities.
+def _select_clinvar(records, gene):
+    """Pick the best ClinVar record: prefer the target gene and a real change.
 
-    A variant has one record per submission; pick the strongest (most-reviewed,
-    and not a bare 'other').
+    esearch can return unrelated variants, and a variant has one record per
+    submission (including '=' synonymous records). Each record's title carries
+    the gene and HGVS, which is the reliable discriminator.
     """
+    pool = records
+    if gene:
+        g = gene.upper()
+        gene_pool = [r for r in pool if f"({g})" in (r.get("title") or "").upper()]
+        if gene_pool:
+            pool = gene_pool
+    changed = [r for r in pool if re.search(r">|\bdel\b|\bins\b|\bdup\b", r.get("title") or "", re.I)]
+    if changed:
+        pool = changed
+    best, best_score = None, -1
+    for r in pool:
+        sig = r.get("sig")
+        if not sig:
+            continue
+        review = r.get("review") or ""
+        score = _stars(review) * 2 + (0 if sig.strip().lower() == "other" else 1)
+        if score > best_score:
+            best_score, best = score, (sig, review)
+    return best
+
+
+def fetch_clinvar_small(entries, email):
+    """Return {rsid: (significance, review_status)} via NCBI E-utilities."""
     out = {}
-    for rsid in rsids:
+    for entry in entries:
+        rsid, gene = entry["rsid"], entry.get("gene")
         try:
             search = http_get_json(eutils(f"esearch.fcgi?db=clinvar&term={urllib.parse.quote(rsid)}&retmode=json", email), email=email)
             ids = (search.get("esearchresult") or {}).get("idlist") or []
@@ -220,17 +260,13 @@ def fetch_clinvar_small(rsids, email):
                 continue
             summ = http_get_json(eutils(f"esummary.fcgi?db=clinvar&id={','.join(ids)}&retmode=json", email), email=email)
             result = summ.get("result") or {}
-            best, best_score = None, -1
+            records = []
             for uid in result.get("uids", []):
                 rec = result.get(uid) or {}
                 germ = rec.get("germline_classification") or {}
-                sig = germ.get("description")
-                review = germ.get("review_status") or ""
-                if not sig:
-                    continue
-                score = _stars(review) * 2 + (0 if sig.strip().lower() == "other" else 1)
-                if score > best_score:
-                    best_score, best = score, (sig, review)
+                records.append({"title": rec.get("title") or "", "sig": germ.get("description"),
+                                "review": germ.get("review_status") or ""})
+            best = _select_clinvar(records, gene)
             if best:
                 out[rsid] = best
         except Exception as exc:  # noqa: BLE001
@@ -483,6 +519,7 @@ def main():
         print("error: small mode needs --targets (or use --full)", file=sys.stderr)
         return 2
     rsids = load_target_rsids(args.targets)
+    entries = load_target_entries(args.targets)
     snpedia_on = args.accept_license
     plan = {
         "rsids": rsids,
@@ -510,7 +547,7 @@ def main():
     write_dbsnp_tsv(os.path.join(args.cache, "dbsnp.tsv"), coords)
     manifest["files"]["dbsnp"] = {"path": "dbsnp.tsv", "records": len(coords)}
 
-    clinvar = fetch_clinvar_small(rsids, args.email)
+    clinvar = fetch_clinvar_small(entries, args.email)
     write_clinvar_tsv(os.path.join(args.cache, "clinvar.tsv"), clinvar)
     manifest["files"]["clinvar"] = {"path": "clinvar.tsv", "records": len(clinvar)}
 

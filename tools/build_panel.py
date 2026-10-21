@@ -298,6 +298,12 @@ def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, sn
         )
         v["snpedia"] = snpedia.get(rsid) if (rsid and snpedia) else None
 
+        effect = v.get("effect_allele")
+        ref, alt = v.get("reference_allele"), v.get("alternate_allele")
+        if effect and effect not in ("I", "D") and ref and alt and effect not in (ref, alt):
+            print(f"  warning: {rsid}: effect_allele {effect!r} not in ref/alt ({ref}/{alt}); "
+                  f"possible strand mismatch", file=sys.stderr)
+
         assoc = t.get("association")
         if not assoc:
             # 'none' means assessed with no known link; 'unknown' means not assessed.

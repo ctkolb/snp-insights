@@ -147,7 +147,17 @@ def annotate_variant(variant, raw, merges=None, sex="unknown"):
         coverage = {"state": "covered", "source": manifest_source}
         call = {"state": "no_call", "zygosity": "unknown", "strand": strand}
     else:
-        zygosity, is_variant = classify([row["allele1"], row["allele2"]], ref, alt)
+        alleles = [row["allele1"], row["allele2"]]
+        effect = variant.get("effect_allele")
+        if effect:
+            # Detection is keyed on the curated effect allele, not dbSNP's alt
+            # (which is assembly-oriented and can be the common allele). Zygosity
+            # is relative to the effect allele: hom_ref = no effect copies.
+            present = effect in alleles
+            zygosity = ("hom_alt" if alleles[0] == alleles[1] else "het") if present else "hom_ref"
+            is_variant = present
+        else:
+            zygosity, is_variant = classify(alleles, ref, alt)
         coverage = {"state": "covered", "source": manifest_source}
         if chrom == "Y" and sex == "female":
             # a Y call in an inferred female is contradictory

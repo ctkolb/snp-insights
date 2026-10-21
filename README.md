@@ -219,12 +219,14 @@ python tools/build_panel.py --targets data/targets.carrier.json \
 ```
 
 `--dbsnp` fills coordinates/alleles; association tiers are derived from ClinVar
-(carrier) and GWAS (traits). GWAS Catalog has no per-rsID API, so small mode
-downloads its zip (~70 MB) once and filters it to your targets locally; pass
-`--no-gwas` to skip it. `--sizes` HEADs the full-file URLs to report actual
-download sizes, and `--full` refuses to pull more than 5 GB without `--yes`
-(dbSNP + gnomAD alone are ~90 GB). Full-file landing pages, if you prefer manual
-downloads:
+(carrier) and GWAS (traits). Targets may also set **`effect_allele`** — the
+allele associated with the condition — because dbSNP's alt is not always the
+risk allele; detection keys on it when present. GWAS Catalog has no per-rsID API,
+so small mode downloads its zip (~70 MB) once and filters it to your targets
+locally; pass `--no-gwas` to skip it. `--sizes` HEADs the full-file URLs to
+report actual download sizes, and `--full` refuses to pull more than 5 GB without
+`--yes` (dbSNP + gnomAD alone are ~90 GB). Full-file landing pages, if you prefer
+manual downloads:
 
 - **ClinVar** `variant_summary.txt.gz` — <https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz>
 - **dbSNP** GRCh37 VCF `GCF_000001405.25.gz` (large) — <https://ftp.ncbi.nlm.nih.gov/snp/latest_release/VCF/>

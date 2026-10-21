@@ -317,6 +317,17 @@ the target rsIDs (`--no-gwas` opts out). The association ladder gains `unknown`
 (which means "assessed, no known link"). `fetch_reference.py --sizes` HEADs the
 full URLs to report actual download sizes.
 
+### D26 — Curation-aware fetching (effect allele, gene-aware ClinVar)
+**Decision (User, 2026-10-20).** Targets carry an optional **`effect_allele`** —
+the allele associated with the condition. Detection keys on it, not on dbSNP's
+alt (which is assembly-oriented and can be the common allele; e.g. at rs6025 the
+alt is at 98%). Zygosity is relative to the effect allele (hom_ref = no effect
+copies). When `effect_allele` is absent, the fallback is dbSNP's alt. ClinVar
+record selection is **gene-aware**: esearch can return unrelated variants, so
+records whose title lacks the target gene, and synonymous `=` records, are
+dropped before choosing the strongest. `build_panel.py` warns when a curated
+effect allele is not one of the ref/alt alleles (possible strand mismatch).
+
 ---
 
 ## 4. Design limitations and known gaps
@@ -379,6 +390,11 @@ full URLs to report actual download sizes.
 - **GWAS association tiers** count distinct studies per rsID, not per rsID+trait,
   and ignore sample size and p-value; treat trait tiers as rough. GWAS absence
   yields `unknown`, not `none`.
+- **ClinVar association tiers** come from the variant's *strongest* record, which
+  may concern a different aspect than the curated condition (e.g. rs6025's
+  expert-panel record is warfarin drug-response, not thrombophilia). ClinVar's
+  E-utilities summary carries no phenotype field, so condition-level matching is
+  not possible there; a future variant_summary-based source could add it.
 
 ### Model and privacy
 - **Refusals and hedging.** Health/genetics content can trigger refusals or
@@ -432,3 +448,4 @@ full URLs to report actual download sizes.
 | D23 | Separate `fetch_reference.py` small-by-default cache step | User | 2026-10-20 |
 | D24 | Reference-fetch metadata exposure + guardrails | Model | 2026-10-20 |
 | D25 | GWAS full-filter in small mode + `unknown` association tier | User | 2026-10-20 |
+| D26 | Curation-aware fetch: `effect_allele` + gene-aware ClinVar selection | User | 2026-10-20 |
