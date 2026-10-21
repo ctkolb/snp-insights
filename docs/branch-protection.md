@@ -30,7 +30,6 @@ Save this as `/tmp/protect-main.json`:
   "rules": [
     { "type": "deletion" },
     { "type": "non_fast_forward" },
-    { "type": "required_linear_history" },
     { "type": "pull_request",
       "parameters": {
         "required_approving_review_count": 0,
