@@ -224,9 +224,10 @@ allele associated with the condition — because dbSNP's alt is not always the
 risk allele; detection keys on it when present. In small mode ClinVar is fetched
 from `variant_summary` (~0.5 GB, downloaded once) so the record is matched to the
 curated condition; `--clinvar-mode api` uses the lighter E-utilities instead
-(no phenotype). GWAS Catalog has no per-rsID API, so small mode downloads its zip
-(~70 MB) and filters it locally; `--no-gwas` skips it. **SNPedia is not
-auto-fetched** (its site blocks programmatic access) — supply a
+(no phenotype). GWAS tiers are derived **per-rsID via Open Targets**
+(`--gwas-mode ot`, default — no large download); `--gwas-mode full` downloads the
+GWAS Catalog zip (~70 MB) and filters it instead; `--no-gwas` skips GWAS.
+**SNPedia is not auto-fetched** (its site blocks programmatic access) — supply a
 `rsid<TAB>magnitude` file to `build_panel --snpedia`. `--sizes` HEADs the
 full-file URLs to report actual download sizes, and `--full` refuses to pull more
 than 5 GB without `--yes` (dbSNP + gnomAD alone are ~90 GB). Full-file landing

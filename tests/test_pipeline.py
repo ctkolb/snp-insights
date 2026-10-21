@@ -222,6 +222,7 @@ def test_etl_sources():
     check("clinvar tier established", build_panel.assoc_from_clinvar({"review_stars": 3, "significance": "Pathogenic"}) == "established")
     check("clinvar tier replicated", build_panel.assoc_from_clinvar({"review_stars": 2, "significance": "Pathogenic"}) == "replicated")
     check("clinvar tier conflicting", build_panel.assoc_from_clinvar({"review_stars": 1, "significance": "Conflicting interpretations of pathogenicity"}) == "conflicting")
+    check("clinvar 0-star defers to gwas", build_panel.assoc_from_clinvar({"review_stars": 0, "significance": "not provided"}) is None)
 
     sp = build_panel.load_snpedia(os.path.join(FIX, "sources/snpedia.sample.tsv"))
     check("snpedia magnitude", sp.get("rs4988235", {}).get("magnitude") == 2)

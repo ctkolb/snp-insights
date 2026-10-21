@@ -254,7 +254,7 @@ def load_snpedia(path):
     return out
 
 
-CLINVAR_TIER = {4: "established", 3: "established", 2: "replicated", 1: "single_study", 0: "none"}
+CLINVAR_TIER = {4: "established", 3: "established", 2: "replicated", 1: "single_study"}
 
 
 def assoc_from_clinvar(cv):
@@ -262,6 +262,7 @@ def assoc_from_clinvar(cv):
         return None
     if "conflicting" in (cv.get("significance") or "").lower():
         return "conflicting"
+    # 0-star / no-criteria -> None, so the derivation can fall through to GWAS
     return CLINVAR_TIER.get(cv.get("review_stars"))
 
 

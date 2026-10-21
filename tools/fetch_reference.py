@@ -72,6 +72,7 @@ DBSNP_API = "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/"
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 SNPEDIA_API = "https://www.snpedia.com/api.php"
 GNOMAD_API = "https://gnomad.broadinstitute.org/api"
+OT_API = "https://api.platform.opentargets.org/api/v4/graphql"
 
 
 def now():
@@ -469,6 +470,71 @@ def fetch_gwas_small(wanted, email, cache):
     return count
 
 
+def _ot_query(query, email):
+    return http_post_json(OT_API, {"query": query}, email=email)
+
+
+def _ot_gwas_rows(data, alias_map):
+    """Return [(rsid, study_id, trait)] from an aliased variant query result."""
+    out = []
+    for alias, rsid in alias_map.items():
+        var = data.get(alias) or {}
+        for row in ((var.get("credibleSets") or {}).get("rows") or []):
+            study = row.get("study") or {}
+            if study.get("id"):
+                out.append((rsid, study["id"], study.get("traitFromSource") or ""))
+    return out
+
+
+def _chunks(seq, n):
+    for i in range(0, len(seq), n):
+        yield seq[i:i + n]
+
+
+def fetch_gwas_ot(entries, email, cache):
+    """Open Targets per-rsID GWAS: count distinct studies, write gwas.tsv.
+
+    Uses mapIds to resolve rsID -> variantId exactly (the free-text `search` is
+    fuzzy), then reads each variant's GWAS credible sets. No full-file download.
+    """
+    rsids = [e["rsid"] for e in entries]
+    mapping = {}
+    for chunk in _chunks(rsids, 200):
+        q = ('{ mapIds(queryTerms:%s, entityNames:["variant"]){ mappings { term hits { id } } } }'
+             % json.dumps(chunk))
+        data = _ot_query(q, email).get("data") or {}
+        for m in (data.get("mapIds") or {}).get("mappings", []):
+            hits = m.get("hits") or []
+            if hits:
+                mapping[m["term"]] = hits[0]["id"]
+
+    out_path = os.path.join(cache, "gwas.tsv")
+    count = 0
+    with open(out_path, "w") as fh:
+        fh.write("SNPS\tPUBMEDID\tDISEASE/TRAIT\n")
+        for chunk in _chunks(rsids, 50):
+            parts, alias_map = [], {}
+            for i, rsid in enumerate(chunk):
+                vid = mapping.get(rsid)
+                if not vid:
+                    continue
+                alias = f"a{i}"
+                alias_map[alias] = rsid
+                parts.append(f'{alias}: variant(variantId:"{vid}"){{ '
+                             f'credibleSets(studyTypes:[gwas]){{ rows {{ study {{ id traitFromSource }} }} }} }}')
+            if not parts:
+                continue
+            data = _ot_query("{" + " ".join(parts) + "}", email).get("data") or {}
+            seen = set()
+            for rsid, sid, trait in _ot_gwas_rows(data, alias_map):
+                if (rsid, sid) in seen:
+                    continue
+                seen.add((rsid, sid))
+                fh.write(f"{rsid}\t{sid}\t{trait}\n")
+                count += 1
+    return count
+
+
 def head_size(url, email):
     """Return Content-Length for a URL via HEAD, or None if unavailable."""
     headers = {"User-Agent": f"snp-insights/0.1 ({email or 'no-contact'})"}
@@ -541,7 +607,9 @@ def main():
                     help="contact email for NCBI politeness (or env SNP_INSIGHTS_EMAIL)")
     ap.add_argument("--accept-license", action="store_true", help="acknowledge SNPedia CC BY-NC-SA (non-commercial)")
     ap.add_argument("--dry-run", action="store_true", help="print the plan and exit")
-    ap.add_argument("--no-gwas", action="store_true", help="small mode: skip the GWAS full-file download")
+    ap.add_argument("--no-gwas", action="store_true", help="small mode: skip the GWAS step")
+    ap.add_argument("--gwas-mode", choices=["ot", "full"], default="ot",
+                    help="small mode: 'ot' (Open Targets per-rsID; no big download) or 'full' (GWAS Catalog zip, filtered)")
     ap.add_argument("--clinvar-mode", choices=["summary", "api"], default="summary",
                     help="small mode: 'summary' (download variant_summary; phenotype-aware) or 'api' (E-utilities)")
     ap.add_argument("--sizes", action="store_true", help="HEAD the --full URLs, print sizes, and exit")
@@ -616,8 +684,8 @@ def main():
         "sources": ["dbsnp (NCBI variation API)",
                     f"clinvar ({args.clinvar_mode})",
                     "gnomad (GraphQL, via dbSNP coordinates)"]
-                   + ([] if args.no_gwas else ["gwas (full file, filtered locally)"]),
-        "note": "GWAS has no per-rsID API; its zip (~70 MB) is downloaded and filtered. "
+                   + ([] if args.no_gwas else [f"gwas ({args.gwas_mode})"]),
+        "note": "GWAS: 'ot' queries Open Targets per rsID (no download); 'full' downloads the GWAS Catalog zip. "
                 "ClinVar 'summary' downloads variant_summary (~0.5 GB) and is phenotype-aware.",
     }
     if args.dry_run:
@@ -650,9 +718,13 @@ def main():
     manifest["files"]["gnomad"] = {"path": "gnomad.small.vcf", "records": len(afs)}
 
     if not args.no_gwas:
-        print("  downloading GWAS zip and filtering ...")
         try:
-            n = fetch_gwas_small(set(rsids), args.email, args.cache)
+            if args.gwas_mode == "ot":
+                print("  GWAS via Open Targets (per-rsID) ...")
+                n = fetch_gwas_ot(entries, args.email, args.cache)
+            else:
+                print("  downloading GWAS zip and filtering ...")
+                n = fetch_gwas_small(set(rsids), args.email, args.cache)
             manifest["files"]["gwas"] = {"path": "gwas.tsv", "records": n}
         except Exception as exc:  # noqa: BLE001
             print(f"  gwas: {exc}", file=sys.stderr)

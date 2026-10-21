@@ -312,7 +312,9 @@ only the opt-in online LLM does.
 ### D25 — Trait association: GWAS full-filter and the `unknown` tier
 **Decision (User, 2026-10-20).** GWAS Catalog has no per-rsID API wired, so small
 mode downloads its full associations file (~70 MB zip) once and filters to
-the target rsIDs (`--no-gwas` opts out). The association ladder gains `unknown`
+the target rsIDs (`--no-gwas` opts out). *Superseded by D28: Open Targets
+per-rsID is now the default; this is kept as `--gwas-mode full`.* The association
+ladder gains `unknown`
 (not assessed) so a curated trait with no source data is not mislabeled `none`
 (which means "assessed, no known link"). `fetch_reference.py --sizes` HEADs the
 full URLs to report actual download sizes.
@@ -338,6 +340,15 @@ review stars — so `rs6025` resolves to its thrombophilia (conflicting) record,
 not its warfarin drug-response record. **SNPedia is not auto-fetched**: its site
 is behind a bot WAF (Incapsula), so it must be supplied as a
 `rsid<TAB>magnitude` file to `build_panel --snpedia` under its CC BY-NC-SA terms.
+
+### D28 — True per-rsID GWAS tier via Open Targets
+**Decision (User, 2026-10-20).** The default GWAS source is the **Open Targets**
+GraphQL API: `mapIds` resolves each rsID to a variant id exactly (the free-text
+`search` is fuzzy), then each variant's GWAS credible sets give per-rsID studies
+— no 73 MB download. `--gwas-mode full` retains the GWAS Catalog zip + local
+filter. A 0-star ClinVar record no longer short-circuits to `none`; it defers to
+the GWAS tier (so a trait with a strong GWAS signal isn't masked by a weak
+ClinVar record).
 
 ---
 
@@ -460,3 +471,4 @@ is behind a bot WAF (Incapsula), so it must be supplied as a
 | D25 | GWAS full-filter in small mode + `unknown` association tier | User | 2026-10-20 |
 | D26 | Curation-aware fetch: `effect_allele` + gene-aware ClinVar selection | User | 2026-10-20 |
 | D27 | Phenotype-aware ClinVar (variant_summary); SNPedia user-supplied | User | 2026-10-20 |
+| D28 | Per-rsID GWAS tier via Open Targets (default) | User | 2026-10-20 |
