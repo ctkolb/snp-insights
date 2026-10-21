@@ -43,6 +43,7 @@ ALLOW_EXACT = {
     ".env.example",
     ".gitattributes",
     ".gitignore",
+    ".gitleaks.toml",
     ".mailmap",
     ".sensitive-terms.example",
     "AGENTS.md",

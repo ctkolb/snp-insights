@@ -78,4 +78,4 @@ jobs:
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" \
             | tar -xz -C /tmp gitleaks
           # --redact keeps any matched value out of the log.
-          /tmp/gitleaks detect --source . --redact --no-banner
+          /tmp/gitleaks detect --source . --redact --no-banner --config .gitleaks.toml
