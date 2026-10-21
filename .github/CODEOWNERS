@@ -1,0 +1,14 @@
+# Default owner for everything in the repository.
+* @ctkolb
+
+# Safety layer: changes here deserve the maintainer's explicit review.
+/.github/ @ctkolb
+/.gitignore @ctkolb
+/.gitattributes @ctkolb
+/.sensitive-terms.example @ctkolb
+/hooks/ @ctkolb
+/scripts/guard.py @ctkolb
+/tests/test_guard.py @ctkolb
+/docs/security.md @ctkolb
+/docs/branch-protection.md @ctkolb
+/AGENTS.md @ctkolb

@@ -282,6 +282,26 @@ normalization and contradiction grouping, ETL robustness against messy
 ClinVar/gnomAD inputs, the semantic-fidelity lints, and an end-to-end validator
 accept/reject.
 
+## Privacy & safety
+
+- **Never stored or sent:** the raw DNA file, parsed genotypes, `findings.json`,
+  and any `panel.*.json` built from a real file are never transmitted and never
+  committed. Annotation (Stage 2) is offline; the default narrator (Stage 3) is
+  a local model. Only the opt-in online endpoint transmits derived findings, and
+  it withholds raw alleles and the file fingerprint.
+- **Never committed:** credentials, local config, home paths, generated panels,
+  and owner-specific terms — enforced by a deny-by-default `.gitignore`, a
+  tracked-file allowlist, and `scripts/guard.py`. CI runs the guard and a
+  full-history secret scan; committed hooks mirror them locally.
+
+```bash
+git config core.hooksPath hooks     # enable the committed hooks (once)
+python scripts/guard.py --full      # privacy/publication guard
+```
+
+See [docs/security.md](docs/security.md) for the threat model and control
+inventory, and [SECURITY.md](SECURITY.md) to report an issue.
+
 ## Status
 
 Early / research. Stages 1–2, the panel ETL, and the Stage 3 runner (local model
@@ -293,7 +313,8 @@ fixtures, not yet against a live model. Known gaps are tracked in
 
 ## Contributing
 
-Issues and pull requests are welcome. Please read [DESIGN.md](DESIGN.md) first —
+Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md)
+for setup and the required checks, and [DESIGN.md](DESIGN.md) first —
 decisions and non-goals are recorded there, and changes that affect the hard
 rules should update it.
 

@@ -1,0 +1,5 @@
+# Normalize contributor identity for `git log` / `git shortlog` / release notes.
+# This changes DISPLAY ONLY: it does not alter commit objects or published
+# history. To stop a personal address appearing in public history, set a GitHub
+# noreply address and rewrite authorship with the owner's explicit approval.
+Chris Kolb <ctkolb@users.noreply.github.com> <chris@ctkolb.com>
