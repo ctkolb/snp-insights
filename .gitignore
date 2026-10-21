@@ -17,6 +17,7 @@
 !/.editorconfig
 !/.env.example
 !/.gitattributes
+!/.gitleaks.toml
 !/.gitignore
 !/.mailmap
 !/.sensitive-terms.example

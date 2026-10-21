@@ -128,6 +128,7 @@ SELFTEST_MUST_BE_IGNORED = (
 SELFTEST_MUST_BE_TRACKED = (
     "stage2/ancestry.py",
     "scripts/guard.py",
+    ".gitleaks.toml",
     ".github/workflows/ci.yml",
     "docs/security.md",
     "AGENTS.md",
