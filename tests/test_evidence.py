@@ -496,6 +496,37 @@ def run(check):
                 and evidence.condition_matches("e", "e", {"A": "eye"}))
     attempt("S1.alias_bare_string_as_list", alias_bare_string_as_list)
 
+    def alias_member_and_key_lookup():
+        evidence, _, _ = _mods()
+        m = {"hereditary hemochromatosis": ["haemochromatosis"]}
+        return evidence.condition_matches("Hereditary hemochromatosis", "haemochromatosis", m)
+    attempt("S1.alias_member_and_key_lookup", alias_member_and_key_lookup)
+
+    def alias_key_normalized():
+        evidence, _, _ = _mods()
+        m = {"Hereditary-Hemochromatosis": ["haemochromatosis"]}
+        return evidence.condition_matches("haemochromatosis", "hereditary hemochromatosis", m)
+    attempt("S1.alias_key_normalized", alias_key_normalized)
+
+    def alias_members_normalized():
+        evidence, _, _ = _mods()
+        m = {"cond": ["Haemo-Chromatosis!"]}
+        return evidence.condition_matches("haemo chromatosis", "cond", m)
+    attempt("S1.alias_members_normalized", alias_members_normalized)
+
+    def alias_underscore_key_skipped():
+        evidence, _, _ = _mods()
+        m = {"_comment": ["zzz"]}
+        return not evidence.condition_matches("zzz", "comment", m)
+    attempt("S1.alias_underscore_key_skipped", alias_underscore_key_skipped)
+
+    def alias_non_string_entries_ignored():
+        evidence, _, _ = _mods()
+        m = {"c1": [123, None, "alias"]}
+        return (evidence.condition_matches("an alias here", "c1", m)
+                and not evidence.condition_matches("123", "c1", m))
+    attempt("S1.alias_non_string_entries_ignored", alias_non_string_entries_ignored)
+
 
 def main():
     passed, failed = [], []
