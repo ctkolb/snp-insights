@@ -444,6 +444,12 @@ def _chunks(seq, n):
         yield seq[i:i + n]
 
 
+def _tsv_field(value):
+    """Replace tab, CR, and LF with a single space so a value cannot break a TSV row."""
+    return (str(value if value is not None else "")
+            .replace("\t", " ").replace("\r", " ").replace("\n", " "))
+
+
 def fetch_gwas_ot(entries, email, cache):
     """Open Targets per-rsID GWAS: count distinct studies, write gwas.tsv.
 
@@ -483,7 +489,7 @@ def fetch_gwas_ot(entries, email, cache):
                 if (rsid, sid) in seen:
                     continue
                 seen.add((rsid, sid))
-                fh.write(f"{rsid}\t{sid}\t{trait}\n")
+                fh.write(f"{rsid}\t{_tsv_field(sid)}\t{_tsv_field(trait)}\n")
                 count += 1
     return count
 
@@ -516,7 +522,7 @@ def write_clinvar_tsv(path, clinvar):
         for rsid, rec in sorted(clinvar.items()):
             sig, review = rec[0], rec[1]
             phenotype = rec[2] if len(rec) > 2 else ""
-            fh.write(f"{rsid}\tGRCh37\t{review}\t{sig}\t{phenotype}\n")
+            fh.write(f"{rsid}\tGRCh37\t{_tsv_field(review)}\t{_tsv_field(sig)}\t{_tsv_field(phenotype)}\n")
 
 
 def write_snpedia_tsv(path, snpedia):
