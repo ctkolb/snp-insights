@@ -548,6 +548,27 @@ def run(check):
         return pairs.get("rs1") == [("100", "Trait A"), ("100", "Trait B"), ("101", "Trait A")]
     attempt("S1.gwas_studies_dedupe", gwas_studies_dedupe)
 
+    def sig_rank_pinned():
+        evidence, _, _ = _mods()
+        expected = {
+            "Pathogenic": 4,
+            "Likely pathogenic": 4,
+            "Pathogenic/Likely pathogenic": 4,
+            "risk factor": 3,
+            "Risk allele": 3,
+            "Conflicting interpretations of pathogenicity": 2,
+            "Uncertain significance": 1,
+            "not provided": 1,
+            "drug response": 0,
+            "Benign": 0,
+            "Likely benign": 0,
+            "Protective": 0,
+            "association": 0,
+            None: 1,
+        }
+        return all(evidence.sig_rank(k) == v for k, v in expected.items())
+    attempt("S1.sig_rank_pinned", sig_rank_pinned)
+
 
 def main():
     passed, failed = [], []
