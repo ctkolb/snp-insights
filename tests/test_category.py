@@ -355,6 +355,27 @@ def run(check):
         return True
     attempt("S2.targets_categories", s2_targets_categories)
 
+    # --- S2.build_cv_matched_wiring -------------------------------------
+    def s2_build_cv_matched_wiring():
+        def assoc(category, phenotype, aliases=None):
+            cv = {"significance": "Pathogenic", "review_stars": 3,
+                  "review_status_text": "x", "source_version": "t", "phenotype": phenotype}
+            panel = _build([_target("rs1", condition="Eye color", category=category)],
+                           clinvar={"rs1": cv}, aliases=aliases)
+            return panel["variants"][0]["association"]
+        if assoc("trait", "Unrelated disease") != "unknown":
+            return False
+        if assoc("trait", "Eye color") != "established":
+            return False
+        if assoc("trait", "iris pigmentation", {"eye color": ["iris pigmentation"]}) != "established":
+            return False
+        if assoc("trait", "") != "unknown":
+            return False
+        if assoc("carrier", "Unrelated disease") != "established":
+            return False
+        return True
+    attempt("S2.build_cv_matched_wiring", s2_build_cv_matched_wiring)
+
     # --- S2.panel_sample_reproduces -------------------------------------
     def s2_panel_sample_reproduces():
         out = os.path.join(tempfile.mkdtemp(), "panel.check.json")
