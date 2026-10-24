@@ -337,6 +337,11 @@ Ship gates:
   target resolves to a callable, `dependencies` is empty.
 - `S4.no_data_in_package`: no tracked file under `snp_insights/` has a
   data-bearing suffix.
+- `S4.build_panel_stdout_mode` (accepted limit AL-007): `build_panel.main` with
+  no `-o` prints the panel JSON to stdout and exits 0 (also through the
+  `build-panel` subcommand); the printed JSON equals the file written with `-o`.
+  Once it exists, add its mutation (remove `print(text)`) to
+  `scripts/loop_mutations.py`.
 
 Fence: no change to Stage 3 rules, the gate itself, `validate_report`, schema,
 or the guard. No packaging of `tools/` or `stage*/` into a wheel.
