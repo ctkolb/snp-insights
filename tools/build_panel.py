@@ -319,6 +319,11 @@ def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, sn
     gwas = gwas or {}
     snpedia = snpedia or {}
     merges = merges or {}
+    for t in targets["variants"]:
+        category = t.get("category")
+        if category is not None and category not in ("carrier", "trait"):
+            label = t.get("rsid") or t.get("gene")
+            raise ValueError(f"invalid category {category!r} for {label}")
     variants = []
     for t in targets["variants"]:
         v = dict(t)
@@ -355,8 +360,15 @@ def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, sn
                 n = evidence.count_matching_studies(g, t.get("condition"), aliases)
             else:
                 n = g
+            category = t.get("category")
+            cv_matched = bool(cv and cv.get("phenotype") and t.get("condition")
+                              and evidence.condition_matches(cv.get("phenotype"),
+                                                             t.get("condition"), aliases))
             # 'none' means assessed with no known link; 'unknown' means not assessed.
-            assoc = assoc_from_clinvar(v["clinvar"]) or assoc_from_gwas(n) or "unknown"
+            assoc = evidence.derive_association(category, cv, n, cv_matched)
+            if category is None:
+                print(f"  warning: {rsid or v.get('gene')}: no category; derived association "
+                      f"with the legacy rule", file=sys.stderr)
         v["association"] = assoc
         variants.append(v)
 
@@ -434,8 +446,12 @@ def main():
     if args.snpedia:
         sources.append(snap("SNPedia", args.snpedia_release, "CC BY-NC-SA 3.0"))
 
-    panel = build(targets, sources, clinvar=clinvar, gnomad=gnomad, dbsnp=dbsnp,
-                  gwas=gwas, snpedia=snpedia, merges=merges, aliases=aliases)
+    try:
+        panel = build(targets, sources, clinvar=clinvar, gnomad=gnomad, dbsnp=dbsnp,
+                      gwas=gwas, snpedia=snpedia, merges=merges, aliases=aliases)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 1
     text = json.dumps(panel, indent=2)
     if args.out:
         with open(args.out, "w") as fh:
