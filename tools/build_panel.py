@@ -37,6 +37,8 @@ import os
 import sys
 from collections import defaultdict
 
+import evidence
+
 
 def open_any(path):
     return gzip.open(path, "rt") if path.endswith(".gz") else open(path)
@@ -53,22 +55,12 @@ def normalize_chromosome(value):
     return {"23": "X", "24": "Y", "25": "PAR", "26": "MT", "M": "MT"}.get(v, v)
 
 
-def review_stars(status):
-    """Map a ClinVar review-status string to the 0-4 star scale."""
-    s = (status or "").lower()
-    if "practice guideline" in s:
-        return 4
-    if "expert panel" in s:
-        return 3
-    if "multiple submitters" in s and "no conflict" in s:
-        return 2
-    if "conflicting" in s:
-        return 1
-    if "single submitter" in s:
-        return 1
-    if "no assertion criteria" in s or not s:
-        return 0
-    return None
+# Star/significance/condition logic lives in tools/evidence.py. The public names
+# are the same objects there, so identity holds across the modules.
+review_stars = evidence.review_stars
+norm_cond = evidence.norm_cond
+condition_matches = evidence.condition_matches
+sig_rank = evidence.sig_rank
 
 
 def _col(row, idx, *names):
@@ -79,8 +71,18 @@ def _col(row, idx, *names):
     return ""
 
 
-def load_clinvar(path, release):
-    out = {}
+def load_clinvar(path, release, conditions=None, aliases=None):
+    """Return {rsid: {significance, review_stars, review_status_text,
+    source_version, phenotype}}.
+
+    Keeps every GRCh37 row per rsID and picks one with evidence.select_clinvar,
+    using conditions[rsid] (a {rsid: condition} map) when given. Old files with
+    no PhenotypeList column still load (phenotype "").
+    """
+    if aliases is None:
+        aliases = evidence.load_aliases()
+    conditions = conditions or {}
+    rows_by_rsid = defaultdict(list)
     with open_any(path) as fh:
         header = fh.readline().rstrip("\n").lstrip("#").split("\t")
         idx = {norm(name): i for i, name in enumerate(header)}
@@ -96,12 +98,23 @@ def load_clinvar(path, release):
             if assembly and not assembly.startswith("GRCh37"):
                 continue
             status = _col(row, idx, "ReviewStatus", "Review Status")
-            out[rsid] = {
-                "significance": _col(row, idx, "ClinicalSignificance", "Clinical Significance"),
-                "review_stars": review_stars(status),
-                "review_status_text": status,
-                "source_version": f"ClinVar {release}",
-            }
+            rows_by_rsid[rsid].append({
+                "sig": _col(row, idx, "ClinicalSignificance", "Clinical Significance"),
+                "review": status,
+                "phenotype": _col(row, idx, "PhenotypeList"),
+            })
+    out = {}
+    for rsid, rows in rows_by_rsid.items():
+        best = evidence.select_clinvar(rows, conditions.get(rsid), aliases)
+        if not best:
+            continue
+        out[rsid] = {
+            "significance": best["sig"],
+            "review_stars": evidence.review_stars(best["review"]),
+            "review_status_text": best["review"],
+            "source_version": f"ClinVar {release}",
+            "phenotype": best.get("phenotype") or "",
+        }
     return out
 
 
@@ -227,6 +240,36 @@ def load_gwas(path, wanted):
     return {rsid: len(s) for rsid, s in studies.items()}
 
 
+def load_gwas_studies(path, wanted):
+    """Return {rsid: [(study_id, trait_text), ...]}.
+
+    Deduplicated on the pair, in file order. The trait comes from the
+    DISEASE/TRAIT column (case-insensitive; "" when absent); the study id uses
+    the existing GWAS_STUDY_COLS fallback.
+    """
+    out = {}
+    seen = defaultdict(set)
+    with open_any(path) as fh:
+        header = fh.readline().rstrip("\n").lstrip("#").split("\t")
+        idx = {norm(n): i for i, n in enumerate(header)}
+        for rownum, line in enumerate(fh):
+            if not line.strip():
+                continue
+            row = line.rstrip("\n").split("\t")
+            snps = _col(row, idx, *GWAS_SNP_COLS)
+            if not snps:
+                continue
+            study = _col(row, idx, *GWAS_STUDY_COLS) or f"row{rownum}"
+            trait = _col(row, idx, "DISEASE/TRAIT")
+            for rsid in (s.strip() for s in snps.replace(";", " ").replace(" x ", " ").split()):
+                if rsid and (not wanted or rsid in wanted):
+                    pair = (study, trait)
+                    if pair not in seen[rsid]:
+                        seen[rsid].add(pair)
+                        out.setdefault(rsid, []).append(pair)
+    return out
+
+
 def load_snpedia(path):
     """Return {rsid: {"magnitude": m}}. Accepts TSV (rsid<TAB>magnitude) or JSON."""
     out = {}
@@ -254,25 +297,19 @@ def load_snpedia(path):
     return out
 
 
-CLINVAR_TIER = {4: "established", 3: "established", 2: "replicated", 1: "single_study"}
-
-
 def assoc_from_clinvar(cv):
+    """Thin wrapper over evidence.clinvar_tier taking a ClinVar record dict."""
     if not cv:
         return None
-    if "conflicting" in (cv.get("significance") or "").lower():
-        return "conflicting"
-    # 0-star / no-criteria -> None, so the derivation can fall through to GWAS
-    return CLINVAR_TIER.get(cv.get("review_stars"))
+    return evidence.clinvar_tier(cv.get("significance"), cv.get("review_stars"))
 
 
 def assoc_from_gwas(n):
-    if not n:
-        return None
-    return "replicated" if n >= 2 else "single_study"
+    """Thin wrapper over evidence.gwas_tier."""
+    return evidence.gwas_tier(n)
 
 
-def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, snpedia=None, merges=None):
+def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, snpedia=None, merges=None, aliases=None):
     clinvar = clinvar or {}
     gnomad = gnomad or {}
     gwas = gwas or {}
@@ -307,8 +344,15 @@ def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, sn
 
         assoc = t.get("association")
         if not assoc:
+            # gwas is either {rsid: int} (legacy, used as is) or
+            # {rsid: [(study, trait)]}; the pair form counts matching studies.
+            g = gwas.get(rsid) if rsid else None
+            if isinstance(g, list):
+                n = evidence.count_matching_studies(g, t.get("condition"), aliases)
+            else:
+                n = g
             # 'none' means assessed with no known link; 'unknown' means not assessed.
-            assoc = assoc_from_clinvar(v["clinvar"]) or assoc_from_gwas(gwas.get(rsid) if rsid else None) or "unknown"
+            assoc = assoc_from_clinvar(v["clinvar"]) or assoc_from_gwas(n) or "unknown"
         v["association"] = assoc
         variants.append(v)
 
@@ -363,11 +407,14 @@ def main():
 
     merges = load_merges(args.dbsnp_merge, args.merge_direction) if args.dbsnp_merge else {}
     wanted = {v["rsid"] for v in targets["variants"] if v.get("rsid")} | set(merges.values())
+    aliases = evidence.load_aliases()
+    conditions = {v["rsid"]: v.get("condition") for v in targets["variants"] if v.get("rsid")}
 
-    clinvar = load_clinvar(args.clinvar, args.clinvar_release) if args.clinvar else {}
+    clinvar = load_clinvar(args.clinvar, args.clinvar_release,
+                           conditions=conditions, aliases=aliases) if args.clinvar else {}
     gnomad = load_gnomad(args.gnomad) if args.gnomad else {}
     dbsnp = load_dbsnp(args.dbsnp, wanted) if args.dbsnp else None
-    gwas = load_gwas(args.gwas, wanted) if args.gwas else {}
+    gwas = load_gwas_studies(args.gwas, wanted) if args.gwas else {}
     snpedia = load_snpedia(args.snpedia) if args.snpedia else {}
 
     def snap(source, release, license_):
@@ -384,7 +431,7 @@ def main():
         sources.append(snap("SNPedia", args.snpedia_release, "CC BY-NC-SA 3.0"))
 
     panel = build(targets, sources, clinvar=clinvar, gnomad=gnomad, dbsnp=dbsnp,
-                  gwas=gwas, snpedia=snpedia, merges=merges)
+                  gwas=gwas, snpedia=snpedia, merges=merges, aliases=aliases)
     text = json.dumps(panel, indent=2)
     if args.out:
         with open(args.out, "w") as fh:
