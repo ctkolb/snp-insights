@@ -489,8 +489,11 @@ def run(check):
 
     def alias_bare_string_as_list():
         evidence, _, _ = _mods()
-        return (not evidence.condition_matches("e", "e", {"A": "eye"})
-                and evidence.condition_matches("an eye test", "a", {"a": "eye"}))
+        m = {"a": "eye"}
+        return (not evidence.condition_matches("y", "a", m)
+                and not evidence.condition_matches("y", "e", {"A": "eye"})
+                and evidence.condition_matches("an eye test", "a", m)
+                and evidence.condition_matches("e", "e", {"A": "eye"}))
     attempt("S1.alias_bare_string_as_list", alias_bare_string_as_list)
 
 
