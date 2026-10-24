@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Mutation check for the build loop. Pure standard library, offline.
+
+Copies the repo's code and tests into a temp directory, applies ONE deliberate
+bug at a time, and runs the test suites. A mutation is KILLED when it makes a
+check fail that passes on the unmutated copy; it SURVIVES otherwise. Surviving
+mutations mean the tests do not pin that behavior.
+
+The unmutated copy is run first as a baseline because the copy has no .git
+directory, so a guard self-test always fails there. Only NEW failures count.
+Your working tree is never modified; the temp directory is removed at the end.
+
+    python scripts/loop_mutations.py            # run all mutations, exit 1 on any survivor
+    python scripts/loop_mutations.py --list     # print the mutation names
+"""
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+E_ = "tools/evidence.py"
+B = "tools/build_panel.py"
+F = "tools/fetch_reference.py"
+SUITES = ("tests/test_evidence.py", "tests/test_pipeline.py")
+COPY_DIRS = ("tools", "tests", "data", "fixtures", "stage2", "stage3", "schema", "scripts")
+
+# (name, file, text to find, replacement). Each is a single plausible bug.
+MUTATIONS = [
+ ("matched-first removed",E_,"        if matched:\n            candidates = matched","        if False:\n            candidates = matched"),
+ ("no fallback when nothing matches",E_,"        if matched:\n            candidates = matched","        candidates = matched"),
+ ("ties last-wins",E_,"score > best_score","score >= best_score"),
+ ("stars ignored",E_,"+ (review_stars(r.get(\"review\")) or 0)","+ 0"),
+ ("word boundary -> substring",E_,"return re.search(r\"(?<![a-z0-9])\" + re.escape(needle) + r\"(?![a-z0-9])\", haystack) is not None","return needle in haystack"),
+ ("empty sig is candidate",E_,"        if not sig:\n            continue\n        candidates.append(r)","        candidates.append(dict(r, sig=sig or 'x'))"),
+ ("norm_cond no punctuation strip",E_,"re.sub(r\"[^a-z0-9 ]\", \" \", (text or \"\").lower())","(text or \"\").lower()"),
+ ("load_aliases no validation",E_,"if not isinstance(value, list) or not all(isinstance(m, str) for m in value):","if False:"),
+ ("string alias iterated",E_,"        return [value]\n    if isinstance(value, list)","        return list(value)\n    if isinstance(value, list)"),
+ ("BOM plain",B,"return open(path, encoding=\"utf-8-sig\")","return open(path, encoding=\"utf-8\")"),
+ ("BOM gz",B,"encoding=\"utf-8-sig\")\n    return open","encoding=\"utf-8\")\n    return open"),
+ ("clinvar writer unsanitized phenotype",F,"{_tsv_field(phenotype)}","{phenotype}"),
+ ("clinvar writer unsanitized sig",F,"{_tsv_field(sig)}","{sig}"),
+ ("clinvar writer unsanitized review",F,"{_tsv_field(review)}","{review}"),
+ ("OT writer unsanitized trait",F,"{_tsv_field(trait)}","{trait}"),
+ ("OT writer unsanitized study",F,"{_tsv_field(sid)}","{sid}"),
+ ("alias member lookup removed (reviewer)",E_,"if c == norm_key or c in norm_members:","if c == norm_key:"),
+ ("alias key not added to variants",E_,"variants |= {norm_key} | norm_members","variants |= norm_members"),
+ ("alias members not added to variants",E_,"variants |= {norm_key} | norm_members","variants |= {norm_key}"),
+ ("underscore keys not skipped in variants",E_,'        if key.startswith("_"):\n            continue\n        norm_key','        norm_key'),
+ ("alias key not normalized",E_,"norm_key = norm_cond(key)","norm_key = key"),
+ ("alias members not normalized",E_,"norm_members = {norm_cond(m) for m in _alias_members(members)}","norm_members = set(_alias_members(members))"),
+ ("non-str alias entries kept",E_,"return [m for m in value if isinstance(m, str)]","return list(value)"),
+ ("count: study without id counted",E_,"        if not study_id:\n            continue\n","        study_id = study_id or trait\n"),
+ ("count: not distinct ids",E_,"ids = set()","ids = []"),
+ ("count: falsy condition -> 0",E_,"if not condition or condition_matches","if condition and condition_matches"),
+ ("gwas_tier threshold 2->3",E_,"n >= 2","n >= 3"),
+ ("review_stars: guideline 4->3",E_,'if "practice guideline" in s:\n        return 4','if "practice guideline" in s:\n        return 3'),
+ ("sig_rank: risk factor 3->5",E_,'if "risk factor" in s or "risk allele" in s:\n        return 3','if "risk factor" in s or "risk allele" in s:\n        return 5'),
+ ("sig_rank: conflicting 2->0",E_,'if "conflicting" in s:\n        return 2','if "conflicting" in s:\n        return 0'),
+ ("sig_rank: drop protective",E_,'or "protective" in s',''),
+ ("load_clinvar GRCh38 not skipped",B,'if assembly and not assembly.startswith("GRCh37"):','if False:'),
+ ("load_gwas_studies no dedupe",B,"if pair not in seen[rsid]:","if True:"),
+ ("load_gwas_studies trait ignored",B,'trait = _col(row, idx, "DISEASE/TRAIT")','trait = ""'),
+]
+
+
+def fresh(tmp):
+    for d in COPY_DIRS:
+        dest = os.path.join(tmp, d)
+        shutil.rmtree(dest, ignore_errors=True)
+        shutil.copytree(os.path.join(ROOT, d), dest, ignore=shutil.ignore_patterns("__pycache__"))
+
+
+def failing_checks(tmp):
+    out = set()
+    for suite in SUITES:
+        proc = subprocess.run([sys.executable, suite], cwd=tmp, capture_output=True, text=True)
+        lines = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip().startswith("FAIL")]
+        out |= set(lines)
+        if proc.returncode != 0 and not lines:
+            out.add("CRASH " + suite)
+    return out
+
+
+def main():
+    if "--list" in sys.argv[1:]:
+        for name, _, _, _ in MUTATIONS:
+            print(name)
+        return 0
+    tmp = tempfile.mkdtemp(prefix="loop-mut-")
+    survivors = []
+    try:
+        fresh(tmp)
+        base = failing_checks(tmp)
+        print("baseline failing checks in the temp copy (ignored): %s" % (sorted(base) or "none"))
+        for name, rel, old, new in MUTATIONS:
+            fresh(tmp)
+            path = os.path.join(tmp, rel)
+            with open(path) as fh:
+                text = fh.read()
+            if old not in text:
+                print("PATTERN MISSING (counts as a survivor): " + name)
+                survivors.append(name)
+                continue
+            with open(path, "w") as fh:
+                fh.write(text.replace(old, new, 1))
+            new_fails = failing_checks(tmp) - base
+            if new_fails:
+                print("KILLED   %s  <- %s" % (name, sorted(new_fails)[0][:60]))
+            else:
+                print("SURVIVED %s" % name)
+                survivors.append(name)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("survivors: %d of %d" % (len(survivors), len(MUTATIONS)))
+    for name in survivors:
+        print("  - " + name)
+    return 1 if survivors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
