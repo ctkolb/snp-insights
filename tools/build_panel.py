@@ -41,7 +41,11 @@ import evidence
 
 
 def open_any(path):
-    return gzip.open(path, "rt") if path.endswith(".gz") else open(path)
+    # utf-8-sig strips a leading byte-order mark so the first header name is
+    # never corrupted; it is a no-op for files without a BOM.
+    if path.endswith(".gz"):
+        return gzip.open(path, "rt", encoding="utf-8-sig")
+    return open(path, encoding="utf-8-sig")
 
 
 def norm(name):
