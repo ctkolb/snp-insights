@@ -28,6 +28,7 @@ import check_raw  # noqa: E402
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 import test_guard  # noqa: E402
 import test_evidence  # noqa: E402
+import test_category  # noqa: E402
 
 FIX = os.path.join(ROOT, "fixtures")
 DATA = os.path.join(ROOT, "data")
@@ -364,6 +365,7 @@ def main():
     test_validator_e2e()
     test_guard.run(check)
     test_evidence.run(check)
+    test_category.run(check)
     for name in PASSED:
         print(f"  ok   {name}")
     for name in FAILED:
