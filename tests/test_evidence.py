@@ -527,6 +527,27 @@ def run(check):
                 and not evidence.condition_matches("123", "c1", m))
     attempt("S1.alias_non_string_entries_ignored", alias_non_string_entries_ignored)
 
+    def count_ignores_missing_study_id():
+        evidence, _, _ = _mods()
+        pairs = [("", "Coronary artery disease"),
+                 (None, "Coronary artery disease"),
+                 ("S1", "Coronary artery disease")]
+        return evidence.count_matching_studies(pairs, "coronary artery disease", {}) == 1
+    attempt("S1.count_ignores_missing_study_id", count_ignores_missing_study_id)
+
+    def gwas_studies_dedupe():
+        _, _, build_panel = _mods()
+        p = os.path.join(tempfile.mkdtemp(), "gwas.tsv")
+        with open(p, "w") as fh:
+            fh.write("SNPS\tPUBMEDID\tDISEASE/TRAIT\n")
+            fh.write("rs1\t100\tTrait A\n")
+            fh.write("rs1\t100\tTrait A\n")
+            fh.write("rs1\t100\tTrait B\n")
+            fh.write("rs1\t101\tTrait A\n")
+        pairs = build_panel.load_gwas_studies(p, {"rs1"})
+        return pairs.get("rs1") == [("100", "Trait A"), ("100", "Trait B"), ("101", "Trait A")]
+    attempt("S1.gwas_studies_dedupe", gwas_studies_dedupe)
+
 
 def main():
     passed, failed = [], []
