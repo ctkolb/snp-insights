@@ -24,11 +24,22 @@ def norm_cond(text):
 
 
 def load_aliases(path=None):
-    """Return the alias map; {} when the file is missing."""
+    """Return the alias map; {} when the file is missing.
+
+    Raises ValueError naming the key when a non-underscore group is not a list
+    of strings, so a malformed hand-edited file fails loudly instead of being
+    iterated character by character.
+    """
     p = path or _ALIASES_DEFAULT
     if os.path.exists(p):
         with open(p) as fh:
-            return json.load(fh)
+            data = json.load(fh)
+        for key, value in data.items():
+            if key.startswith("_"):
+                continue
+            if not isinstance(value, list) or not all(isinstance(m, str) for m in value):
+                raise ValueError(f"alias group {key!r} must be a list of strings")
+        return data
     return {}
 
 
@@ -38,6 +49,19 @@ def _contains_word(haystack, needle):
     return re.search(r"(?<![a-z0-9])" + re.escape(needle) + r"(?![a-z0-9])", haystack) is not None
 
 
+def _alias_members(value):
+    """Normalize a group value to a list of members without iterating a string.
+
+    A bare string is treated as a one-element list; any other non-list value is
+    ignored. Non-string entries are dropped.
+    """
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [m for m in value if isinstance(m, str)]
+    return []
+
+
 def _condition_variants(condition, aliases):
     c = norm_cond(condition)
     variants = {c}
@@ -45,7 +69,7 @@ def _condition_variants(condition, aliases):
         if key.startswith("_"):
             continue
         norm_key = norm_cond(key)
-        norm_members = {norm_cond(m) for m in members}
+        norm_members = {norm_cond(m) for m in _alias_members(members)}
         if c == norm_key or c in norm_members:
             variants |= {norm_key} | norm_members
     return {v for v in variants if v}
