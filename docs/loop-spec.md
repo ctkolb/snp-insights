@@ -63,7 +63,7 @@ Exact public names (gates import them):
 | `condition_matches(text, condition, aliases)` | True iff any variant of `condition` (the condition plus every member of its alias group, all passed through `norm_cond`) occurs in `norm_cond(text)` **at word boundaries**; False when `text` or `condition` is falsy. Alias group lookup normalizes both the key and the members |
 | `review_stars(status)` | the current `build_panel.review_stars` semantics (4/3/2/1, 0 for empty or "no assertion criteria", `None` for unrecognized non-empty) |
 | `sig_rank(sig)` | the current `fetch_reference._sig_rank`, unchanged |
-| `select_clinvar(rows, condition, aliases)` | `rows` is a list of dicts with `sig`, `review`, `phenotype`; skip rows with empty `sig`; score = `sig_rank*100 + 10 if condition_matches(phenotype, ...) + (review_stars(review) or 0)`; highest score wins, **first row wins ties**; returns the winning row dict or `None` |
+| `select_clinvar(rows, condition, aliases)` | `rows` is a list of dicts with `sig`, `review`, `phenotype`. Rows with empty `sig` are never candidates. **Matched-first (decision D-M, amends D27):** if `condition` is truthy and at least one candidate row has `condition_matches(phenotype, condition, aliases)`, only the matched rows compete; otherwise all candidate rows compete. Within the competing rows, score = `sig_rank*100 + (review_stars(review) or 0)`; highest wins, **first row wins exact ties**. Returns the winning row dict or `None` |
 | `clinvar_tier(significance, stars)` | the current `build_panel.assoc_from_clinvar` logic on those two values |
 | `gwas_tier(n)` | the current `build_panel.assoc_from_gwas` |
 | `count_matching_studies(pairs, condition, aliases)` | `pairs` is a list of `(study_id, trait_text)`; number of **distinct study ids** whose trait matches `condition`; when `condition` is falsy, the distinct study ids over all pairs |
@@ -98,6 +98,20 @@ Behavior changes:
   `count_matching_studies(pairs, target["condition"], aliases)`. `build()` gains
   `aliases=None`. `main()` uses the pairs form. Derivation **order is not
   changed in this stage**.
+- **B7 (round 2).** Every text read in `build_panel` (`open_any`, plain and
+  `.gz`) decodes with `utf-8-sig`, so a leading byte-order mark never corrupts
+  the first header name. This covers ClinVar, GWAS, dbSNP TSV, gnomAD, merges,
+  and SNPedia TSV.
+- **B8 (round 2).** Free-text fields written to cache TSVs go through one helper
+  in `fetch_reference` (`_tsv_field`) that replaces every tab, carriage return,
+  and newline with a single space: the ClinVar writer (significance, review,
+  phenotype) and the Open Targets GWAS writer (study id, trait). A hostile value
+  can never change the number of rows or columns when read back.
+- **B9 (round 2).** `evidence.load_aliases` raises `ValueError` naming the key
+  when a non-underscore group's value is not a list of strings. `condition_matches`
+  and its helper, given an in-memory map with a bare-string value, treat it as a
+  one-element list; other non-list values are ignored. Neither ever iterates a
+  string character by character.
 - **B6.** `data/condition_aliases.json` gains an alias group for every
   `condition` in `data/targets.traits.json`. Aliases are limited to spelling
   variants that GWAS labels plausibly use (for example color/colour,
@@ -135,6 +149,25 @@ Ship gates (each is a named `check`):
   trait ends `unknown`, not `single_study`; the legacy `int` form still works.
 - `S1.aliases_cover_traits`: every `condition` in `data/targets.traits.json`
   has an alias group, and every one containing "color" has a "colour" variant.
+- `S1.select_matched_first` (round 2): a matched `risk factor` row with
+  practice-guideline review beats an unmatched `Pathogenic` row; a matched
+  `drug response` row beats an unmatched `Pathogenic` row; with no matched row the
+  highest significance rank wins as before; with a falsy condition nothing is
+  "matched" and the old ranking applies; a matched row with empty `sig` is not a
+  candidate and does not suppress unmatched rows. Both row orders.
+- `S1.norm_cond_direct` (round 2): `norm_cond("  A-b!! c ")` is `"a b c"`,
+  `norm_cond(None)` is `""`, and underscores and slashes become spaces. At least one
+  assertion must fail if the punctuation substitution is removed from `norm_cond`.
+- `S1.bom_*` (round 2): a BOM-prefixed GWAS TSV, ClinVar TSV, and dbSNP TSV load
+  the same results as the BOM-free file; the same for a `.gz` BOM file.
+- `S1.tsv_sanitize_*` (round 2): hostile phenotype, significance, review, trait,
+  and study values containing tab, CR, and LF written through the writers read back
+  with the same row count and column alignment, text whitespace-replaced.
+- `S1.alias_*` (round 2): the shipped `data/condition_aliases.json` loads and every
+  non-underscore value is a list of strings; a string value in a file passed to
+  `load_aliases` raises `ValueError` naming the key; `condition_matches("e", "e",
+  {"A": "eye"})` is False and `condition_matches("an eye test", "a", {"a": "eye"})`
+  is True (string treated as one alias).
 - `S1.panel_sample_reproduces`: the README ETL command regenerates
   `data/panel.sample.json` identically.
 - `S1.no_network`: importing `evidence` and `build_panel` opens no socket (check
