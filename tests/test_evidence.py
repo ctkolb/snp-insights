@@ -316,6 +316,183 @@ def run(check):
         return True
     attempt("S1.no_network", no_network)
 
+    # --- S1.select_matched_first (round 2) ------------------------------
+    def sel_matched_first():
+        evidence, _, _ = _mods()
+        risk = {"sig": "risk factor", "review": "reviewed by expert panel",
+                "phenotype": "Hereditary hemochromatosis", "tag": "risk"}
+        path = {"sig": "Pathogenic", "review": "criteria provided, single submitter",
+                "phenotype": "Cystic fibrosis", "tag": "path"}
+        drug = {"sig": "drug response", "review": "reviewed by expert panel",
+                "phenotype": "Hereditary hemochromatosis", "tag": "drug"}
+        other = {"sig": "drug response", "review": "reviewed by expert panel",
+                 "phenotype": "Unrelated", "tag": "other"}
+        empty = {"sig": "", "review": "reviewed by expert panel",
+                 "phenotype": "Hereditary hemochromatosis", "tag": "empty"}
+        cond = "Hereditary hemochromatosis"
+        if evidence.select_clinvar([risk, path], cond, aliases)["tag"] != "risk":
+            return False
+        if evidence.select_clinvar([path, risk], cond, aliases)["tag"] != "risk":
+            return False
+        if evidence.select_clinvar([drug, path], cond, aliases)["tag"] != "drug":
+            return False
+        if evidence.select_clinvar([path, drug], cond, aliases)["tag"] != "drug":
+            return False
+        if evidence.select_clinvar([other, path], cond, aliases)["tag"] != "path":
+            return False
+        if evidence.select_clinvar([drug, path], None, aliases)["tag"] != "path":
+            return False
+        if evidence.select_clinvar([empty, path], cond, aliases)["tag"] != "path":
+            return False
+        return True
+    attempt("S1.select_matched_first", sel_matched_first)
+
+    # --- S1.norm_cond_direct (round 2) ----------------------------------
+    def norm_cond_direct():
+        evidence, _, _ = _mods()
+        return (evidence.norm_cond("  A-b!! c ") == "a b c"
+                and evidence.norm_cond(None) == ""
+                and evidence.norm_cond("a_b/c") == "a b c"
+                and evidence.norm_cond("X9") == "x9")
+    attempt("S1.norm_cond_direct", norm_cond_direct)
+
+    # --- S1.bom_* (round 2) ---------------------------------------------
+    def _bom_write(path, text):
+        with open(path, "w", encoding="utf-8-sig") as fh:
+            fh.write(text)
+
+    def bom_gwas_tsv():
+        _, _, build_panel = _mods()
+        text = "SNPS\tPUBMEDID\tDISEASE/TRAIT\nrs1333049\t1\tCoronary artery disease\n"
+        plain = os.path.join(tempfile.mkdtemp(), "g.tsv")
+        bom = os.path.join(tempfile.mkdtemp(), "gb.tsv")
+        with open(plain, "w") as fh:
+            fh.write(text)
+        _bom_write(bom, text)
+        a = build_panel.load_gwas_studies(plain, {"rs1333049"})
+        b = build_panel.load_gwas_studies(bom, {"rs1333049"})
+        return a == b and b.get("rs1333049") == [("1", "Coronary artery disease")]
+    attempt("S1.bom_gwas_tsv", bom_gwas_tsv)
+
+    def bom_clinvar_tsv():
+        _, _, build_panel = _mods()
+        text = ("RS# (dbSNP)\tAssembly\tReviewStatus\tClinicalSignificance\tPhenotypeList\n"
+                "1800562\tGRCh37\tcriteria provided, multiple submitters, no conflicts\t"
+                "Pathogenic\tHereditary hemochromatosis\n")
+        plain = os.path.join(tempfile.mkdtemp(), "c.tsv")
+        bom = os.path.join(tempfile.mkdtemp(), "cb.tsv")
+        with open(plain, "w") as fh:
+            fh.write(text)
+        _bom_write(bom, text)
+        a = build_panel.load_clinvar(plain, "test")
+        b = build_panel.load_clinvar(bom, "test")
+        return a == b and b["rs1800562"]["review_stars"] == 2
+    attempt("S1.bom_clinvar_tsv", bom_clinvar_tsv)
+
+    def bom_dbsnp_tsv():
+        _, _, build_panel = _mods()
+        text = ("rsid\tchromosome\tposition\treference_allele\talternate_allele\n"
+                "rs6025\t1\t169519049\tG\tA\n")
+        plain = os.path.join(tempfile.mkdtemp(), "d.tsv")
+        bom = os.path.join(tempfile.mkdtemp(), "db.tsv")
+        with open(plain, "w") as fh:
+            fh.write(text)
+        _bom_write(bom, text)
+        a = build_panel.load_dbsnp(plain, {"rs6025"})
+        b = build_panel.load_dbsnp(bom, {"rs6025"})
+        return a == b and b["rs6025"]["position"] == 169519049
+    attempt("S1.bom_dbsnp_tsv", bom_dbsnp_tsv)
+
+    def bom_gz():
+        import gzip
+        _, _, build_panel = _mods()
+        text = ("rsid\tchromosome\tposition\treference_allele\talternate_allele\n"
+                "rs6025\t1\t169519049\tG\tA\n")
+        p = os.path.join(tempfile.mkdtemp(), "d.tsv.gz")
+        with gzip.open(p, "wt", encoding="utf-8-sig") as fh:
+            fh.write(text)
+        got = build_panel.load_dbsnp(p, {"rs6025"})
+        return got.get("rs6025", {}).get("position") == 169519049
+    attempt("S1.bom_gz", bom_gz)
+
+    # --- S1.tsv_sanitize_* (round 2) ------------------------------------
+    def tsv_sanitize_clinvar():
+        _, fetch_reference, build_panel = _mods()
+        p = os.path.join(tempfile.mkdtemp(), "c.tsv")
+        fetch_reference.write_clinvar_tsv(p, {
+            "rs1800562": ("Pathogenic\tlikely", "reviewed\rmaybe", "cond\none"),
+        })
+        got = build_panel.load_clinvar(p, "test")
+        rec = got.get("rs1800562")
+        if not rec:
+            return False
+        with open(p) as fh:
+            lines = fh.read().splitlines()
+        return (len(lines) == 2 and len(lines[1].split("\t")) == 5
+                and rec["significance"] == "Pathogenic likely"
+                and rec["review_status_text"] == "reviewed maybe"
+                and rec["phenotype"] == "cond one")
+    attempt("S1.tsv_sanitize_clinvar", tsv_sanitize_clinvar)
+
+    def tsv_sanitize_gwas():
+        _, fetch_reference, build_panel = _mods()
+        hostile_sid = "study\tid"
+        hostile_trait = "trait\nvalue"
+
+        def fake_ot(query, email=None):
+            if "mapIds" in query:
+                return {"data": {"mapIds": {"mappings": [
+                    {"term": "rs1", "hits": [{"id": "1-100-A-G"}]}]}}}
+            return {"data": {"a0": {"credibleSets": {"rows": [
+                {"study": {"id": hostile_sid, "traitFromSource": hostile_trait}}]}}}}
+
+        orig = fetch_reference._ot_query
+        fetch_reference._ot_query = fake_ot
+        try:
+            cache = tempfile.mkdtemp()
+            fetch_reference.fetch_gwas_ot([{"rsid": "rs1"}], None, cache)
+            p = os.path.join(cache, "gwas.tsv")
+            with open(p) as fh:
+                lines = fh.read().splitlines()
+            pairs = build_panel.load_gwas_studies(p, {"rs1"})
+        finally:
+            fetch_reference._ot_query = orig
+        return (len(lines) == 2 and len(lines[1].split("\t")) == 3
+                and pairs.get("rs1") == [("study id", "trait value")])
+    attempt("S1.tsv_sanitize_gwas", tsv_sanitize_gwas)
+
+    # --- S1.alias_* (round 2) -------------------------------------------
+    def alias_file_wellformed():
+        evidence, _, _ = _mods()
+        al = evidence.load_aliases()
+        for k, v in al.items():
+            if k.startswith("_"):
+                continue
+            if not isinstance(v, list) or not all(isinstance(m, str) for m in v):
+                return False
+        return True
+    attempt("S1.alias_file_wellformed", alias_file_wellformed)
+
+    def alias_string_value_raises():
+        evidence, _, _ = _mods()
+        p = os.path.join(tempfile.mkdtemp(), "aliases.json")
+        with open(p, "w") as fh:
+            json.dump({"A": "eye"}, fh)
+        try:
+            evidence.load_aliases(p)
+        except ValueError as exc:
+            return "A" in str(exc)
+        except Exception:  # noqa: BLE001
+            return False
+        return False
+    attempt("S1.alias_string_value_raises", alias_string_value_raises)
+
+    def alias_bare_string_as_list():
+        evidence, _, _ = _mods()
+        return (not evidence.condition_matches("e", "e", {"A": "eye"})
+                and evidence.condition_matches("an eye test", "a", {"a": "eye"}))
+    attempt("S1.alias_bare_string_as_list", alias_bare_string_as_list)
+
 
 def main():
     passed, failed = [], []
