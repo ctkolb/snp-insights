@@ -94,17 +94,26 @@ def sig_rank(sig):
 def select_clinvar(rows, condition, aliases):
     """Pick the ClinVar row most relevant to the curated condition.
 
-    rows: [{'sig','review','phenotype'}]. Skip rows with empty sig. Score favors
-    disease-relevant significance, then a phenotype match, then review stars.
-    Highest score wins; the first row wins an exact tie. Returns the row or None.
+    rows: [{'sig','review','phenotype'}]. Rows with empty sig are never
+    candidates. Matched-first (D-M): when `condition` is truthy and at least one
+    candidate's phenotype matches it, only the matched rows compete; otherwise
+    all candidates compete. Within the competing rows the score is
+    sig_rank*100 + (review_stars or 0); highest wins, first row wins exact ties.
+    Returns the winning row dict or None.
     """
-    best, best_score = None, None
+    candidates = []
     for r in rows or []:
         sig = (r.get("sig") or "").strip()
         if not sig:
             continue
-        matched = condition_matches(r.get("phenotype"), condition, aliases)
-        score = sig_rank(sig) * 100 + (10 if matched else 0) + (review_stars(r.get("review")) or 0)
+        candidates.append(r)
+    if condition:
+        matched = [r for r in candidates if condition_matches(r.get("phenotype"), condition, aliases)]
+        if matched:
+            candidates = matched
+    best, best_score = None, None
+    for r in candidates:
+        score = sig_rank(r["sig"]) * 100 + (review_stars(r.get("review")) or 0)
         if best_score is None or score > best_score:
             best_score, best = score, r
     return best
