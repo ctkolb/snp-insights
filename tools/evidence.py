@@ -157,6 +157,28 @@ def gwas_tier(n):
     return "replicated" if n >= 2 else "single_study"
 
 
+def derive_association(category, cv, gwas_n, cv_matched):
+    """Association tier per category (decision D-B).
+
+    `cv` is the chosen ClinVar record (or None), `gwas_n` the matching GWAS
+    study count (None counts as 0), and `cv_matched` whether the ClinVar
+    phenotype matches the curated condition. `category` of None is the legacy
+    rule; `carrier` ignores GWAS; `trait` prefers GWAS and only falls back to a
+    matched ClinVar record.
+    """
+    cv_tier = clinvar_tier(cv.get("significance"), cv.get("review_stars")) if cv else None
+    n = gwas_n or 0
+    if category == "carrier":
+        return cv_tier or "unknown"
+    if category == "trait":
+        if n >= 1:
+            return gwas_tier(n)
+        if cv and cv_matched:
+            return cv_tier or "unknown"
+        return "unknown"
+    return cv_tier or gwas_tier(n) or "unknown"
+
+
 def count_matching_studies(pairs, condition, aliases):
     """Distinct study ids whose trait matches `condition`.
 
