@@ -165,9 +165,13 @@ Ship gates (each is a named `check`):
   with the same row count and column alignment, text whitespace-replaced.
 - `S1.alias_*` (round 2): the shipped `data/condition_aliases.json` loads and every
   non-underscore value is a list of strings; a string value in a file passed to
-  `load_aliases` raises `ValueError` naming the key; `condition_matches("e", "e",
-  {"A": "eye"})` is False and `condition_matches("an eye test", "a", {"a": "eye"})`
-  is True (string treated as one alias).
+  `load_aliases` raises `ValueError` naming the key; with the map `{"a": "eye"}`:
+  `condition_matches("y", "a", m)` is False (no per-character matching; the old
+  code returned True), `condition_matches("y", "e", {"A": "eye"})` is False, and
+  `condition_matches("an eye test", "a", m)` is True (a string is one alias).
+  `condition_matches("e", "e", {"A": "eye"})` is True, because a condition always
+  matches itself (an earlier draft of this gate asserted False; that was a spec
+  error).
 - `S1.panel_sample_reproduces`: the README ETL command regenerates
   `data/panel.sample.json` identically.
 - `S1.no_network`: importing `evidence` and `build_panel` opens no socket (check
