@@ -23,7 +23,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 E_ = "tools/evidence.py"
 B = "tools/build_panel.py"
 F = "tools/fetch_reference.py"
-SUITES = ("tests/test_evidence.py", "tests/test_pipeline.py")
+SUITES = ("tests/test_evidence.py", "tests/test_category.py", "tests/test_pipeline.py")
 COPY_DIRS = ("tools", "tests", "data", "fixtures", "stage2", "stage3", "schema", "scripts")
 
 # (name, file, text to find, replacement). Each is a single plausible bug.
@@ -62,6 +62,24 @@ MUTATIONS = [
  ("load_clinvar GRCh38 not skipped",B,'if assembly and not assembly.startswith("GRCh37"):','if False:'),
  ("load_gwas_studies no dedupe",B,"if pair not in seen[rsid]:","if True:"),
  ("load_gwas_studies trait ignored",B,'trait = _col(row, idx, "DISEASE/TRAIT")','trait = ""'),
+    # --- Stage 2: category-aware derivation ---
+    ("S2 trait: ClinVar overrides GWAS", E_, "        if n >= 1:\n            return gwas_tier(n)", "        if n >= 1 and not cv_tier:\n            return gwas_tier(n)"),
+    ("S2 trait: one study not enough", E_, "        if n >= 1:\n            return gwas_tier(n)", "        if n >= 2:\n            return gwas_tier(n)"),
+    ("S2 trait: fallback ignores cv_matched", E_, "        if cv and cv_matched:", "        if cv:"),
+    ("S2 trait: matched 0-star returns None", E_, "        if cv and cv_matched:\n            return cv_tier or \"unknown\"", "        if cv and cv_matched:\n            return cv_tier"),
+    ("S2 carrier: falls back to GWAS", E_, "        return cv_tier or \"unknown\"\n    if category == \"trait\":", "        return cv_tier or gwas_tier(n) or \"unknown\"\n    if category == \"trait\":"),
+    ("S2 carrier: returns None not unknown", E_, "        return cv_tier or \"unknown\"\n    if category == \"trait\":", "        return cv_tier\n    if category == \"trait\":"),
+    ("S2 legacy: order swapped", E_, "    return cv_tier or gwas_tier(n) or \"unknown\"", "    return gwas_tier(n) or cv_tier or \"unknown\""),
+    ("S2 gwas_n None crashes", E_, "    n = gwas_n or 0", "    n = gwas_n"),
+    ("S2 cv None crashes", E_, "cv_tier = clinvar_tier(cv.get(\"significance\"), cv.get(\"review_stars\")) if cv else None", "cv_tier = clinvar_tier(cv.get(\"significance\"), cv.get(\"review_stars\"))"),
+    ("S2 validation skipped when association set", B, "category not in (\"carrier\", \"trait\"):\n            label", "category not in (\"carrier\", \"trait\") and not t.get(\"association\"):\n            label"),
+    ("S2 validation case-insensitive", B, "if category is not None and category not in (\"carrier\", \"trait\"):", "if category is not None and str(category).lower() not in (\"carrier\", \"trait\"):"),
+    ("S2 validation accepts empty string", B, "if category is not None and category not in", "if category and category not in"),
+    ("S2 error does not name the target", B, "label = t.get(\"rsid\") or t.get(\"gene\")", "label = \"target\""),
+    ("S2 cv_matched always true", B, "cv_matched = bool(cv and", "cv_matched = bool(True or cv and"),
+    ("S2 legacy warning removed", B, "            if category is None:\n                print(", "            if False:\n                print("),
+    ("S2 main returns 0 on invalid category", B, "        print(exc, file=sys.stderr)\n        return 1", "        print(exc, file=sys.stderr)\n        return 0"),
+    ("S2 category not passed through", B, "        v = dict(t)\n", "        v = {k: x for k, x in t.items() if k != \"category\"}\n"),
 ]
 
 

@@ -230,7 +230,18 @@ Ship gates:
   yields findings with no `category` key anywhere, and (if `jsonschema` is
   installed) they validate against the schema.
 - `S2.targets_categories`: all variants in both targets files have a valid
-  category; counts are 9 and 14; no other key changed versus the base commit.
+  category; counts are 9 and 14; each variant's keys are exactly the previous key
+  set (carrier: `rsid, gene, condition, assayability, cls, effect_allele`; trait:
+  `rsid, gene, condition, assayability`) plus `category`, checked against inline
+  literal expectations. **The test must not call git or read history**: the CI
+  test job uses a shallow checkout (an earlier draft said "versus the base
+  commit"; that was a spec error).
+- `S2.build_cv_matched_wiring` (round 2): through `build()` itself (not
+  `derive_association` directly), for a `trait` target with 0 matching GWAS
+  studies: a ClinVar record whose phenotype does NOT match the condition gives
+  `unknown`; one whose phenotype matches (by the condition itself and by an alias)
+  gives the ClinVar tier (for example `established` for 3-star pathogenic); a
+  record with an empty phenotype gives `unknown`.
 - `S2.panel_sample_reproduces`: unchanged.
 
 Fence: no CLI, no `pyproject.toml`, no guard change, no curation changes, no
