@@ -52,6 +52,7 @@ ALLOW_EXACT = {
     "LICENSE",
     "README.md",
     "SECURITY.md",
+    "pyproject.toml",
 }
 # Prefixes whose whole subtree may be tracked.
 ALLOW_PREFIX = (
@@ -60,6 +61,7 @@ ALLOW_PREFIX = (
     "hooks/",
     "schema/",
     "scripts/",
+    "snp_insights/",
     "stage2/",
     "stage3/",
     "tools/",
@@ -134,6 +136,10 @@ SELFTEST_MUST_BE_TRACKED = (
     "AGENTS.md",
     "fixtures/raw.sample.txt",
     "data/panel.sample.json",
+)
+SELFTEST_MUST_NOT_BE_IGNORED = (
+    "pyproject.toml",
+    "snp_insights/cli.py",
 )
 
 
@@ -347,6 +353,13 @@ def check_gitignore_selftest():
         if tracked.returncode != 0 and not os.path.exists(os.path.join(root, p)):
             findings.append(Finding(
                 "gitignore", p, detail="application path is missing/untracked"))
+    for p in SELFTEST_MUST_NOT_BE_IGNORED:
+        proc = subprocess.run(
+            ("git", "check-ignore", "-q", "--", p), cwd=root, capture_output=True
+        )
+        if proc.returncode == 0:
+            findings.append(Finding(
+                "gitignore", p, detail="application path is ignored"))
     return findings
 
 
