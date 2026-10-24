@@ -4,14 +4,14 @@
   "genome_build": "GRCh37",
   "strand": "forward",
   "variants": [
-    { "rsid": "rs334", "gene": "HBB", "condition": "Sickle cell disease", "assayability": "snp", "cls": "pathogenic", "effect_allele": "A" },
-    { "rsid": "rs33930165", "gene": "HBB", "condition": "Hemoglobin C disease", "assayability": "snp", "cls": "pathogenic" },
-    { "rsid": "rs113993960", "gene": "CFTR", "condition": "Cystic fibrosis", "assayability": "indel", "cls": "pathogenic", "effect_allele": "D" },
-    { "rsid": "rs1800562", "gene": "HFE", "condition": "Hereditary hemochromatosis", "assayability": "snp", "cls": "pathogenic", "effect_allele": "A" },
-    { "rsid": "rs1799945", "gene": "HFE", "condition": "Hereditary hemochromatosis", "assayability": "snp", "cls": "risk", "effect_allele": "G" },
-    { "rsid": "rs6025", "gene": "F5", "condition": "Factor V Leiden thrombophilia", "assayability": "snp", "cls": "risk", "effect_allele": "T" },
-    { "rsid": "rs1799963", "gene": "F2", "condition": "Prothrombin thrombophilia", "assayability": "snp", "cls": "risk", "effect_allele": "A" },
-    { "rsid": "rs1050828", "gene": "G6PD", "condition": "G6PD deficiency", "assayability": "snp", "cls": "pathogenic" },
-    { "rsid": "rs28929474", "gene": "SERPINA1", "condition": "Alpha-1 antitrypsin deficiency", "assayability": "snp", "cls": "pathogenic" }
+    { "rsid": "rs334", "gene": "HBB", "condition": "Sickle cell disease", "assayability": "snp", "cls": "pathogenic", "effect_allele": "A", "category": "carrier" },
+    { "rsid": "rs33930165", "gene": "HBB", "condition": "Hemoglobin C disease", "assayability": "snp", "cls": "pathogenic", "category": "carrier" },
+    { "rsid": "rs113993960", "gene": "CFTR", "condition": "Cystic fibrosis", "assayability": "indel", "cls": "pathogenic", "effect_allele": "D", "category": "carrier" },
+    { "rsid": "rs1800562", "gene": "HFE", "condition": "Hereditary hemochromatosis", "assayability": "snp", "cls": "pathogenic", "effect_allele": "A", "category": "carrier" },
+    { "rsid": "rs1799945", "gene": "HFE", "condition": "Hereditary hemochromatosis", "assayability": "snp", "cls": "risk", "effect_allele": "G", "category": "carrier" },
+    { "rsid": "rs6025", "gene": "F5", "condition": "Factor V Leiden thrombophilia", "assayability": "snp", "cls": "risk", "effect_allele": "T", "category": "carrier" },
+    { "rsid": "rs1799963", "gene": "F2", "condition": "Prothrombin thrombophilia", "assayability": "snp", "cls": "risk", "effect_allele": "A", "category": "carrier" },
+    { "rsid": "rs1050828", "gene": "G6PD", "condition": "G6PD deficiency", "assayability": "snp", "cls": "pathogenic", "category": "carrier" },
+    { "rsid": "rs28929474", "gene": "SERPINA1", "condition": "Alpha-1 antitrypsin deficiency", "assayability": "snp", "cls": "pathogenic", "category": "carrier" }
   ]
 }
