@@ -1,0 +1,314 @@
+# Build-loop spec: roadmap items 3, 4, 5
+
+Status: APPROVED by the owner on 2026-10-24. Stage plan and decisions for the
+adversarial build loop (builder, reviewer, owner). Companion to
+[DESIGN.md](../DESIGN.md) and [AGENTS.md](../AGENTS.md). Invented names only;
+no real data anywhere in this loop.
+
+## Goal
+
+1. **Item 5, trait matching precision:** match ClinVar and GWAS evidence to the
+   *specific curated condition*, not just the rsID.
+2. **Item 4, category-aware derivation:** targets carry `category`
+   (`carrier` | `trait`) and the association tier is derived per category.
+3. **Item 3, single entrypoint:** one `snp-insights` CLI (`fetch`,
+   `build-panel`, `check-raw`, `annotate`, `narrate`, `run`) plus
+   `pyproject.toml` and a version.
+
+Out of scope for the whole loop: real-data validation (item 1), target
+curation (item 2), full-dump ETL (item 6), model benchmarking (item 7), CI
+changes (item 8), any change to Stage 3 prose rules or the privacy gate.
+
+## Confirmed defect that motivates Stage 1
+
+`build_panel.load_clinvar` keeps one record per rsID, last row wins, with no
+phenotype awareness. A two-row input for one rsID (a thrombophilia record and a
+drug-response record) returns the drug-response row if it is listed last. The
+phenotype-aware selection exists only in `tools/fetch_reference.py`
+(`_select_clinvar_summary`), and `_stars` / `review_stars`, `_sig_rank`,
+`_norm_cond`, `_condition_matches` are duplicated or split across the two
+files. `load_gwas` counts distinct studies per rsID and ignores the
+`DISEASE/TRAIT` column.
+
+## Global rules (every stage)
+
+- Python 3.9+, **standard library only**. No new runtime dependencies.
+  `jsonschema` stays optional.
+- Offline. No new network call, write outside the declared outputs, or delete.
+- Existing tests keep passing unchanged unless a spec decision below says
+  otherwise. Never weaken or delete a test.
+- `data/panel.sample.json` must still reproduce byte-for-byte from the README
+  ETL command (`git diff --exit-code data/panel.sample.json` after rebuilding).
+- Do not touch `data/targets.sample.json`, `data/panel.sample.json`,
+  `schema/*`, `stage3/*`, or `tools/validate_report.py`,
+  `tools/render_report.py` in any stage.
+- Findings (`findings.json`) are unchanged: `category` is a **panel-only**
+  field and must not appear in findings (the findings schema has
+  `additionalProperties: false`).
+- Test convention: `check(name, cond)` in `tests/test_pipeline.py`. Gate
+  names start with the stage prefix (`S1.`, `S2.`, ...).
+- American English. Generic fixtures. Commit trailer `Assisted-by:`.
+
+---
+
+## Stage 1: evidence module and condition-aware matching (STANDARD)
+
+New file `tools/evidence.py` (stdlib only, no I/O except `load_aliases`).
+Exact public names (gates import them):
+
+| Name | Contract |
+|---|---|
+| `norm_cond(text)` | lowercase, non `[a-z0-9]` to space, collapse whitespace, strip; falsy input gives `""` |
+| `load_aliases(path=None)` | JSON alias map; default `data/condition_aliases.json` relative to the repo; `{}` if the file is missing; keys starting with `_` ignored by consumers |
+| `condition_matches(text, condition, aliases)` | True iff any variant of `condition` (the condition plus every member of its alias group, all passed through `norm_cond`) occurs in `norm_cond(text)` **at word boundaries**; False when `text` or `condition` is falsy. Alias group lookup normalizes both the key and the members |
+| `review_stars(status)` | the current `build_panel.review_stars` semantics (4/3/2/1, 0 for empty or "no assertion criteria", `None` for unrecognized non-empty) |
+| `sig_rank(sig)` | the current `fetch_reference._sig_rank`, unchanged |
+| `select_clinvar(rows, condition, aliases)` | `rows` is a list of dicts with `sig`, `review`, `phenotype`; skip rows with empty `sig`; score = `sig_rank*100 + 10 if condition_matches(phenotype, ...) + (review_stars(review) or 0)`; highest score wins, **first row wins ties**; returns the winning row dict or `None` |
+| `clinvar_tier(significance, stars)` | the current `build_panel.assoc_from_clinvar` logic on those two values |
+| `gwas_tier(n)` | the current `build_panel.assoc_from_gwas` |
+| `count_matching_studies(pairs, condition, aliases)` | `pairs` is a list of `(study_id, trait_text)`; number of **distinct study ids** whose trait matches `condition`; when `condition` is falsy, the distinct study ids over all pairs |
+
+Behavior changes:
+
+- **B1.** `fetch_reference.py` and `build_panel.py` import these from
+  `evidence`. The old private names (`_norm_cond`, `_condition_matches`,
+  `_select_clinvar_summary`, `_stars`, `_sig_rank`,
+  `build_panel.review_stars`, `assoc_from_clinvar`, `assoc_from_gwas`) may
+  remain **only as aliases** (`name = evidence.x`) or thin wrappers so the
+  existing tests still run. No second implementation may remain.
+- **B2.** `build_panel.load_clinvar(path, release, conditions=None, aliases=None)`
+  keeps **all** GRCh37 rows per rsID and picks one with
+  `evidence.select_clinvar`, using `conditions[rsid]` (a `{rsid: condition}` map)
+  when given. Return shape stays `{rsid: {significance, review_stars,
+  review_status_text, source_version}}` and gains one key, `phenotype`
+  (string, `""` when the column is absent). The panel's `clinvar` object keeps
+  exactly its current four keys. Old files without a `PhenotypeList` column
+  still load. `main()` passes the conditions from the targets file.
+- **B3.** `fetch_reference.write_clinvar_tsv` writes an extra `PhenotypeList`
+  column. `fetch_clinvar_summary` returns the chosen phenotype with the
+  record; `fetch_clinvar_small` (API mode) has none and writes an empty cell.
+  The cache TSV must round-trip through `build_panel.load_clinvar`.
+- **B4.** `build_panel.load_gwas_studies(path, wanted)` returns
+  `{rsid: [(study_id, trait_text), ...]}`, deduplicated on the pair, in file
+  order, trait read from the `DISEASE/TRAIT` column (case-insensitive,
+  `""` if absent), study id from the existing `GWAS_STUDY_COLS` fallback.
+  `load_gwas` stays and returns the same `{rsid: distinct_study_count}` as today.
+- **B5.** `build_panel.build(..., gwas=...)` accepts `{rsid: int}` (legacy, used
+  as is) **or** `{rsid: [(study, trait)]}`, in which case the count is
+  `count_matching_studies(pairs, target["condition"], aliases)`. `build()` gains
+  `aliases=None`. `main()` uses the pairs form. Derivation **order is not
+  changed in this stage**.
+- **B6.** `data/condition_aliases.json` gains an alias group for every
+  `condition` in `data/targets.traits.json`. Aliases are limited to spelling
+  variants that GWAS labels plausibly use (for example color/colour,
+  hair/hair-color phrasing, hyphen and space variants). No new biology, no
+  rsID changes.
+
+Ship gates (each is a named `check`):
+
+- `S1.identity_*`: `fetch_reference` and `build_panel` expose the same function
+  objects as `evidence` (identity, not equality) for `norm_cond`,
+  `condition_matches`, `sig_rank`, `review_stars`.
+- `S1.cond_*`: word boundary (`"g6pdx"` does not match `"g6pd"`); alias hit
+  (`"Hemochromatosis type 1"` matches `"Hereditary hemochromatosis"` with the
+  repo aliases); case and punctuation insensitive; falsy text or condition is
+  False.
+- `S1.select_*`: pathogenic beats drug response in either row order; matched
+  phenotype beats unmatched at equal significance rank; stars break the
+  remaining ties; first row wins an exact tie; empty-significance rows are
+  skipped; empty list gives `None`.
+- `S1.clinvar_rs6025_both_orders`: a two-row fixture (thrombophilia
+  pathogenic, warfarin drug response) yields the thrombophilia record with the
+  rows in **either** order; the same function without a condition still picks
+  the pathogenic row.
+- `S1.clinvar_old_format`: files without `PhenotypeList` and the existing messy
+  fixture produce the same significance and stars as before this stage;
+  GRCh38 rows are still skipped.
+- `S1.clinvar_cache_roundtrip`: `write_clinvar_tsv` then `load_clinvar`
+  preserves significance, review, and phenotype; the 2-tuple (no phenotype)
+  form works.
+- `S1.gwas_*`: `load_gwas` unchanged on `fixtures/sources/gwas.sample.tsv`;
+  `load_gwas_studies` pairs and dedupe; with 2 coronary studies, 1 diabetes
+  study, `count_matching_studies` gives 2 / 1 / 0 for coronary / diabetes /
+  an unrelated trait, and 3 for `condition=None`.
+- `S1.build_trait_match`: a trait target whose only GWAS pairs have a different
+  trait ends `unknown`, not `single_study`; the legacy `int` form still works.
+- `S1.aliases_cover_traits`: every `condition` in `data/targets.traits.json`
+  has an alias group, and every one containing "color" has a "colour" variant.
+- `S1.panel_sample_reproduces`: the README ETL command regenerates
+  `data/panel.sample.json` identically.
+- `S1.no_network`: importing `evidence` and `build_panel` opens no socket (check
+  that neither module imports `urllib`, `http`, `socket`, `requests`).
+
+Fence: do **not** add `category`, change the derivation order, touch
+`annotate.py`, schema, guard, stage3, or targets curation, or create
+`pyproject.toml` or any new package directory.
+
+---
+
+## Stage 2: category-aware derivation (STANDARD)
+
+Decisions:
+
+- **D-A.** Targets may carry `category`: `"carrier"` or `"trait"`. Any other
+  value, or a non-string, makes `build()` raise `ValueError` naming the rsID;
+  `main()` prints it and exits 1 **without writing the output file**.
+- **D-B.** Derivation lives in `evidence.derive_association(category, cv,
+  gwas_n, cv_matched)` where `cv` is the chosen ClinVar record or `None`,
+  `gwas_n` the matching GWAS study count, `cv_matched` whether the ClinVar
+  phenotype matches the curated condition (False if the phenotype is empty).
+  `cv_tier = clinvar_tier(cv.significance, cv.review_stars)` (None when `cv` is
+  None).
+  - `carrier`: `cv_tier` or `"unknown"`. GWAS is ignored.
+  - `trait`: if `gwas_n >= 1` then `gwas_tier(gwas_n)`; else if `cv` and
+    `cv_matched` then `cv_tier` or `"unknown"`; else `"unknown"`. ClinVar
+    never overrides GWAS evidence for a trait.
+  - `None` (no category): the legacy rule, `cv_tier` or `gwas_tier(gwas_n)` or
+    `"unknown"`, and a warning on stderr naming the rsID.
+  - An explicit `association` on the target always wins, in every category.
+- **D-C.** `category` passes through to the panel variant (as every target key
+  does) and is **not** copied into findings. Schema unchanged.
+- **D-D.** `data/targets.carrier.json` gets `category: "carrier"` on all 9
+  variants and `data/targets.traits.json` gets `category: "trait"` on all 14.
+  Nothing else in those files changes. `targets.sample.json` is untouched.
+
+Ship gates:
+
+- `S2.carrier_*`: conflicting 1-star ClinVar with 5 GWAS studies gives
+  `conflicting`; 0-star ClinVar with strong GWAS gives `unknown`; 3-star
+  pathogenic gives `established`.
+- `S2.trait_gwas_wins`: 2 matching GWAS studies plus an unmatched conflicting
+  ClinVar gives `replicated`; the same with a **matched** conflicting ClinVar
+  also gives `replicated`; 1 matching study gives `single_study`.
+- `S2.trait_clinvar_fallback`: 0 matching studies and an unmatched pathogenic
+  3-star ClinVar gives `unknown`; with a matched one gives `established`.
+- `S2.explicit_wins`: explicit `association` beats derivation for carrier,
+  trait, and no category.
+- `S2.legacy_unchanged`: with no category, every association in the repo's
+  sample-fixture panels is identical to the pre-stage result, and a warning is
+  printed once per such variant.
+- `S2.invalid_category`: `"Carrier"`, `"other"`, `5`, `[]` each raise
+  `ValueError` mentioning the rsID; `main()` exits 1 and creates no file.
+- `S2.findings_no_category`: annotating with a panel that has categories
+  yields findings with no `category` key anywhere, and (if `jsonschema` is
+  installed) they validate against the schema.
+- `S2.targets_categories`: all variants in both targets files have a valid
+  category; counts are 9 and 14; no other key changed versus the base commit.
+- `S2.panel_sample_reproduces`: unchanged.
+
+Fence: no CLI, no `pyproject.toml`, no guard change, no curation changes, no
+changes to ClinVar or GWAS parsing beyond what is needed to feed the new
+function.
+
+---
+
+## Stage 3: allow the packaging paths in the guard (HIGH, security boundary)
+
+Smallest possible change so Stage 4 can be committed. **Additive only.**
+
+- Add `pyproject.toml` to `ALLOW_EXACT` and `snp_insights/` to `ALLOW_PREFIX`
+  in `scripts/guard.py`.
+- Add `!/pyproject.toml` and `!/snp_insights/` to `.gitignore`.
+- Update the guard's gitignore self-test expectations so those two paths are
+  treated as application paths that must not be ignored.
+- Do **not** remove or loosen any rule, pattern, size limit, suffix list, or
+  exemption. `snp_insights/` is **not** added to `DATA_ALLOWED_PREFIX`.
+- Do **not** create `pyproject.toml` or `snp_insights/` yet.
+
+Ship gates (in `tests/test_guard.py`):
+
+- `S3.allows_pyproject` / `S3.allows_package_py`: allowed.
+- `S3.refuses_data_in_package`: `snp_insights/x.csv`, `.json`, `.zip`, `.vcf`
+  still refused (data-suffix guard).
+- `S3.still_refuses_other_root`: `notes.txt`, `data.csv`, `report.md` at the
+  root still refused; `snp_insights/.env` still refused (env guard).
+- `S3.secret_scan_covers_package`: a decoy secret in `snp_insights/cli.py`
+  is flagged.
+- `S3.gitignore_selftest`: passes, and fails if either new path is removed
+  from `.gitignore` (mutation, performed on a temp copy).
+- `S3.additive_only`: reviewer and owner confirm by diff that no existing rule
+  line was removed or relaxed.
+
+---
+
+## Stage 4: single entrypoint (STANDARD, privacy pass-through scrutiny)
+
+Layout: `snp_insights/__init__.py` (`__version__ = "0.1.0"`),
+`snp_insights/__main__.py`, `snp_insights/cli.py`, root `pyproject.toml`. Works
+from any working directory via `python -m snp_insights` with the repo on
+`PYTHONPATH` or the current directory at the repo root, and via
+`pip install -e .` (console script `snp-insights`). Wheel installation outside
+the repo is **not supported** (the tools live outside the package); document it.
+
+Decisions:
+
+- **D-E.** Subcommands: `fetch` (`tools/fetch_reference.py`), `build-panel`
+  (`tools/build_panel.py`), `check-raw` (`scripts/check_raw.py`), `annotate`
+  (`stage2/annotate.py`), `narrate` (`stage3/run.py`), `run`. `--version`
+  prints `snp-insights 0.1.0`. Each existing `main()` gains an optional
+  `argv=None` parameter passed to `parse_args(argv)`; direct script use is
+  unchanged. Sub-tool arguments are forwarded **verbatim**.
+- **D-F.** `run RAW PANEL [--out-dir DIR] [--force] [narrate args...]` =
+  annotate, then narrate. Output files go in `DIR` (default
+  `./snp-insights-out`, created if needed): `findings.json`, `report.md`,
+  `report.ir.json`, `report.run.json`. Existing output files are **never
+  overwritten** without `--force`: it refuses, exits non-zero, and writes
+  nothing. Unknown trailing arguments go to `narrate` verbatim.
+- **D-G.** Privacy invariants: `fetch` accepts no raw-file argument (an
+  unknown flag exits 2); `run` never adds, removes, or rewrites `--endpoint`,
+  `--model`, or `--accept-privacy-risk`; with the default (local) endpoint the
+  only network target is localhost; `--endpoint openrouter` without
+  `--accept-privacy-risk` exits non-zero with zero HTTP calls.
+- **D-H.** `pyproject.toml`: `name = "snp-insights"`, `version` equals
+  `snp_insights.__version__`, `requires-python = ">=3.9"`, `dependencies = []`,
+  optional extra `schema = ["jsonschema"]`, license `GPL-3.0-or-later`, console
+  script `snp-insights = "snp_insights.cli:main"`, build backend `setuptools`.
+- **D-I.** The CLI exit code is the sub-tool's exit code. An unknown
+  subcommand exits 2. `--help` exits 0 and lists every subcommand.
+
+Ship gates:
+
+- `S4.help_lists_all`, `S4.version`, `S4.unknown_subcommand_exit2`.
+- `S4.forward_verbatim`: with each sub-tool's `main` monkeypatched to record
+  `argv`, every subcommand receives exactly the user's arguments.
+- `S4.fetch_rejects_raw`: `fetch --raw x` and `fetch x.txt` exit 2;
+  `fetch --targets <t> --dry-run` makes zero network calls (patch
+  `urllib.request.urlopen` to raise).
+- `S4.run_end_to_end`: on `fixtures/raw.sample.txt` and
+  `data/panel.sample.json` with the model client patched to fail, the four
+  output files exist (template fallback), and `urlopen` is never called by
+  annotate.
+- `S4.run_no_clobber`: second run in the same dir exits non-zero and leaves
+  every file byte-identical; `--force` overwrites.
+- `S4.gate_passthrough`: `run ... --endpoint openrouter` without the flag exits
+  non-zero, zero HTTP calls; with the flag, the forwarded argv contains it
+  exactly once and the endpoint and model verbatim; the CLI never injects it.
+- `S4.cwd_independent`: runs from a temp working directory.
+- `S4.exit_code_propagation`: a sub-tool returning 3 gives CLI exit 3.
+- `S4.pyproject_consistent`: version matches `__version__`, console script
+  target resolves to a callable, `dependencies` is empty.
+- `S4.no_data_in_package`: no tracked file under `snp_insights/` has a
+  data-bearing suffix.
+
+Fence: no change to Stage 3 rules, the gate itself, `validate_report`, schema,
+or the guard. No packaging of `tools/` or `stage*/` into a wheel.
+
+---
+
+## Stage 5: documentation close-out (LOW, no reviewer)
+
+README quickstart uses the CLI; `DESIGN.md` gains decisions D29 to D33 (evidence
+module, condition-aware matching, category derivation, CLI, packaging limit) and
+removes the now-fixed limitations (GWAS per-rsID only, ClinVar last-row);
+`AGENTS.md` roadmap and status updated; `docs/accepted-limits.md` finalized.
+Free checks only: tests, guard, doc link check by the owner.
+
+---
+
+## Known limits carried into the loop (not fixed here)
+
+- `fetch_reference.load_target_entries` dedupes by rsID, first file wins, so an
+  rsID listed in two targets files with different conditions keeps one.
+- ClinVar `api` mode has no phenotype, so trait fallback from ClinVar is
+  unavailable in that mode (carrier derivation is unaffected).
+- Alias files remain hand-maintained; unlisted synonyms do not match.
