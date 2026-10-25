@@ -53,16 +53,70 @@ class _UsageError(Exception):
     """A `run` command-line usage error (exit code 2)."""
 
 
+class _ToolIntegrityError(Exception):
+    """A sub-tool module resolved outside this repository."""
+
+    def __init__(self, name, file):
+        super().__init__("refusing module %s from %s" % (name, file))
+        self.name = name
+        self.file = file
+
+
+def _repo_module_names():
+    names = set()
+    for sub in _TOOL_DIRS:
+        try:
+            entries = os.listdir(os.path.join(_ROOT, sub))
+        except OSError:
+            continue
+        for entry in entries:
+            if entry.endswith(".py"):
+                names.add(entry[:-3])
+    return names
+
+
+def _within_root(path):
+    root = os.path.realpath(_ROOT)
+    real = os.path.realpath(path)
+    return real == root or real.startswith(root + os.sep)
+
+
+def _integrity_error():
+    for name in sorted(_repo_module_names()):
+        module = sys.modules.get(name)
+        if module is None:
+            continue
+        path = getattr(module, "__file__", None)
+        if not path:
+            continue
+        if not _within_root(path):
+            return _ToolIntegrityError(name, path)
+    return None
+
+
+def _integrity_message(exc):
+    return ("snp-insights: refusing module %s loaded from outside the repository: %s"
+            % (exc.name, exc.file))
+
+
 def _ensure_tool_paths():
     for sub in _TOOL_DIRS:
         path = os.path.join(_ROOT, sub)
-        if path not in sys.path:
-            sys.path.insert(0, path)
+        while path in sys.path:
+            sys.path.remove(path)
+        sys.path.insert(0, path)
 
 
 def _tool_module(name):
     _ensure_tool_paths()
-    return importlib.import_module(name)
+    bad = _integrity_error()
+    if bad is not None:
+        raise bad
+    module = importlib.import_module(name)
+    path = getattr(module, "__file__", None)
+    if not path or not _within_root(path):
+        raise _ToolIntegrityError(name, path or "<no __file__>")
+    return module
 
 
 def _usage():
@@ -80,7 +134,12 @@ def _call(module, args):
 
 
 def _run_tool(sub, args):
-    return _call(_tool_module(_SUBCOMMAND_MODULES[sub]), args)
+    try:
+        module = _tool_module(_SUBCOMMAND_MODULES[sub])
+    except _ToolIntegrityError as exc:
+        print(_integrity_message(exc), file=sys.stderr)
+        return 1
+    return _call(module, args)
 
 
 def _parse_run(args):
@@ -138,6 +197,10 @@ def _run_usage():
 
 
 def _run_pipeline(args):
+    after = None
+    if "--" in args:
+        split = args.index("--")
+        args, after = args[:split], args[split + 1:]
     if "-h" in args or "--help" in args:
         print(_run_usage())
         return 0
@@ -147,6 +210,19 @@ def _run_pipeline(args):
         print("snp-insights run: " + str(exc), file=sys.stderr)
         print(_usage(), file=sys.stderr)
         return 2
+
+    old_umask = os.umask(0o077)
+    try:
+        return _run_pipeline_body(raw, panel, out_dir, force, forwarded, after)
+    finally:
+        os.umask(old_umask)
+
+
+def _run_pipeline_body(raw, panel, out_dir, force, forwarded, after):
+    bad = _integrity_error()
+    if bad is not None:
+        print(_integrity_message(bad), file=sys.stderr)
+        return 1
 
     paths = {name: os.path.join(out_dir, name) for name in _OUTPUT_NAMES}
 
@@ -180,12 +256,24 @@ def _run_pipeline(args):
     print(_REMINDER, file=sys.stderr)
 
     findings = paths["findings.json"]
-    rc = _call(_tool_module("annotate"), [raw, panel, "-o", findings])
+    try:
+        rc = _call(_tool_module("annotate"), [raw, panel, "-o", findings])
+    except _ToolIntegrityError as exc:
+        print(_integrity_message(exc), file=sys.stderr)
+        return 1
     if rc != 0:
         return rc
 
     report = paths["report.md"]
-    return _call(_tool_module("run"), [findings] + forwarded + ["-o", report])
+    if after is None:
+        narrate_args = [findings] + forwarded + ["-o", report]
+    else:
+        narrate_args = [findings] + forwarded + ["-o", report] + ["--"] + after
+    try:
+        return _call(_tool_module("run"), narrate_args)
+    except _ToolIntegrityError as exc:
+        print(_integrity_message(exc), file=sys.stderr)
+        return 1
 
 
 def main(argv=None):
