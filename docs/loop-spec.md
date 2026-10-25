@@ -366,6 +366,41 @@ Ship gates:
   Once it exists, add its mutation (remove `print(text)`) to
   `scripts/loop_mutations.py`.
 
+Clarifications decided after reading the five tool `main()` functions
+(orchestrator decisions, 2026-10-24):
+
+- **D-J.** Dispatch is by hand on the first word of `argv`, not through argparse
+  subparsers (REMAINDER handling is unreliable there). Everything after the
+  subcommand is forwarded verbatim as a list. `snp-insights`, `snp-insights -h`,
+  and `--help` print usage listing every subcommand (exit 0); `--version` prints
+  the version (exit 0); `snp-insights <sub> --help` is forwarded to that tool and
+  prints the tool's own help. `cli.main(argv=None)` returns an int exit code,
+  lets argparse's `SystemExit` propagate for usage errors, and `__main__` does
+  `sys.exit(main())`. Sub-tool modules are imported at call time and invoked as
+  `module.main(list_of_args)` so tests can patch `module.main`.
+- **D-K.** Each existing tool's `main()` gains `argv=None` and calls
+  `parse_args(argv)`; that signature change is the only edit allowed in
+  `tools/fetch_reference.py`, `tools/build_panel.py`, `scripts/check_raw.py`,
+  `stage2/annotate.py`, and `stage3/run.py`. Direct script use stays identical.
+- **D-L.** `run RAW PANEL [--out-dir DIR | --out-dir=DIR] [--force] [narrate
+  args...]`: the two positionals before any flag are RAW and PANEL; `--out-dir` and
+  `--force` are consumed by `run`; everything else is forwarded verbatim to
+  `narrate`, **except** that `-o`, `--out`, and `--out=...` are refused (exit 2,
+  message says the output location is set by `--out-dir`). `run` calls annotate as
+  `RAW PANEL -o DIR/findings.json`, then narrate as `DIR/findings.json <forwarded
+  args> -o DIR/report.md`. If annotate fails, narrate is not run and the annotate
+  exit code is returned. The no-clobber check happens BEFORE annotate runs and
+  covers all four output names (`findings.json`, `report.md`, `report.ir.json`,
+  `report.run.json`). `run` prints one reminder line that `findings.json` is
+  private health data and stays local, and never prints genotypes.
+- **D-M2.** The privacy gate in `stage3/run.py` returns exit code 2 when the online
+  endpoint is used without `--accept-privacy-risk`; the CLI propagates it
+  unchanged.
+- **D-N.** `pyproject.toml` uses the `setuptools` backend with
+  `[tool.setuptools] packages = ["snp_insights"]`. Tests must not run `pip` or
+  need `tomllib` (absent before Python 3.11): check `pyproject.toml` with plain
+  text or regex parsing, and use `tomllib` only if importable.
+
 Fence: no change to Stage 3 rules, the gate itself, `validate_report`, schema,
 or the guard. No packaging of `tools/` or `stage*/` into a wheel.
 
