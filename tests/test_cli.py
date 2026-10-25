@@ -1,0 +1,450 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
+"""Stage 4 gates: the single-entrypoint `snp-insights` CLI.
+
+Run standalone:  python tests/test_cli.py
+Or as part of:   python tests/test_pipeline.py
+
+Every gate is isolated: a missing module, a missing function, or any exception
+fails only that one check (via attempt()), never the whole run.
+"""
+import contextlib
+import io
+import os
+import subprocess
+import sys
+import tempfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _d in ("", "tools", "stage2", "stage3", "scripts", "tests"):
+    _p = os.path.join(ROOT, _d)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+DATA = os.path.join(ROOT, "data")
+FIX = os.path.join(ROOT, "fixtures")
+RAW = os.path.join(FIX, "raw.sample.txt")
+PANEL = os.path.join(DATA, "panel.sample.json")
+SUBCOMMANDS = ("fetch", "build-panel", "check-raw", "annotate", "narrate", "run")
+OUTPUTS = ("findings.json", "report.md", "report.ir.json", "report.run.json")
+
+
+def _cli():
+    import snp_insights.cli as cli
+    return cli
+
+
+def _invoke(argv):
+    """Run cli.main(argv), capturing streams and any argparse SystemExit."""
+    cli = _cli()
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        try:
+            code = cli.main(argv)
+        except SystemExit as exc:  # argparse usage errors / --help
+            value = exc.code
+            if value is None:
+                code = 0
+            elif isinstance(value, int):
+                code = value
+            else:
+                code = 1
+    return code, out.getvalue(), err.getvalue()
+
+
+def _patch_main(module_name, ret=0, record=None):
+    import importlib
+    mod = importlib.import_module(module_name)
+    orig = mod.main
+
+    def fake(argv):
+        if record is not None:
+            record.append(list(argv))
+        return ret
+
+    mod.main = fake
+    return mod, orig
+
+
+@contextlib.contextmanager
+def _no_network():
+    import urllib.request
+    import llm
+    orig_url, orig_chat = urllib.request.urlopen, llm.chat
+
+    def boom(*a, **k):
+        raise AssertionError("network call attempted")
+
+    urllib.request.urlopen = boom
+    llm.chat = boom
+    try:
+        yield
+    finally:
+        urllib.request.urlopen = orig_url
+        llm.chat = orig_chat
+
+
+def _read_bytes(path):
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
+def _output_paths(d):
+    return {name: os.path.join(d, name) for name in OUTPUTS}
+
+
+def run(check):
+    def attempt(name, fn):
+        try:
+            result = fn()
+        except Exception:  # noqa: BLE001
+            check(name, False)
+            return
+        check(name, bool(result))
+
+    # --- S4.help_lists_all ----------------------------------------------
+    def s4_help_lists_all():
+        for argv in (["--help"], ["-h"], []):
+            code, out, _ = _invoke(argv)
+            if code != 0:
+                return False
+            if not all(sub in out for sub in SUBCOMMANDS):
+                return False
+        return True
+    attempt("S4.help_lists_all", s4_help_lists_all)
+
+    # --- S4.version ------------------------------------------------------
+    def s4_version():
+        import snp_insights
+        code, out, _ = _invoke(["--version"])
+        return code == 0 and out.strip() == "snp-insights " + snp_insights.__version__
+    attempt("S4.version", s4_version)
+
+    # --- S4.unknown_subcommand_exit2 ------------------------------------
+    def s4_unknown_subcommand_exit2():
+        code, _, _ = _invoke(["definitely-not-a-command"])
+        return code == 2
+    attempt("S4.unknown_subcommand_exit2", s4_unknown_subcommand_exit2)
+
+    # --- S4.exit_code_propagation ---------------------------------------
+    def s4_exit_code_propagation():
+        mod, orig = _patch_main("fetch_reference", ret=3)
+        try:
+            code, _, _ = _invoke(["fetch", "--dry-run"])
+        finally:
+            mod.main = orig
+        return code == 3
+    attempt("S4.exit_code_propagation", s4_exit_code_propagation)
+
+    # --- S4.forward_verbatim (all six) ----------------------------------
+    def s4_forward_verbatim():
+        cases = {
+            "fetch": ("fetch_reference",
+                      ["--targets", "data/targets.carrier.json", "--dry-run"]),
+            "build-panel": ("build_panel", ["--targets", "t.json", "-o", "p.json"]),
+            "check-raw": ("check_raw", ["raw.txt", "--no-hash"]),
+            "annotate": ("annotate", ["raw.txt", "panel.json", "-o", "f.json"]),
+            "narrate": ("run", ["findings.json", "--model", "m", "-o", "report.md"]),
+        }
+        for sub, (modname, args) in cases.items():
+            record = []
+            mod, orig = _patch_main(modname, ret=0, record=record)
+            try:
+                code, _, _ = _invoke([sub] + args)
+            finally:
+                mod.main = orig
+            if code != 0 or record != [args]:
+                return False
+        return True
+    attempt("S4.forward_verbatim", s4_forward_verbatim)
+
+    def s4_forward_verbatim_run():
+        d = tempfile.mkdtemp()
+        annot, narr = [], []
+        ma, oa = _patch_main("annotate", ret=0, record=annot)
+        mn, on = _patch_main("run", ret=0, record=narr)
+        try:
+            code, _, _ = _invoke(["run", "RAW.txt", "PANEL.json", "--out-dir", d,
+                                  "--model", "x", "--accept-privacy-risk"])
+        finally:
+            ma.main, mn.main = oa, on
+        want_annot = ["RAW.txt", "PANEL.json", "-o", os.path.join(d, "findings.json")]
+        want_narr = [os.path.join(d, "findings.json"), "--model", "x",
+                     "--accept-privacy-risk", "-o", os.path.join(d, "report.md")]
+        return code == 0 and annot == [want_annot] and narr == [want_narr]
+    attempt("S4.forward_verbatim_run", s4_forward_verbatim_run)
+
+    # --- S4.fetch_rejects_raw -------------------------------------------
+    def s4_fetch_rejects_raw():
+        for argv in (["fetch", "--raw", "x"], ["fetch", "x.txt"]):
+            code, _, _ = _invoke(argv)
+            if code != 2:
+                return False
+        return True
+    attempt("S4.fetch_rejects_raw", s4_fetch_rejects_raw)
+
+    def s4_fetch_dry_run_no_network():
+        with _no_network():
+            code, out, _ = _invoke(
+                ["fetch", "--targets", os.path.join(DATA, "targets.carrier.json"),
+                 "--dry-run"])
+        return code == 0 and "rsid" in out.lower()
+    attempt("S4.fetch_dry_run_no_network", s4_fetch_dry_run_no_network)
+
+    # --- S4.gate_passthrough (three cases) ------------------------------
+    def s4_gate_passthrough_refused():
+        d = tempfile.mkdtemp()
+        with _no_network():
+            code, _, err = _invoke(["run", RAW, PANEL, "--endpoint", "openrouter",
+                                    "--out-dir", d])
+        if code != 2:
+            return False
+        if "privacy" not in err.lower() and "risk" not in err.lower():
+            return False
+        return not os.path.exists(os.path.join(d, "report.md"))
+    attempt("S4.gate_passthrough_refused", s4_gate_passthrough_refused)
+
+    def s4_gate_passthrough_accepted():
+        d = tempfile.mkdtemp()
+        annot, narr = [], []
+        ma, oa = _patch_main("annotate", ret=0, record=annot)
+        mn, on = _patch_main("run", ret=0, record=narr)
+        try:
+            code, _, _ = _invoke(["run", RAW, PANEL, "--out-dir", d,
+                                  "--endpoint", "openrouter", "--model", "m",
+                                  "--accept-privacy-risk"])
+        finally:
+            ma.main, mn.main = oa, on
+        if code != 0 or not narr:
+            return False
+        argv = narr[0]
+        if argv.count("--accept-privacy-risk") != 1:
+            return False
+        i = argv.index("--endpoint")
+        j = argv.index("--model")
+        return argv[i:i + 2] == ["--endpoint", "openrouter"] and argv[j:j + 2] == ["--model", "m"]
+    attempt("S4.gate_passthrough_accepted", s4_gate_passthrough_accepted)
+
+    def s4_gate_passthrough_never_injected():
+        d = tempfile.mkdtemp()
+        saved = dict(os.environ)
+        os.environ["SNP_INSIGHTS_ACCEPT_PRIVACY_RISK"] = "1"
+        os.environ["SNP_INSIGHTS_AUTO_ACCEPT"] = "yes"
+        narr = []
+        ma, oa = _patch_main("annotate", ret=0)
+        mn, on = _patch_main("run", ret=0, record=narr)
+        try:
+            code, _, _ = _invoke(["run", RAW, PANEL, "--out-dir", d])
+        finally:
+            ma.main, mn.main = oa, on
+            os.environ.clear()
+            os.environ.update(saved)
+        if code != 0 or not narr:
+            return False
+        argv = narr[0]
+        return all(flag not in argv for flag in
+                   ("--accept-privacy-risk", "--send-alleles", "--keep-input-hash"))
+    attempt("S4.gate_passthrough_never_injected", s4_gate_passthrough_never_injected)
+
+    # --- S4.run_refuses_out_flag ----------------------------------------
+    def s4_run_refuses_out_flag():
+        annot, narr = [], []
+        ma, oa = _patch_main("annotate", ret=0, record=annot)
+        mn, on = _patch_main("run", ret=0, record=narr)
+        try:
+            for flag in ("-o", "--out", "--out=x"):
+                d = tempfile.mkdtemp()
+                code, _, _ = _invoke(["run", RAW, PANEL, flag, "--out-dir", d])
+                if code != 2:
+                    return False
+                if os.listdir(d):
+                    return False
+        finally:
+            ma.main, mn.main = oa, on
+        return annot == [] and narr == []
+    attempt("S4.run_refuses_out_flag", s4_run_refuses_out_flag)
+
+    # --- S4.run_annotate_failure_stops ----------------------------------
+    def s4_run_annotate_failure_stops():
+        d = tempfile.mkdtemp()
+        missing = os.path.join(d, "missing.txt")
+        annot, narr = [], []
+        ma, oa = _patch_main("annotate", ret=7, record=annot)
+        mn, on = _patch_main("run", ret=0, record=narr)
+        try:
+            code, _, _ = _invoke(["run", missing, PANEL, "--out-dir", d])
+        finally:
+            ma.main, mn.main = oa, on
+        if code != 7 or narr != []:
+            return False
+        return all(not os.path.exists(p) for p in _output_paths(d).values())
+    attempt("S4.run_annotate_failure_stops", s4_run_annotate_failure_stops)
+
+    # --- S4.run_end_to_end ----------------------------------------------
+    def s4_run_end_to_end():
+        d = tempfile.mkdtemp()
+        with _no_network():
+            code, _, _ = _invoke(["run", RAW, PANEL, "--out-dir", d])
+        if code != 0:
+            return False
+        paths = _output_paths(d)
+        if not all(os.path.exists(p) for p in paths.values()):
+            return False
+        return os.path.getsize(paths["report.md"]) > 0
+    attempt("S4.run_end_to_end", s4_run_end_to_end)
+
+    # --- S4.run_no_clobber ----------------------------------------------
+    def s4_run_no_clobber():
+        d = tempfile.mkdtemp()
+        with _no_network():
+            first, _, _ = _invoke(["run", RAW, PANEL, "--out-dir", d])
+        paths = _output_paths(d)
+        before = {n: _read_bytes(p) for n, p in paths.items()}
+        with _no_network():
+            second, _, _ = _invoke(["run", RAW, PANEL, "--out-dir", d])
+        after = {n: _read_bytes(p) for n, p in paths.items()}
+        return first == 0 and second != 0 and before == after
+    attempt("S4.run_no_clobber", s4_run_no_clobber)
+
+    def s4_run_no_clobber_one_file():
+        d = tempfile.mkdtemp()
+        sentinel = os.path.join(d, "report.ir.json")
+        with open(sentinel, "wb") as fh:
+            fh.write(b"sentinel")
+        with _no_network():
+            code, _, _ = _invoke(["run", RAW, PANEL, "--out-dir", d])
+        paths = _output_paths(d)
+        if code == 0:
+            return False
+        if _read_bytes(sentinel) != b"sentinel":
+            return False
+        others = [p for n, p in paths.items() if n != "report.ir.json"]
+        return all(not os.path.exists(p) for p in others)
+    attempt("S4.run_no_clobber_one_file", s4_run_no_clobber_one_file)
+
+    def s4_run_force_overwrites():
+        d = tempfile.mkdtemp()
+        with _no_network():
+            _invoke(["run", RAW, PANEL, "--out-dir", d])
+        report = os.path.join(d, "report.md")
+        with open(report, "wb") as fh:
+            fh.write(b"SENTINEL")
+        with _no_network():
+            code, _, _ = _invoke(["run", RAW, PANEL, "--force", "--out-dir", d])
+        return code == 0 and _read_bytes(report) != b"SENTINEL" and os.path.getsize(report) > 0
+    attempt("S4.run_force_overwrites", s4_run_force_overwrites)
+
+    # --- S4.cwd_independent ---------------------------------------------
+    def s4_cwd_independent():
+        d = tempfile.mkdtemp()
+        env = dict(os.environ)
+        env["PYTHONPATH"] = ROOT + os.pathsep + env.get("PYTHONPATH", "")
+        proc = subprocess.run([sys.executable, "-m", "snp_insights", "--version"],
+                              cwd=d, capture_output=True, text=True, env=env)
+        return proc.returncode == 0 and proc.stdout.strip() == "snp-insights 0.1.0"
+    attempt("S4.cwd_independent", s4_cwd_independent)
+
+    # --- S4.build_panel_stdout_mode -------------------------------------
+    def s4_build_panel_stdout_mode():
+        import build_panel
+        common = ["--targets", os.path.join(DATA, "targets.sample.json"),
+                  "--clinvar", os.path.join(FIX, "sources", "clinvar.sample.tsv"),
+                  "--gnomad", os.path.join(FIX, "sources", "gnomad.sample.vcf")]
+        out_path = os.path.join(tempfile.mkdtemp(), "panel.json")
+        buf_file = io.StringIO()
+        with contextlib.redirect_stdout(buf_file):
+            rc_file = build_panel.main(common + ["-o", out_path])
+        if rc_file != 0:
+            return False
+        written = _read_bytes(out_path).decode()
+        buf_stdout = io.StringIO()
+        with contextlib.redirect_stdout(buf_stdout):
+            rc_stdout = build_panel.main(list(common))
+        if rc_stdout != 0:
+            return False
+        if buf_stdout.getvalue() != written:
+            return False
+        buf_cli = io.StringIO()
+        with contextlib.redirect_stdout(buf_cli):
+            code, _, _ = _invoke(["build-panel"] + common)
+        return code == 0 and buf_cli.getvalue() == written
+    attempt("S4.build_panel_stdout_mode", s4_build_panel_stdout_mode)
+
+    # --- S4.pyproject_consistent ----------------------------------------
+    def s4_pyproject_consistent():
+        import importlib
+        import snp_insights
+        path = os.path.join(ROOT, "pyproject.toml")
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        checks = [
+            'name = "snp-insights"',
+            'version = "%s"' % snp_insights.__version__,
+            'requires-python = ">=3.9"',
+            "dependencies = []",
+            "GPL-3.0-or-later",
+            'snp-insights = "snp_insights.cli:main"',
+            "setuptools",
+            'packages = ["snp_insights"]',
+            'schema = ["jsonschema"]',
+        ]
+        if not all(c in text for c in checks):
+            return False
+        mod = importlib.import_module("snp_insights.cli")
+        if not callable(getattr(mod, "main", None)):
+            return False
+        try:
+            import tomllib
+        except ImportError:
+            return True
+        with open(path, "rb") as fh:
+            data = tomllib.load(fh)
+        proj = data.get("project", {})
+        if proj.get("name") != "snp-insights":
+            return False
+        if proj.get("version") != snp_insights.__version__:
+            return False
+        if proj.get("dependencies") != []:
+            return False
+        target = proj.get("scripts", {}).get("snp-insights", "")
+        modname, _, attr = target.partition(":")
+        m = importlib.import_module(modname)
+        return callable(getattr(m, attr, None))
+    attempt("S4.pyproject_consistent", s4_pyproject_consistent)
+
+    # --- S4.no_data_in_package ------------------------------------------
+    def s4_no_data_in_package():
+        import guard
+        root = os.path.join(ROOT, "snp_insights")
+        if not os.path.isfile(os.path.join(root, "cli.py")):
+            return False
+        suffixes = guard.DATA_SUFFIXES
+        for dirpath, _dirnames, filenames in os.walk(root):
+            for name in filenames:
+                if name.endswith(".pyc"):
+                    continue
+                low = name.lower()
+                if any(low.endswith(s) for s in suffixes):
+                    return False
+        return True
+    attempt("S4.no_data_in_package", s4_no_data_in_package)
+
+
+def main():
+    passed, failed = [], []
+
+    def check(name, cond):
+        (passed if cond else failed).append(name)
+
+    run(check)
+    for name in passed:
+        print(f"  ok   {name}")
+    for name in failed:
+        print(f"  FAIL {name}")
+    print(f"\n{len(passed)} passed, {len(failed)} failed")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
