@@ -365,10 +365,8 @@ def run(check):
             return False
         if buf_stdout.getvalue() != written:
             return False
-        buf_cli = io.StringIO()
-        with contextlib.redirect_stdout(buf_cli):
-            code, _, _ = _invoke(["build-panel"] + common)
-        return code == 0 and buf_cli.getvalue() == written
+        code, cli_out, _ = _invoke(["build-panel"] + common)
+        return code == 0 and cli_out == written
     attempt("S4.build_panel_stdout_mode", s4_build_panel_stdout_mode)
 
     # --- S4.pyproject_consistent ----------------------------------------
