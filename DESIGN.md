@@ -339,7 +339,7 @@ over drug-response/benign), then phenotype match to the curated condition, then
 review stars — so `rs6025` resolves to its thrombophilia (conflicting) record,
 not its warfarin drug-response record. **SNPedia is not auto-fetched**: its site
 is behind a bot WAF (Incapsula), so it must be supplied as a
-  `rsid<TAB>magnitude` file to `build_panel --snpedia` under its CC BY-NC-SA terms.
+`rsid<TAB>magnitude` file to `build_panel --snpedia` under its CC BY-NC-SA terms.
 
 *Amended by D30 (matched-first ClinVar selection, sanitized and BOM-safe cache reads).*
 
@@ -350,7 +350,9 @@ GraphQL API: `mapIds` resolves each rsID to a variant id exactly (the free-text
 — no 73 MB download. `--gwas-mode full` retains the GWAS Catalog zip + local
 filter. A 0-star ClinVar record no longer short-circuits to `none`; it defers to
 the GWAS tier (so a trait with a strong GWAS signal isn't masked by a weak
-  ClinVar record). 
+ClinVar record).
+
+*Amended by D31: for `carrier` targets a ClinVar record with no usable tier no longer defers to GWAS; only `trait` targets and category-less targets still consult GWAS.*
 
 ### D29 — Shared evidence module
 **Decision (User, 2026-10-25).** Condition matching, ClinVar record selection,
@@ -378,8 +380,8 @@ before writing, and every text read accepts a leading byte-order mark
 or absent. `carrier` uses ClinVar only (GWAS is ignored); `trait` uses GWAS first
 and falls back to ClinVar only when the ClinVar phenotype matches the curated
 condition; absent keeps the legacy order (`clinvar_tier or gwas_tier or unknown`)
-and prints a one-time stderr warning naming the rsID when derivation was actually
-needed. An explicit `association` on the target always wins. An invalid
+and prints one stderr warning per such variant, naming the rsID, when derivation was
+actually needed. An explicit `association` on the target always wins. An invalid
 `category` fails the build with `ValueError` naming the rsID; `build_panel.main`
 prints it and exits 1 without writing the output file. `category` is a
 **panel-only** field and is never copied into `findings.json` (whose schema
@@ -551,8 +553,8 @@ allowlist was extended additively to permit `pyproject.toml` and `snp_insights/`
 | D26 | Curation-aware fetch: `effect_allele` + gene-aware ClinVar selection | User | 2026-10-20 |
 | D27 | Phenotype-aware ClinVar (variant_summary); SNPedia user-supplied | User | 2026-10-20 |
 | D28 | Per-rsID GWAS tier via Open Targets (default) | User | 2026-10-20 |
-| D29 | Shared `tools/evidence.py` for matching, ClinVar selection, and tiers | User | 2026-10-25 |
-| D30 | Condition-aware matching: matched-first ClinVar, per rsID+trait GWAS, sanitized/BOM-safe TSV | User | 2026-10-25 |
-| D31 | Category-aware association derivation (`carrier`/`trait`/absent) | User | 2026-10-25 |
-| D32 | Single-entrypoint `snp-insights` CLI with `run` and tool-module integrity | User | 2026-10-25 |
-| D33 | Packaging: `pyproject.toml` (setuptools, no runtime deps); wheel outside the repo unsupported | User | 2026-10-25 |
+| D29 | Shared `tools/evidence.py` for matching, ClinVar selection, and tiers | Model / User | 2026-10-25 |
+| D30 | Condition-aware matching: matched-first ClinVar, per rsID+trait GWAS, sanitized/BOM-safe TSV | Model / User | 2026-10-25 |
+| D31 | Category-aware association derivation (`carrier`/`trait`/absent) | Model / User | 2026-10-25 |
+| D32 | Single-entrypoint `snp-insights` CLI with `run` and tool-module integrity | Model / User | 2026-10-25 |
+| D33 | Packaging: `pyproject.toml` (setuptools, no runtime deps); wheel outside the repo unsupported | Model / User | 2026-10-25 |

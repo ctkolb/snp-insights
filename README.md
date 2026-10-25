@@ -102,7 +102,8 @@ python -m snp_insights --help        # lists every subcommand
 
 The six subcommands are `fetch`, `build-panel`, `check-raw`, `annotate`,
 `narrate`, and `run`. Each forwards the arguments after the subcommand to the
-matching tool verbatim; `snp-insights <sub> --help` prints that tool's own help.
+matching tool verbatim; `snp-insights <sub> --help` prints that tool's own help (for
+`run`, its own usage).
 
 ### 1. Build a panel snapshot (ETL, network-free at runtime)
 
@@ -345,14 +346,15 @@ This runs the core suite plus the staged gates it hooks in. The test files are:
 
 - `tests/test_pipeline.py` — parser, annotator, condition normalization and
   contradiction grouping, ETL robustness, semantic lints, and an end-to-end
-  validator accept/reject; it also calls the gate suites below.
+  validator accept/reject; it also calls the guard, evidence, category, and CLI suites below.
 - `tests/test_evidence.py` — the shared evidence module (condition matching,
   ClinVar selection, tiers).
 - `tests/test_category.py` — category-aware association derivation.
 - `tests/test_cli.py` — the `snp-insights` CLI (dispatch, `run`, privacy gate,
   tool-module integrity).
 - `tests/test_guard.py` — the privacy/publication guard and its self-tests.
-- `tests/test_result_block.py` — the build-loop result-block validator.
+- `tests/test_result_block.py` — the build-loop result-block validator (run separately;
+  `test_pipeline.py` does not call it).
 
 Each file also runs standalone, e.g. `python tests/test_cli.py`.
 

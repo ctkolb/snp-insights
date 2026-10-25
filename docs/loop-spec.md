@@ -1,6 +1,7 @@
 # Build-loop spec: roadmap items 3, 4, 5
 
-Status: APPROVED by the owner on 2026-10-24. Stage plan and decisions for the
+Status: APPROVED by the owner on 2026-10-24. COMPLETE: Stages 1 to 5 built, reviewed, and
+closed on 2026-10-25 (see `docs/accepted-limits.md` for every accepted limit). Stage plan and decisions for the
 adversarial build loop (builder, reviewer, owner). Companion to
 [DESIGN.md](../DESIGN.md) and [AGENTS.md](../AGENTS.md). Invented names only;
 no real data anywhere in this loop.
@@ -230,9 +231,10 @@ Ship gates:
   yields findings with no `category` key anywhere, and (if `jsonschema` is
   installed) they validate against the schema.
 - `S2.targets_categories`: all variants in both targets files have a valid
-  category; counts are 9 and 14; each variant's keys are exactly the previous key
-  set (carrier: `rsid, gene, condition, assayability, cls, effect_allele`; trait:
-  `rsid, gene, condition, assayability`) plus `category`, checked against inline
+  category; counts are 9 and 14; each variant's keys are the previous key set
+  (carrier: `rsid, gene, condition, assayability, cls` plus `effect_allele` where
+  present, which is 6 of 9 variants; trait: `rsid, gene, condition, assayability`)
+  plus `category`, checked against inline
   literal expectations. **The test must not call git or read history**: the CI
   test job uses a shallow checkout (an earlier draft said "versus the base
   commit"; that was a spec error).
