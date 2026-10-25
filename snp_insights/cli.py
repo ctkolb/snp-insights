@@ -117,7 +117,30 @@ def _parse_run(args):
     return raw, panel, (out_dir or DEFAULT_OUT_DIR), force, forwarded
 
 
+def _run_usage():
+    return "\n".join([
+        "usage: snp-insights run RAW PANEL [--out-dir DIR] [--force] [narrate options...]",
+        "",
+        "Annotate RAW against PANEL, then narrate the findings (local model by default).",
+        "",
+        "positional arguments:",
+        "  RAW             raw DNA file to annotate",
+        "  PANEL           panel JSON to annotate against",
+        "",
+        "run options:",
+        "  --out-dir DIR   output directory (default: ./snp-insights-out)",
+        "  --force         overwrite existing output files",
+        "  -h, --help      show this help and exit",
+        "",
+        "Every other option is forwarded to narrate. The output location is set by",
+        "--out-dir; -o and --out are refused here.",
+    ])
+
+
 def _run_pipeline(args):
+    if "-h" in args or "--help" in args:
+        print(_run_usage())
+        return 0
     try:
         raw, panel, out_dir, force, forwarded = _parse_run(args)
     except _UsageError as exc:
@@ -126,8 +149,20 @@ def _run_pipeline(args):
         return 2
 
     paths = {name: os.path.join(out_dir, name) for name in _OUTPUT_NAMES}
+
+    if os.path.exists(out_dir) and not os.path.isdir(out_dir):
+        print("snp-insights run: --out-dir is not a directory: %s" % out_dir,
+              file=sys.stderr)
+        return 1
+
+    for p in paths.values():
+        if os.path.islink(p):
+            print("snp-insights run: refusing to write through a symlink: %s" % p,
+                  file=sys.stderr)
+            return 1
+
     if not force:
-        existing = [p for p in paths.values() if os.path.exists(p)]
+        existing = [p for p in paths.values() if os.path.lexists(p)]
         if existing:
             print("snp-insights run: refusing to overwrite existing output in "
                   "%s (use --force):" % out_dir, file=sys.stderr)
@@ -135,7 +170,13 @@ def _run_pipeline(args):
                 print("  " + p, file=sys.stderr)
             return 1
 
-    os.makedirs(out_dir, exist_ok=True)
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except OSError as exc:
+        print("snp-insights run: cannot create output directory %s: %s"
+              % (out_dir, exc), file=sys.stderr)
+        return 1
+
     print(_REMINDER, file=sys.stderr)
 
     findings = paths["findings.json"]
