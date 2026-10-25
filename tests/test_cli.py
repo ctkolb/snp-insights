@@ -90,6 +90,12 @@ def _read_bytes(path):
         return fh.read()
 
 
+def _get_umask():
+    current = os.umask(0)
+    os.umask(current)
+    return current
+
+
 def _output_paths(d):
     return {name: os.path.join(d, name) for name in OUTPUTS}
 
@@ -423,6 +429,138 @@ def run(check):
                 return False
         return True
     attempt("S4.run_help", s4_run_help)
+
+    def s4_run_private_modes():
+        orig = os.umask(0o022)
+        try:
+            d = tempfile.mkdtemp()
+            out = os.path.join(d, "created")
+            with _no_network():
+                code, _, _ = _invoke(["run", RAW, PANEL, "--out-dir", out,
+                                      "--template-only"])
+            if code != 0 or (os.stat(out).st_mode & 0o777) != 0o700:
+                return False
+            for name in OUTPUTS:
+                if (os.stat(os.path.join(out, name)).st_mode & 0o777) != 0o600:
+                    return False
+
+            d2 = tempfile.mkdtemp()
+            pre = os.path.join(d2, "preexisting")
+            os.mkdir(pre)
+            os.chmod(pre, 0o755)
+            with _no_network():
+                code2, _, _ = _invoke(["run", RAW, PANEL, "--out-dir", pre,
+                                       "--template-only"])
+            if code2 != 0 or (os.stat(pre).st_mode & 0o777) != 0o755:
+                return False
+
+            d3 = tempfile.mkdtemp()
+            ma, oa = _patch_main("annotate", ret=7)
+            try:
+                code3, _, _ = _invoke(["run", RAW, PANEL, "--out-dir",
+                                       os.path.join(d3, "o")])
+            finally:
+                ma.main = oa
+            if code3 != 7 or _get_umask() != 0o022:
+                return False
+
+            d4 = tempfile.mkdtemp()
+            try:
+                cli = _cli()
+                with contextlib.redirect_stdout(io.StringIO()), \
+                        contextlib.redirect_stderr(io.StringIO()):
+                    cli.main(["run", os.path.join(d4, "missing.txt"), PANEL,
+                              "--out-dir", os.path.join(d4, "o")])
+            except BaseException:  # noqa: BLE001
+                pass
+            return _get_umask() == 0o022
+        finally:
+            os.umask(orig)
+    attempt("S4.run_private_modes", s4_run_private_modes)
+
+    def s4_tool_integrity_sys_modules():
+        import types
+        decoy_dir = tempfile.mkdtemp()
+        decoy_file = os.path.join(decoy_dir, "run.py")
+        with open(decoy_file, "w") as fh:
+            fh.write("def main(argv=None):\n    raise AssertionError('decoy ran')\n")
+        decoy = types.ModuleType("run")
+        decoy.__file__ = decoy_file
+        decoy.main = lambda argv=None: (_ for _ in ()).throw(
+            AssertionError("decoy ran"))
+        saved = sys.modules.get("run")
+        sys.modules["run"] = decoy
+        try:
+            code, _, err = _invoke(["narrate", "findings.json"])
+            if code != 1 or "run" not in err or decoy_file not in err:
+                return False
+            d = tempfile.mkdtemp()
+            code2, _, err2 = _invoke(["run", RAW, PANEL, "--out-dir", d,
+                                      "--template-only"])
+            if code2 != 1 or "run" not in err2 or os.listdir(d):
+                return False
+        finally:
+            if saved is not None:
+                sys.modules["run"] = saved
+            else:
+                sys.modules.pop("run", None)
+        return True
+    attempt("S4.tool_integrity_sys_modules", s4_tool_integrity_sys_modules)
+
+    def s4_tool_integrity_path_order():
+        decoy_dir = tempfile.mkdtemp()
+        with open(os.path.join(decoy_dir, "run.py"), "w") as fh:
+            fh.write("raise RuntimeError('decoy run imported')\n")
+        saved = sys.modules.pop("run", None)
+        sys.path.insert(0, decoy_dir)
+        try:
+            d = tempfile.mkdtemp()
+            with _no_network():
+                code, _, _ = _invoke(["run", RAW, PANEL, "--out-dir", d,
+                                      "--template-only"])
+            if code != 0:
+                return False
+            return all(os.path.exists(os.path.join(d, n)) for n in OUTPUTS)
+        finally:
+            try:
+                sys.path.remove(decoy_dir)
+            except ValueError:
+                pass
+            sys.modules.pop("run", None)
+            if saved is not None:
+                sys.modules["run"] = saved
+    attempt("S4.tool_integrity_path_order", s4_tool_integrity_path_order)
+
+    def s4_run_double_dash():
+        d = tempfile.mkdtemp()
+        annot, narr = [], []
+        ma, oa = _patch_main("annotate", ret=0, record=annot)
+        mn, on = _patch_main("run", ret=0, record=narr)
+        try:
+            code, _, _ = _invoke(["run", "RAW.txt", "PANEL.json", "--out-dir", d,
+                                  "--", "--out-dir", "foo", "--model", "m"])
+        finally:
+            ma.main, mn.main = oa, on
+        want_annot = ["RAW.txt", "PANEL.json", "-o", os.path.join(d, "findings.json")]
+        want_narr = [os.path.join(d, "findings.json"), "-o",
+                     os.path.join(d, "report.md"), "--", "--out-dir", "foo",
+                     "--model", "m"]
+        if code != 0 or annot != [want_annot] or narr != [want_narr]:
+            return False
+
+        d2 = tempfile.mkdtemp()
+        annot2, narr2 = [], []
+        ma, oa = _patch_main("annotate", ret=0, record=annot2)
+        mn, on = _patch_main("run", ret=0, record=narr2)
+        try:
+            code2, _, _ = _invoke(["run", "RAW.txt", "PANEL.json", "--out-dir", d2,
+                                   "--model", "x", "--", "-o", "ignored"])
+        finally:
+            ma.main, mn.main = oa, on
+        want_narr2 = [os.path.join(d2, "findings.json"), "--model", "x",
+                      "-o", os.path.join(d2, "report.md"), "--", "-o", "ignored"]
+        return code2 == 0 and narr2 == [want_narr2]
+    attempt("S4.run_double_dash", s4_run_double_dash)
 
     # --- S4.cwd_independent ---------------------------------------------
     def s4_cwd_independent():
