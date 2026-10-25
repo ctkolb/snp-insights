@@ -422,6 +422,41 @@ Round 2 decisions (found by the orchestrator's own smoke test of `run`, 2026-10-
   `S4.run_default_out_dir` (no `--out-dir`: files land in `./snp-insights-out`
   relative to the working directory), `S4.run_help`.
 
+Round 3 decisions (after the Stage 4 review; ratings are the orchestrator's,
+verified by reproduction, 2026-10-24):
+
+- **D-R (private outputs).** `run` sets `os.umask(0o077)` for its whole duration
+  and restores the previous umask in a `finally`. Files it creates are mode 0600
+  and an output directory it creates is 0700. An output directory that already
+  exists keeps its mode. Verified: with umask 022 the four outputs, including
+  `findings.json`, were created 0644 (health data readable by other local users).
+  Other subcommands are unchanged.
+- **D-S (tool-module integrity).** The CLI loads its sub-tools only from this
+  repository. (1) `_ensure_tool_paths` puts the four repo directories at the
+  FRONT of `sys.path` even if they are already present further back. (2) Before
+  importing, if any module whose top-level name equals the name of a `.py` file in
+  those four directories is already in `sys.modules` with a `__file__` outside the
+  repository root, the CLI refuses (exit 1, message names the module and its
+  file) and runs nothing. (3) After importing a tool module, its `__file__` must
+  be inside the repository root, else the same refusal. Verified: a decoy `run.py`
+  earlier on `PYTHONPATH`, or a decoy `run` already in `sys.modules`, was executed
+  instead of `stage3/run.py` (after `findings.json` had been written). The
+  attacker model needs control of the process environment, so the orchestrator
+  rates this MEDIUM (the reviewer rated it CRITICAL); the fix is small.
+- **D-T (`--` separator).** In `run`, everything from the first `--` token on is
+  forwarded verbatim and never interpreted by `run` (so `-- --out-dir foo` does
+  not change the output directory). The CLI's own `-o <report>` goes immediately
+  BEFORE the `--`, so narrate receives `[findings, <args before --> , -o, <report>,
+  --, <args after -->]`.
+- Gates: `S4.run_private_modes` (umask 022 in the test, restored afterward; the
+  four files are 0600 and a created out-dir is 0700; a pre-existing out-dir keeps
+  its mode; `run` leaves the process umask unchanged even when it fails),
+  `S4.tool_integrity_sys_modules` (a decoy module named `run` in `sys.modules`
+  makes `run` and `narrate` refuse with exit 1 and call nothing),
+  `S4.tool_integrity_path_order` (a decoy directory placed before the repo
+  directories on `sys.path` is not used: the real tool runs),
+  `S4.run_double_dash`.
+
 Fence: no change to Stage 3 rules, the gate itself, `validate_report`, schema,
 or the guard. No packaging of `tools/` or `stage*/` into a wheel.
 
