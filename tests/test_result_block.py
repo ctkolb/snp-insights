@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Tests for scripts/validate_result_block.py. Run: python tests/test_result_block.py"""
 import copy
 import json

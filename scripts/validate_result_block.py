@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Validate the machine-readable result block at the end of a builder or
 reviewer report. Pure standard library. No network. Reads only.
 

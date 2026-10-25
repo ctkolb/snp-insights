@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Free, model-free check that a review session left the repository untouched.
 
 Pure standard library. Offline. Only READS git state (status, diff, refs);

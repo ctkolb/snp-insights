@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ctkolb
 """Mutation check for the build loop. Pure standard library, offline.
 
 Copies the repo's code and tests into a temp directory, applies ONE deliberate
