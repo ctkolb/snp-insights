@@ -307,13 +307,13 @@ def build_findings(raw_path, panel, aliases=None):
     }
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Annotate an AncestryDNA raw file into findings.json.")
     ap.add_argument("raw")
     ap.add_argument("panel")
     ap.add_argument("-o", "--out", help="output path (default: stdout)")
     ap.add_argument("--aliases", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "condition_aliases.json"))
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     with open(args.panel) as fh:
         panel = json.load(fh)

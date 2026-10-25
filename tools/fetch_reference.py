@@ -561,7 +561,7 @@ def download_full(name, url, cache, email):
     return dest
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Fetch reference data into a local cache.")
     ap.add_argument("--targets", action="append", default=[], help="targets JSON (small mode); repeatable")
     ap.add_argument("--full", action="store_true", help="download complete files instead of per-record")
@@ -577,7 +577,7 @@ def main():
                     help="small mode: 'summary' (download variant_summary; phenotype-aware) or 'api' (E-utilities)")
     ap.add_argument("--sizes", action="store_true", help="HEAD the --full URLs, print sizes, and exit")
     ap.add_argument("--yes", action="store_true", help="allow a >5 GB --full download")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if args.sizes:
         print("full-file sizes (Content-Length):")

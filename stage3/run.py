@@ -294,7 +294,7 @@ def run_skeleton(findings, findings_path, findings_hash, args, chat_kwargs):
     return accepted, attempts_used, attempt_violations, False, prose_used, fell_back
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Synthesize a report from findings.json.")
     ap.add_argument("findings")
     ap.add_argument("--endpoint", choices=["ollama", "openrouter"], default="ollama")
@@ -308,7 +308,7 @@ def main():
     ap.add_argument("--accept-privacy-risk", action="store_true")
     ap.add_argument("--send-alleles", action="store_true", help="online: include raw alleles (not recommended)")
     ap.add_argument("--keep-input-hash", action="store_true", help="online: include the raw file hash (not recommended)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     with open(args.findings) as fh:
         findings = json.load(fh)

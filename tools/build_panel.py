@@ -382,7 +382,7 @@ def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, sn
     }
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Build an enriched panel snapshot.")
     ap.add_argument("--targets", required=True)
     ap.add_argument("--clinvar")
@@ -400,7 +400,7 @@ def main():
     ap.add_argument("--snpedia-release", default="2026-10")
     ap.add_argument("--retrieved-at", default="2026-10-01T00:00:00Z")
     ap.add_argument("-o", "--out", help="output path (default: stdout)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     with open(args.targets) as fh:
         targets = json.load(fh)
