@@ -277,6 +277,29 @@ Ship gates (in `tests/test_guard.py`):
 - `S3.additive_only`: reviewer and owner confirm by diff that no existing rule
   line was removed or relaxed.
 
+Round 2 (after review; decisions made by the owner on 2026-10-24: fix only what
+Stage 3 introduced; the pre-existing gaps are AL-008 and AL-009):
+
+- **R3-fix.** In `check_gitignore_selftest`, the new `SELFTEST_MUST_NOT_BE_IGNORED`
+  loop treats `git check-ignore` exit status 0 as "ignored" (a finding, as today),
+  1 as "not ignored" (fine), and **any other status as a finding** whose detail
+  says the check itself failed with that status. Verified cause: when
+  `snp_insights` is a symlink, `git check-ignore` exits 128 ("beyond a symbolic
+  link") and the loop silently passed. The existing loops are not changed.
+- `S3.selftest_checkignore_error`: with `guard.repo_root` monkeypatched to a temp
+  git repo whose `snp_insights` is a symlink (and whose `.gitignore` is the real
+  one), `check_gitignore_selftest()` reports a finding naming
+  `snp_insights/cli.py`; with a normal directory it reports none for these paths.
+- `S3.gitignore_package_ignores`: in a temp repo with the real `.gitignore`
+  (create the files and directories so directory-only patterns apply), these are
+  ignored: `snp_insights/.env`, `snp_insights/.env.local`,
+  `snp_insights/.sensitive-terms`, `snp_insights/x.pyc` (directly in the package
+  root, not inside `__pycache__`), `snp_insights/__pycache__` (the directory),
+  `snp_insights/y.private`, `snp_insights/z.local`, and
+  `snp_insights/a.generated.json`. Must fail if `!/snp_insights/.sensitive-terms`,
+  `!/snp_insights/*.pyc`, or `!/snp_insights/__pycache__/` is appended to the end
+  of the copied `.gitignore` (later rules win).
+
 ---
 
 ## Stage 4: single entrypoint (STANDARD, privacy pass-through scrutiny)
