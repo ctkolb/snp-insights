@@ -3,8 +3,8 @@
 How to use this file in a NEW session (no history):
 
 1. Open a fresh orchestrator session in the repo directory.
-2. Paste everything between `BEGIN ORCHESTRATOR PROMPT` and `END ORCHESTRATOR PROMPT`
-   (Part B) as your first message. Nothing else is needed.
+2. Paste the contents of the single fenced code block in Part B (the text between the
+   two marker lines of Part B) as your first message. Nothing else is needed.
 3. The prompt tells the orchestrator to read `AGENTS.md`, `docs/loop-spec.md`,
    `docs/accepted-limits.md`, and Part C of this file. Part C holds the project
    profile, the exact shell recipes, and the builder and reviewer prompt skeletons.
