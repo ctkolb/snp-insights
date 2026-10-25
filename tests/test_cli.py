@@ -175,6 +175,18 @@ def run(check):
         return code == 0 and annot == [want_annot] and narr == [want_narr]
     attempt("S4.forward_verbatim_run", s4_forward_verbatim_run)
 
+    def s4_run_reminder():
+        d = tempfile.mkdtemp()
+        ma, oa = _patch_main("annotate", ret=0)
+        mn, on = _patch_main("run", ret=0)
+        try:
+            code, _, err = _invoke(["run", RAW, PANEL, "--out-dir", d])
+        finally:
+            ma.main, mn.main = oa, on
+        low = err.lower()
+        return code == 0 and "findings.json" in err and "private" in low and "local" in low
+    attempt("S4.run_reminder", s4_run_reminder)
+
     # --- S4.fetch_rejects_raw -------------------------------------------
     def s4_fetch_rejects_raw():
         for argv in (["fetch", "--raw", "x"], ["fetch", "x.txt"]):

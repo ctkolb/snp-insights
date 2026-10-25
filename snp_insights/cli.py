@@ -43,8 +43,8 @@ _SUBCOMMANDS = tuple(name for name, _ in _SUBCOMMAND_HELP)
 DEFAULT_OUT_DIR = "./snp-insights-out"
 _OUTPUT_NAMES = ("findings.json", "report.md", "report.ir.json", "report.run.json")
 
-_REMINDER = ("reminder: findings.json is private health data; it stays on this "
-             "machine and is only sent to an online model if you opt in.")
+_REMINDER = ("reminder: findings.json is private health data; it stays local on "
+             "this machine and is only sent to an online model if you opt in.")
 
 _TOOL_DIRS = ("tools", "stage2", "stage3", "scripts")
 
