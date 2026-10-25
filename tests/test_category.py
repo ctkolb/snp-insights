@@ -315,7 +315,7 @@ def run(check):
                  "condition": "Factor V Leiden thrombophilia", "assayability": "snp",
                  "reference_allele": "G", "alternate_allele": "A", "category": "carrier",
                  "association": "established", "gnomad_af": 0.01, "snpedia": None,
-                 "clinvar": _clinvar_record("Pathogenic", 3)},
+                 "clinvar": {k: _clinvar_record("Pathogenic", 3)[k] for k in PANEL_CLINVAR_KEYS}},
             ],
         }
         doc = annotate.build_findings(os.path.join(FIX, "raw.sample.txt"), panel, {})
