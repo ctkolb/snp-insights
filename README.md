@@ -54,14 +54,21 @@ Stage 3  Narrate   (local)   findings.json ─▶ [LLM] ─▶ report_ir.json
 ## Repository layout
 
 ```
-schema/     JSON Schemas: findings.json contract, report IR contract
-stage2/     ancestry.py (raw parser), annotate.py (deterministic annotator)
-tools/      caveats.py, validate_report.py, render_report.py, prompt.py, harness.py
-data/       panel snapshots (annotations); targets for the ETL
-fixtures/   synthetic raw file, findings, report IRs, candidate outputs
-harness/    narrator candidate config and sample scorecard
-DESIGN.md   design decisions, rationale, and known limitations
-LICENSE     GNU GPL v3.0-or-later
+snp_insights/  the CLI package: __init__.py, __main__.py, cli.py
+pyproject.toml packaging metadata (setuptools; console script snp-insights)
+stage2/        ancestry.py (raw parser), annotate.py (deterministic annotator)
+stage3/        run.py (IR + self-repair + template fallback; local model default)
+tools/         evidence.py, build_panel.py, fetch_reference.py, validate_report.py,
+               render_report.py, prompt.py, harness.py, caveats.py, references.py,
+               llm.py, snpedia_to_tsv.py
+scripts/       check_raw.py, guard.py, loop_check_clean.py, loop_mutations.py,
+               validate_result_block.py
+schema/        JSON Schemas: findings.json contract, report IR contract
+data/          panel snapshots (annotations); targets for the ETL
+fixtures/      synthetic raw file, findings, report IRs, candidate outputs
+harness/       narrator candidate config and sample scorecard
+DESIGN.md      design decisions, rationale, and known limitations
+LICENSE        GNU GPL v3.0-or-later
 ```
 
 ## Requirements
@@ -74,39 +81,61 @@ LICENSE     GNU GPL v3.0-or-later
 
 ## Quickstart
 
+### Install and run
+
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install jsonschema   # optional but recommended
 ```
+
+`python -m snp_insights <command>` works from any directory when the repository
+is on `PYTHONPATH` or is the current directory. `pip install -e .` also installs a
+`snp-insights` console script; the test suite does **not** exercise that script
+(not verified here). Installing a wheel outside the repository is **not
+supported** — the sub-tools live in `tools/`, `stage2/`, and `stage3/` outside the
+package, so the CLI locates them relative to its own position in the repo.
+
+```bash
+python -m snp_insights --version     # snp-insights 0.1.0
+python -m snp_insights --help        # lists every subcommand
+```
+
+The six subcommands are `fetch`, `build-panel`, `check-raw`, `annotate`,
+`narrate`, and `run`. Each forwards the arguments after the subcommand to the
+matching tool verbatim; `snp-insights <sub> --help` prints that tool's own help (for
+`run`, its own usage).
 
 ### 1. Build a panel snapshot (ETL, network-free at runtime)
 
 Curation lives in `data/targets.sample.json`; evidence is joined at build time:
 
 ```bash
-python tools/build_panel.py --targets data/targets.sample.json \
+python -m snp_insights build-panel --targets data/targets.sample.json \
     --clinvar fixtures/sources/clinvar.sample.tsv \
     --gnomad  fixtures/sources/gnomad.sample.vcf \
     -o data/panel.sample.json
 ```
 
-Point `--clinvar` / `--gnomad` at real dumps (plain or `.gz`) to rebuild the
-snapshot, and add `--dbsnp-merge <RsMergeArch>` to record retired rsIDs so a file
-using an older rsID still matches. Stage 2 then needs no network.
+Without `-o`, `build-panel` prints the panel JSON to stdout. Point `--clinvar` /
+`--gnomad` at real dumps (plain or `.gz`) to rebuild the snapshot, and add
+`--dbsnp-merge <RsMergeArch>` to record retired rsIDs so a file using an older
+rsID still matches. Annotation then needs no network.
 
 ### 2. Annotate a raw file (Stage 2, local)
 
 ```bash
-python stage2/annotate.py fixtures/raw.sample.txt data/panel.sample.json \
+python -m snp_insights annotate fixtures/raw.sample.txt data/panel.sample.json \
     -o findings.json
 ```
 
-### 3. Synthesize a report (Stage 3)
+### 3. Narrate a report (Stage 3)
 
-Runs a **local** model by default — nothing leaves the machine:
+Runs a **local** model by default — nothing leaves the machine. Add
+`--template-only` to skip the model entirely and stay fully offline:
 
 ```bash
-python stage3/run.py findings.json --model qwen2.5:14b -o report.md
+python -m snp_insights narrate findings.json --model qwen2.5:14b -o report.md
+python -m snp_insights narrate findings.json --template-only -o report.md
 ```
 
 Two narration modes: `--mode skeleton` (default) has code own the structure,
@@ -120,10 +149,11 @@ is validated; on failure it is re-prompted with the specific violations (up to
 is rendered instead.
 
 An **online** model is opt-in and requires an explicit acknowledgment flag. It
-refuses to run otherwise, printing exactly what would be transmitted:
+refuses to run otherwise, printing exactly what would be transmitted and exiting
+with code 2:
 
 ```bash
-python stage3/run.py findings.json --endpoint openrouter \
+python -m snp_insights narrate findings.json --endpoint openrouter \
     --model qwen/qwen-... --accept-privacy-risk -o report.md
 ```
 
@@ -133,14 +163,38 @@ python stage3/run.py findings.json --endpoint openrouter \
 > to zero-retention providers, but that is risk *reduction*, not privacy. Only
 > the local (default) or template paths keep findings on your machine.
 
-To validate and render an IR you already have:
+### 4. One command: `run`
+
+`run RAW PANEL` annotates, then narrates, into an output directory:
+
+```bash
+python -m snp_insights run fixtures/raw.sample.txt data/panel.sample.json \
+    --out-dir ./snp-insights-out --template-only
+```
+
+- Writes four files into `--out-dir` (default `./snp-insights-out`, created if
+  needed): `findings.json`, `report.md`, `report.ir.json`, and `report.run.json`.
+- **Never overwrites** existing output without `--force`: it refuses with exit
+  code 1 and writes nothing.
+- Refuses an output path that is a **symlink** (dangling or not) even with
+  `--force`, and refuses an `--out-dir` that exists as a file.
+- `-o` / `--out` are refused here (exit code 2); the output location is
+  `--out-dir`. Every other option is forwarded to `narrate` verbatim, and
+  everything after a `--` token is forwarded without being interpreted by `run`.
+- Files it creates are mode `0600` and a directory it creates is `0700`, so the
+  health-relevant output stays private to your user.
+- It prints one reminder line that `findings.json` is private health data.
+- The online privacy gate is untouched: `run ... --endpoint openrouter` without
+  `--accept-privacy-risk` exits with code 2 and makes no HTTP call.
+
+### Validate and render an existing IR (optional)
 
 ```bash
 python tools/validate_report.py findings.json report_ir.json
 python tools/render_report.py  findings.json report_ir.json -o report.md
 ```
 
-### 4. Score narrator candidates
+### Score narrator candidates (optional)
 
 ```bash
 # offline: stored candidate outputs
@@ -155,6 +209,15 @@ Any OpenAI-compatible endpoint works; Ollama (`http://localhost:11434/v1`) and
 OpenRouter (`https://openrouter.ai/api/v1`) are preconfigured. OpenRouter model
 IDs are namespaced (e.g. `qwen/qwen-...`) and require `OPENROUTER_API_KEY`.
 
+### Under the hood (script equivalents)
+
+Each subcommand wraps a script that still runs directly, if you prefer:
+`tools/fetch_reference.py`, `tools/build_panel.py`, `scripts/check_raw.py`,
+`stage2/annotate.py`, and `stage3/run.py`. For example
+`python stage3/run.py findings.json --template-only -o report.md`. The CLI adds
+the sub-tools' directories to `sys.path` at call time and refuses to load a
+sub-tool whose module resolves outside the repository.
+
 ## Design rules
 
 The pipeline enforces seven hard rules in code (no invented numbers, three-state
@@ -165,45 +228,47 @@ table and the enforcement mechanism.
 
 ## Inspect your own data file
 
-`scripts/check_raw.py` parses your AncestryDNA file with the same code as the
-pipeline and self-checks the result — format, chromosome labels, no-call rate,
-allele alphabet, duplicate IDs, inferred sex, and the curated panel — so you can
-confirm it was read correctly before doing anything with it.
+`python -m snp_insights check-raw` (or `scripts/check_raw.py`) parses your
+AncestryDNA file with the same code as the pipeline and self-checks the result —
+format, chromosome labels, no-call rate, allele alphabet, duplicate IDs, inferred
+sex, and the curated panel — so you can confirm it was read correctly before
+doing anything with it.
 
 ```bash
-python scripts/check_raw.py /path/to/AncestryDNA.txt
-python scripts/check_raw.py /path/to/AncestryDNA.txt --json -o inspect.json
+python -m snp_insights check-raw /path/to/AncestryDNA.txt
+python -m snp_insights check-raw /path/to/AncestryDNA.txt --json -o inspect.json
 ```
 
 By default it reports panel **states only** and withholds the raw allele letters
 (`--no-redact` to include them), and never prints genome-wide genotypes — just
 aggregate counts and the curated panel. `--no-hash` omits the file fingerprint.
-The script performs no network access.
+The command performs no network access.
 
 ## Fetching reference data
 
-Stage 2 never touches the network. Reference data is fetched by a separate,
+Annotation never touches the network. Reference data is fetched by a separate,
 explicit step into a local cache (outside the repo):
 
 ```bash
 # see exactly what would be fetched, no network
-python tools/fetch_reference.py --targets data/targets.carrier.json --dry-run
+python -m snp_insights fetch --targets data/targets.carrier.json --dry-run
 
 # fetch ONLY the records your targets need (default)
-python tools/fetch_reference.py \
+python -m snp_insights fetch \
     --targets data/targets.carrier.json \
     --targets data/targets.traits.json \
     --email you@example.com
 
 # or download the complete official files (GiB-scale)
-python tools/fetch_reference.py --full --email you@example.com
+python -m snp_insights fetch --full --email you@example.com
 ```
 
-The **small set = the rsIDs in your targets files.** Add a variant to a targets
-file and re-run fetch to pull just that record — there is nothing else to
-configure. Small mode queries each source's API directly (dbSNP variation API,
-ClinVar E-utilities, gnomAD GraphQL, SNPedia MediaWiki); each writes normalized
-files plus a `manifest.json` (source, URL, date, sha256).
+`fetch` takes no raw-file argument (an unknown flag exits 2). The **small set =
+the rsIDs in your targets files.** Add a variant to a targets file and re-run
+fetch to pull just that record — there is nothing else to configure. Small mode
+queries each source's API directly (dbSNP variation API, ClinVar E-utilities,
+gnomAD GraphQL, SNPedia MediaWiki); each writes normalized files plus a
+`manifest.json` (source, URL, date, sha256).
 
 > **Privacy.** A small fetch tells each source *which variants you asked about*
 > (an interest signal), but never your genotype. The User-Agent carries no
@@ -214,7 +279,7 @@ files plus a `manifest.json` (source, URL, date, sha256).
 Build a panel from the cache:
 
 ```bash
-python tools/build_panel.py --targets data/targets.carrier.json \
+python -m snp_insights build-panel --targets data/targets.carrier.json \
     --cache ~/.cache/snp-insights -o data/panel.carrier.json
 ```
 
@@ -256,7 +321,7 @@ it is **not auto-fetched**. To include it:
 # 2. convert it to our format (MediaWiki XML export or JSON dump):
 python tools/snpedia_to_tsv.py snpedia_dump.xml -o snpedia.tsv
 # 3. build with it:
-python tools/build_panel.py --targets data/targets.traits.json \
+python -m snp_insights build-panel --targets data/targets.traits.json \
     --snpedia snpedia.tsv -o data/panel.traits.json
 ```
 
@@ -266,8 +331,8 @@ already-correct `rsid<TAB>magnitude` TSV and passes it through. SNPedia is
 
 `data/targets.carrier.json` and `data/targets.traits.json` are **draft** starter
 sets — verify the rsID↔condition/trait pairings and trim them. Then
-`scripts/check_raw.py --panel <panel>` shows which targets your array actually
-covers.
+`python -m snp_insights check-raw --panel <panel> <raw>` shows which targets your
+array actually covers.
 
 ## Testing
 
@@ -277,10 +342,21 @@ No dependencies required:
 python tests/test_pipeline.py
 ```
 
-It covers the AncestryDNA parser, the deterministic annotator, condition
-normalization and contradiction grouping, ETL robustness against messy
-ClinVar/gnomAD inputs, the semantic-fidelity lints, and an end-to-end validator
-accept/reject.
+This runs the core suite plus the staged gates it hooks in. The test files are:
+
+- `tests/test_pipeline.py` — parser, annotator, condition normalization and
+  contradiction grouping, ETL robustness, semantic lints, and an end-to-end
+  validator accept/reject; it also calls the guard, evidence, category, and CLI suites below.
+- `tests/test_evidence.py` — the shared evidence module (condition matching,
+  ClinVar selection, tiers).
+- `tests/test_category.py` — category-aware association derivation.
+- `tests/test_cli.py` — the `snp-insights` CLI (dispatch, `run`, privacy gate,
+  tool-module integrity).
+- `tests/test_guard.py` — the privacy/publication guard and its self-tests.
+- `tests/test_result_block.py` — the build-loop result-block validator (run separately;
+  `test_pipeline.py` does not call it).
+
+Each file also runs standalone, e.g. `python tests/test_cli.py`.
 
 ## Privacy & safety
 
@@ -306,10 +382,12 @@ inventory, and [SECURITY.md](SECURITY.md) to report an issue.
 
 Early / research. Stages 1–2, the panel ETL, and the Stage 3 runner (local model
 by default, with self-repair, template fallback, and an audit artifact) work
-end-to-end against fixtures. The ETL has only been tested against synthetic
-source files, and Stage 3 has been exercised against the template path and
-fixtures, not yet against a live model. Known gaps are tracked in
-[DESIGN.md](DESIGN.md#4-design-limitations-and-known-gaps).
+end-to-end against fixtures. A single `python -m snp_insights` entrypoint wraps
+the whole flow (and `run` chains annotate → narrate), with category-aware
+association derivation and condition-aware matching. The ETL has only been tested
+against synthetic source files, and Stage 3 has been exercised against the
+template path and fixtures, not yet against a live model. Known gaps are tracked
+in [DESIGN.md](DESIGN.md#4-design-limitations-and-known-gaps).
 
 ## Contributing
 

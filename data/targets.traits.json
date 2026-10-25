@@ -4,19 +4,19 @@
   "genome_build": "GRCh37",
   "strand": "forward",
   "variants": [
-    { "rsid": "rs12913832", "gene": "HERC2", "condition": "Eye color", "assayability": "snp" },
-    { "rsid": "rs1805007", "gene": "MC1R", "condition": "Red hair", "assayability": "snp" },
-    { "rsid": "rs1805008", "gene": "MC1R", "condition": "Red hair", "assayability": "snp" },
-    { "rsid": "rs17822931", "gene": "ABCC11", "condition": "Earwax type", "assayability": "snp" },
-    { "rsid": "rs4988235", "gene": "MCM6", "condition": "Lactose intolerance", "assayability": "snp" },
-    { "rsid": "rs671", "gene": "ALDH2", "condition": "Alcohol flush reaction", "assayability": "snp" },
-    { "rsid": "rs1229984", "gene": "ADH1B", "condition": "Alcohol metabolism", "assayability": "snp" },
-    { "rsid": "rs762551", "gene": "CYP1A2", "condition": "Caffeine metabolism", "assayability": "snp" },
-    { "rsid": "rs72921001", "gene": "OR2M7", "condition": "Cilantro taste perception", "assayability": "snp" },
-    { "rsid": "rs1426654", "gene": "SLC24A5", "condition": "Skin pigmentation", "assayability": "snp" },
-    { "rsid": "rs16891982", "gene": "SLC45A2", "condition": "Skin pigmentation", "assayability": "snp" },
-    { "rsid": "rs1800407", "gene": "OCA2", "condition": "Eye color", "assayability": "snp" },
-    { "rsid": "rs1042602", "gene": "TYR", "condition": "Freckling", "assayability": "snp" },
-    { "rsid": "rs6152", "gene": "AR", "condition": "Male pattern baldness", "assayability": "snp" }
+    { "rsid": "rs12913832", "gene": "HERC2", "condition": "Eye color", "assayability": "snp", "category": "trait" },
+    { "rsid": "rs1805007", "gene": "MC1R", "condition": "Red hair", "assayability": "snp", "category": "trait" },
+    { "rsid": "rs1805008", "gene": "MC1R", "condition": "Red hair", "assayability": "snp", "category": "trait" },
+    { "rsid": "rs17822931", "gene": "ABCC11", "condition": "Earwax type", "assayability": "snp", "category": "trait" },
+    { "rsid": "rs4988235", "gene": "MCM6", "condition": "Lactose intolerance", "assayability": "snp", "category": "trait" },
+    { "rsid": "rs671", "gene": "ALDH2", "condition": "Alcohol flush reaction", "assayability": "snp", "category": "trait" },
+    { "rsid": "rs1229984", "gene": "ADH1B", "condition": "Alcohol metabolism", "assayability": "snp", "category": "trait" },
+    { "rsid": "rs762551", "gene": "CYP1A2", "condition": "Caffeine metabolism", "assayability": "snp", "category": "trait" },
+    { "rsid": "rs72921001", "gene": "OR2M7", "condition": "Cilantro taste perception", "assayability": "snp", "category": "trait" },
+    { "rsid": "rs1426654", "gene": "SLC24A5", "condition": "Skin pigmentation", "assayability": "snp", "category": "trait" },
+    { "rsid": "rs16891982", "gene": "SLC45A2", "condition": "Skin pigmentation", "assayability": "snp", "category": "trait" },
+    { "rsid": "rs1800407", "gene": "OCA2", "condition": "Eye color", "assayability": "snp", "category": "trait" },
+    { "rsid": "rs1042602", "gene": "TYR", "condition": "Freckling", "assayability": "snp", "category": "trait" },
+    { "rsid": "rs6152", "gene": "AR", "condition": "Male pattern baldness", "assayability": "snp", "category": "trait" }
   ]
 }

@@ -161,7 +161,7 @@ def format_report(s, raw, findings, findings_ok, schema_msg, redact, show_hash, 
     return "\n".join(out)
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Inspect an AncestryDNA raw file offline.")
     ap.add_argument("raw")
     ap.add_argument("--panel", default=os.path.join(ROOT, "data", "panel.sample.json"))
@@ -170,7 +170,7 @@ def main():
     ap.add_argument("--no-hash", action="store_true", help="omit the file sha256")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     ap.add_argument("-o", "--out")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if not os.path.exists(args.raw):
         print(f"error: no such file: {args.raw}", file=sys.stderr)

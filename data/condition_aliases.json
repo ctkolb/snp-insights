@@ -56,5 +56,51 @@
     "alpha1-antitrypsin deficiency",
     "alpha-1 antitrypsin",
     "serpina1 deficiency"
+  ],
+  "eye color": [
+    "eye colour",
+    "eye color determination",
+    "eye colour determination"
+  ],
+  "red hair": [
+    "red hair color",
+    "red hair colour"
+  ],
+  "earwax type": [
+    "ear wax type",
+    "ear-wax type",
+    "earwax"
+  ],
+  "lactose intolerance": [
+    "lactose intolerance (adult type)",
+    "lactose-intolerance"
+  ],
+  "alcohol flush reaction": [
+    "alcohol flush",
+    "alcohol flushing"
+  ],
+  "alcohol metabolism": [
+    "alcohol metabolism rate"
+  ],
+  "caffeine metabolism": [
+    "caffeine metabolism rate"
+  ],
+  "cilantro taste perception": [
+    "cilantro taste",
+    "coriander taste perception"
+  ],
+  "skin pigmentation": [
+    "skin color",
+    "skin colour",
+    "skin pigmentation measurement"
+  ],
+  "freckling": [
+    "freckle",
+    "freckles"
+  ],
+  "male pattern baldness": [
+    "male-pattern baldness",
+    "male pattern hair loss",
+    "male-pattern hair loss"
   ]
 }

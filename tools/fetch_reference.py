@@ -48,6 +48,8 @@ import zipfile
 from collections import defaultdict
 from datetime import datetime, timezone
 
+import evidence
+
 # GRCh37 (hg19) RefSeq chromosome accessions, as returned by the dbSNP API.
 GRCH37_ACCESSIONS = {
     "NC_000001.10": "1", "NC_000002.11": "2", "NC_000003.11": "3", "NC_000004.11": "4",
@@ -115,12 +117,7 @@ def load_target_entries(paths):
     return entries
 
 
-def load_condition_aliases():
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "condition_aliases.json")
-    if os.path.exists(p):
-        with open(p) as fh:
-            return json.load(fh)
-    return {}
+load_condition_aliases = evidence.load_aliases
 
 
 _LAST = [0.0]
@@ -217,31 +214,12 @@ def fetch_dbsnp_small(rsids, email):
     return out
 
 
-def _stars(status):
-    s = (status or "").lower()
-    if "practice guideline" in s:
-        return 4
-    if "expert panel" in s:
-        return 3
-    if "multiple submitters" in s and "no conflict" in s:
-        return 2
-    if "conflicting" in s or "single submitter" in s:
-        return 1
-    return 0
-
-
-def _sig_rank(sig):
-    """Rank a ClinVar significance by disease relevance (not clinical confidence)."""
-    s = (sig or "").lower()
-    if "drug response" in s or "benign" in s or "protective" in s or s.strip() == "association":
-        return 0
-    if "pathogenic" in s and "conflicting" not in s:
-        return 4
-    if "risk factor" in s or "risk allele" in s:
-        return 3
-    if "conflicting" in s:
-        return 2
-    return 1
+# Star/significance logic lives in tools/evidence.py. The public names are the
+# same objects; the old underscore names stay as aliases for existing callers.
+review_stars = evidence.review_stars
+sig_rank = evidence.sig_rank
+_stars = evidence.review_stars
+_sig_rank = evidence.sig_rank
 
 
 def _select_clinvar(records, gene):
@@ -266,7 +244,7 @@ def _select_clinvar(records, gene):
         if not sig:
             continue
         review = r.get("review") or ""
-        score = _sig_rank(sig) * 10 + _stars(review)
+        score = _sig_rank(sig) * 10 + (_stars(review) or 0)
         if score > best_score:
             best_score, best = score, (sig, review)
     return best
@@ -298,42 +276,17 @@ def fetch_clinvar_small(entries, email):
     return out
 
 
-def _norm_cond(text):
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", (text or "").lower())).strip()
-
-
-def _condition_matches(phenotypes, condition, aliases):
-    if not condition:
-        return False
-    p = _norm_cond(phenotypes)
-    c = _norm_cond(condition)
-    variants = {c}
-    for canon, al in (aliases or {}).items():
-        if canon.startswith("_"):
-            continue
-        norm_al = {_norm_cond(v) for v in al}
-        if c == canon or c in norm_al:
-            variants |= {canon} | norm_al
-    return any(v and v in p for v in variants)
+# Condition matching lives in tools/evidence.py; same objects, plus aliases.
+norm_cond = evidence.norm_cond
+condition_matches = evidence.condition_matches
+_norm_cond = evidence.norm_cond
+_condition_matches = evidence.condition_matches
 
 
 def _select_clinvar_summary(rows, condition, aliases):
-    """Pick the ClinVar row most relevant to the curated condition.
-
-    Priority: disease-relevant significance (pathogenic/risk over drug-response),
-    then a phenotype match to the condition, then review stars.
-    rows: [{'sig','review','phenotype'}]. Returns (sig, review) or None.
-    """
-    best, best_score = None, -1
-    for r in rows:
-        sig = (r.get("sig") or "").strip()
-        if not sig:
-            continue
-        matched = _condition_matches(r.get("phenotype"), condition, aliases)
-        score = _sig_rank(sig) * 100 + (10 if matched else 0) + _stars(r.get("review") or "")
-        if score > best_score:
-            best_score, best = score, (sig, r.get("review") or "")
-    return best
+    """Thin wrapper: (sig, review) for the best row, or None."""
+    best = evidence.select_clinvar(rows, condition, aliases)
+    return (best["sig"], best.get("review") or "") if best else None
 
 
 def fetch_clinvar_summary(entries, email, cache):
@@ -374,9 +327,9 @@ def fetch_clinvar_summary(entries, email, cache):
             })
     out = {}
     for rsid, rs_rows in rows.items():
-        best = _select_clinvar_summary(rs_rows, wanted.get(rsid), aliases)
+        best = evidence.select_clinvar(rs_rows, wanted.get(rsid), aliases)
         if best:
-            out[rsid] = best
+            out[rsid] = (best["sig"], best.get("review") or "", best.get("phenotype") or "")
     return out
 
 
@@ -491,6 +444,12 @@ def _chunks(seq, n):
         yield seq[i:i + n]
 
 
+def _tsv_field(value):
+    """Replace tab, CR, and LF with a single space so a value cannot break a TSV row."""
+    return (str(value if value is not None else "")
+            .replace("\t", " ").replace("\r", " ").replace("\n", " "))
+
+
 def fetch_gwas_ot(entries, email, cache):
     """Open Targets per-rsID GWAS: count distinct studies, write gwas.tsv.
 
@@ -530,7 +489,7 @@ def fetch_gwas_ot(entries, email, cache):
                 if (rsid, sid) in seen:
                     continue
                 seen.add((rsid, sid))
-                fh.write(f"{rsid}\t{sid}\t{trait}\n")
+                fh.write(f"{rsid}\t{_tsv_field(sid)}\t{_tsv_field(trait)}\n")
                 count += 1
     return count
 
@@ -556,10 +515,14 @@ def write_dbsnp_tsv(path, coords):
 
 
 def write_clinvar_tsv(path, clinvar):
+    """Write a ClinVar TSV the ETL reads. Values are (sig, review) or
+    (sig, review, phenotype); the phenotype cell is empty when absent."""
     with open(path, "w") as fh:
-        fh.write("RS# (dbSNP)\tAssembly\tReviewStatus\tClinicalSignificance\n")
-        for rsid, (sig, review) in sorted(clinvar.items()):
-            fh.write(f"{rsid}\tGRCh37\t{review}\t{sig}\n")
+        fh.write("RS# (dbSNP)\tAssembly\tReviewStatus\tClinicalSignificance\tPhenotypeList\n")
+        for rsid, rec in sorted(clinvar.items()):
+            sig, review = rec[0], rec[1]
+            phenotype = rec[2] if len(rec) > 2 else ""
+            fh.write(f"{rsid}\tGRCh37\t{_tsv_field(review)}\t{_tsv_field(sig)}\t{_tsv_field(phenotype)}\n")
 
 
 def write_snpedia_tsv(path, snpedia):
@@ -598,7 +561,7 @@ def download_full(name, url, cache, email):
     return dest
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Fetch reference data into a local cache.")
     ap.add_argument("--targets", action="append", default=[], help="targets JSON (small mode); repeatable")
     ap.add_argument("--full", action="store_true", help="download complete files instead of per-record")
@@ -614,7 +577,7 @@ def main():
                     help="small mode: 'summary' (download variant_summary; phenotype-aware) or 'api' (E-utilities)")
     ap.add_argument("--sizes", action="store_true", help="HEAD the --full URLs, print sizes, and exit")
     ap.add_argument("--yes", action="store_true", help="allow a >5 GB --full download")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if args.sizes:
         print("full-file sizes (Content-Length):")
