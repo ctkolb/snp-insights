@@ -494,10 +494,13 @@ def run(check):
             code, _, err = _invoke(["narrate", "findings.json"])
             if code != 1 or "run" not in err or decoy_file not in err:
                 return False
-            d = tempfile.mkdtemp()
-            code2, _, err2 = _invoke(["run", RAW, PANEL, "--out-dir", d,
+            parent = tempfile.mkdtemp()
+            out = os.path.join(parent, "created")
+            code2, _, err2 = _invoke(["run", RAW, PANEL, "--out-dir", out,
                                       "--template-only"])
-            if code2 != 1 or "run" not in err2 or os.listdir(d):
+            if code2 != 1 or "run" not in err2:
+                return False
+            if os.path.exists(out) or os.listdir(parent):
                 return False
         finally:
             if saved is not None:
@@ -530,6 +533,73 @@ def run(check):
             if saved is not None:
                 sys.modules["run"] = saved
     attempt("S4.tool_integrity_path_order", s4_tool_integrity_path_order)
+
+    def s4_tool_integrity_inner_module():
+        import importlib
+        import types
+        for name in ("llm", "validate_report"):
+            importlib.import_module(name)  # cache the real module first
+            decoy_dir = tempfile.mkdtemp()
+            decoy_file = os.path.join(decoy_dir, name + ".py")
+            with open(decoy_file, "w") as fh:
+                fh.write("raise AssertionError('decoy %s used')\n" % name)
+            decoy = types.ModuleType(name)
+            decoy.__file__ = decoy_file
+            saved = sys.modules.get(name)
+            annot, narr = [], []
+            ma, oa = _patch_main("annotate", ret=0, record=annot)
+            mn, on = _patch_main("run", ret=0, record=narr)
+            sys.modules[name] = decoy
+            try:
+                code, _, err = _invoke(["narrate", "findings.json"])
+                if code != 1 or name not in err or decoy_file not in err:
+                    return False
+                parent = tempfile.mkdtemp()
+                out = os.path.join(parent, "created")
+                code2, _, err2 = _invoke(["run", RAW, PANEL, "--out-dir", out,
+                                          "--template-only"])
+                if code2 != 1 or name not in err2 or os.path.exists(out):
+                    return False
+                if annot or narr:
+                    return False
+            finally:
+                ma.main, mn.main = oa, on
+                if saved is not None:
+                    sys.modules[name] = saved
+                else:
+                    sys.modules.pop(name, None)
+        return True
+    attempt("S4.tool_integrity_inner_module", s4_tool_integrity_inner_module)
+
+    def s4_within_root_unit():
+        cli = _cli()
+        base = os.path.realpath(tempfile.mkdtemp())
+        root = os.path.join(base, "root")
+        os.mkdir(root)
+        outside = os.path.join(base, "outside")
+        os.mkdir(outside)
+        under = os.path.join(root, "tools", "x.py")
+        os.makedirs(os.path.dirname(under))
+        with open(under, "w"):
+            pass
+        sibling = os.path.join(base, "root-evil")
+        os.mkdir(sibling)
+        sibling_file = os.path.join(sibling, "run.py")
+        with open(sibling_file, "w"):
+            pass
+        os.symlink(outside, os.path.join(root, "link"))
+        escaped = os.path.join(root, "..", "outside", "x.py")
+        saved = cli._ROOT
+        cli._ROOT = root
+        try:
+            return (cli._within_root(under) is True
+                    and cli._within_root(root) is True
+                    and cli._within_root(sibling_file) is False
+                    and cli._within_root(os.path.join(root, "link", "x.py")) is False
+                    and cli._within_root(escaped) is False)
+        finally:
+            cli._ROOT = saved
+    attempt("S4.within_root_unit", s4_within_root_unit)
 
     def s4_run_double_dash():
         d = tempfile.mkdtemp()
