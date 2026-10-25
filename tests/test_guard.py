@@ -45,6 +45,43 @@ def _new_path_findings(findings):
     return [f for f in findings if f.path in S3_PACKAGE_PATHS]
 
 
+def _touch(repo, rel):
+    full = os.path.join(repo, rel)
+    os.makedirs(os.path.dirname(full), exist_ok=True)
+    with open(full, "w", encoding="utf-8") as fh:
+        fh.write("")
+
+
+def _real_gitignore_text():
+    with open(os.path.join(ROOT, ".gitignore"), encoding="utf-8") as fh:
+        return fh.read()
+
+
+PACKAGE_IGNORE_PATHS = (
+    "snp_insights/.env",
+    "snp_insights/.env.local",
+    "snp_insights/.sensitive-terms",
+    "snp_insights/x.pyc",
+    "snp_insights/__pycache__",
+    "snp_insights/y.private",
+    "snp_insights/z.local",
+    "snp_insights/a.generated.json",
+)
+
+
+def _package_ignore_map(gitignore_text):
+    repo = _temp_gitignore_repo(gitignore_text)
+    try:
+        for path in PACKAGE_IGNORE_PATHS:
+            if path.endswith("__pycache__"):
+                os.makedirs(os.path.join(repo, path), exist_ok=True)
+            else:
+                _touch(repo, path)
+        return {p: _is_ignored(repo, p) for p in PACKAGE_IGNORE_PATHS}
+    finally:
+        shutil.rmtree(repo, ignore_errors=True)
+
+
 def _is_ignored(repo, path):
     proc = subprocess.run(
         ("git", "check-ignore", "-q", "--", path), cwd=repo, capture_output=True
@@ -223,6 +260,55 @@ def run(check):
             shutil.rmtree(tmp, ignore_errors=True)
 
     s3("S3.gitignore_reincludes", _reincludes)
+
+    def _checkignore_error():
+        text = _real_gitignore_text()
+        repo = _temp_gitignore_repo(text)
+        target = tempfile.mkdtemp(prefix="snp-insights-s3-")
+        real = guard.repo_root
+        try:
+            os.symlink(target, os.path.join(repo, "snp_insights"))
+            guard.repo_root = lambda: repo
+            try:
+                findings = guard.check_gitignore_selftest()
+            finally:
+                guard.repo_root = real
+            if "snp_insights/cli.py" not in [f.path for f in findings]:
+                return False
+        finally:
+            shutil.rmtree(repo, ignore_errors=True)
+            shutil.rmtree(target, ignore_errors=True)
+        repo2 = _temp_gitignore_repo(text)
+        try:
+            os.makedirs(os.path.join(repo2, "snp_insights"))
+            guard.repo_root = lambda: repo2
+            try:
+                findings2 = guard.check_gitignore_selftest()
+            finally:
+                guard.repo_root = real
+            if _new_path_findings(findings2):
+                return False
+        finally:
+            shutil.rmtree(repo2, ignore_errors=True)
+        return True
+
+    s3("S3.selftest_checkignore_error", _checkignore_error)
+
+    s3("S3.gitignore_package_ignores",
+       lambda: all(_package_ignore_map(_real_gitignore_text()).values()))
+
+    def _package_ignore_mutations():
+        base = _real_gitignore_text()
+        for line, path in (
+                ("!/snp_insights/.sensitive-terms", "snp_insights/.sensitive-terms"),
+                ("!/snp_insights/*.pyc", "snp_insights/x.pyc"),
+                ("!/snp_insights/__pycache__/", "snp_insights/__pycache__")):
+            mutated = base + line + "\n"
+            if _package_ignore_map(mutated)[path]:
+                return False
+        return True
+
+    s3("S3.gitignore_package_ignores_mutations", _package_ignore_mutations)
 
 
 def _hash_cli_ok(check):
