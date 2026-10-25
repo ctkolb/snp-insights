@@ -347,6 +347,83 @@ def run(check):
         return code == 0 and _read_bytes(report) != b"SENTINEL" and os.path.getsize(report) > 0
     attempt("S4.run_force_overwrites", s4_run_force_overwrites)
 
+    def s4_run_no_clobber_symlink():
+        for name in OUTPUTS:
+            for dangling in (True, False):
+                for force in (False, True):
+                    d = tempfile.mkdtemp()
+                    target_dir = tempfile.mkdtemp()
+                    target = os.path.join(target_dir, "outside.out")
+                    if not dangling:
+                        with open(target, "wb") as fh:
+                            fh.write(b"SENTINEL")
+                    os.symlink(target, os.path.join(d, name))
+                    argv = ["run", RAW, PANEL, "--out-dir", d]
+                    if force:
+                        argv.append("--force")
+                    argv.append("--template-only")
+                    code, _, err = _invoke(argv)
+                    if code != 1 or name not in err:
+                        return False
+                    if dangling:
+                        if os.path.exists(target):
+                            return False
+                    elif _read_bytes(target) != b"SENTINEL":
+                        return False
+                    if os.listdir(d) != [name]:
+                        return False
+        return True
+    attempt("S4.run_no_clobber_symlink", s4_run_no_clobber_symlink)
+
+    def s4_run_out_dir_is_file():
+        d = tempfile.mkdtemp()
+        f = os.path.join(d, "afile")
+        with open(f, "wb") as fh:
+            fh.write(b"x")
+        code, _, err = _invoke(["run", RAW, PANEL, "--out-dir", f, "--template-only"])
+        if code != 1 or "afile" not in err or "Traceback" in err:
+            return False
+        return os.listdir(d) == ["afile"]
+    attempt("S4.run_out_dir_is_file", s4_run_out_dir_is_file)
+
+    def s4_run_out_dir_equals_form():
+        d = tempfile.mkdtemp()
+        with _no_network():
+            code, _, _ = _invoke(["run", RAW, PANEL, "--out-dir=" + d, "--template-only"])
+        if code != 0:
+            return False
+        return all(os.path.exists(os.path.join(d, n)) for n in OUTPUTS)
+    attempt("S4.run_out_dir_equals_form", s4_run_out_dir_equals_form)
+
+    def s4_run_default_out_dir():
+        d = tempfile.mkdtemp()
+        old = os.getcwd()
+        try:
+            os.chdir(d)
+            with _no_network():
+                code, _, _ = _invoke(["run", RAW, PANEL, "--template-only"])
+            out = os.path.join(d, "snp-insights-out")
+            return code == 0 and all(os.path.exists(os.path.join(out, n)) for n in OUTPUTS)
+        finally:
+            os.chdir(old)
+    attempt("S4.run_default_out_dir", s4_run_default_out_dir)
+
+    def s4_run_help():
+        for argv in (["run", "-h"], ["run", "--help"], ["run", RAW, PANEL, "--help"]):
+            annot, narr = [], []
+            ma, oa = _patch_main("annotate", ret=0, record=annot)
+            mn, on = _patch_main("run", ret=0, record=narr)
+            try:
+                code, out, _ = _invoke(argv)
+            finally:
+                ma.main, mn.main = oa, on
+            if code != 0 or "--out-dir" not in out or "--force" not in out:
+                return False
+            if "narrate" not in out or annot != [] or narr != []:
+                return False
+        return True
+    attempt("S4.run_help", s4_run_help)
+
     # --- S4.cwd_independent ---------------------------------------------
     def s4_cwd_independent():
         d = tempfile.mkdtemp()
