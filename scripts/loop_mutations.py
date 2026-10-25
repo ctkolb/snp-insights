@@ -22,9 +22,13 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 E_ = "tools/evidence.py"
 B = "tools/build_panel.py"
+C = "snp_insights/cli.py"
+P = "pyproject.toml"
+I_ = "snp_insights/__init__.py"
 F = "tools/fetch_reference.py"
-SUITES = ("tests/test_evidence.py", "tests/test_category.py", "tests/test_pipeline.py")
-COPY_DIRS = ("tools", "tests", "data", "fixtures", "stage2", "stage3", "schema", "scripts")
+SUITES = ("tests/test_evidence.py", "tests/test_category.py", "tests/test_cli.py", "tests/test_pipeline.py")
+COPY_DIRS = ("tools", "tests", "data", "fixtures", "stage2", "stage3", "schema", "scripts", "snp_insights")
+COPY_FILES = ("pyproject.toml", "README.md")
 
 # (name, file, text to find, replacement). Each is a single plausible bug.
 MUTATIONS = [
@@ -80,6 +84,32 @@ MUTATIONS = [
     ("S2 legacy warning removed", B, "            if category is None:\n                print(", "            if False:\n                print("),
     ("S2 main returns 0 on invalid category", B, "        print(exc, file=sys.stderr)\n        return 1", "        print(exc, file=sys.stderr)\n        return 0"),
     ("S2 category not passed through", B, "        v = dict(t)\n", "        v = {k: x for k, x in t.items() if k != \"category\"}\n"),
+    # --- Stage 4: single entrypoint ---
+    ("S4 run injects --accept-privacy-risk", C, '[findings] + forwarded + ["-o", report]', '[findings, "--accept-privacy-risk"] + forwarded + ["-o", report]'),
+    ("S4 run drops forwarded args", C, '[findings] + forwarded + ["-o", report]', '[findings, "-o", report]'),
+    ("S4 run reorders forwarded args", C, '[findings] + forwarded + ["-o", report]', '[findings, "-o", report] + forwarded'),
+    ("S4 run swaps raw and panel", C, '[raw, panel, "-o", findings]', '[panel, raw, "-o", findings]'),
+    ("S4 run allows -o/--out", C, 'if tok in ("-o", "--out") or tok.startswith("--out="):', 'if False:'),
+    ("S4 run allows --out=x", C, 'if tok in ("-o", "--out") or tok.startswith("--out="):', 'if tok in ("-o", "--out"):'),
+    ("S4 no-clobber disabled", C, "    if not force:", "    if False:"),
+    ("S4 no-clobber checks findings only", C, "existing = [p for p in paths.values() if os.path.exists(p)]", 'existing = [p for p in [paths["findings.json"]] if os.path.exists(p)]'),
+    ("S4 no-clobber ignores dangling symlinks", C, "existing = [p for p in paths.values() if os.path.exists(p)]", "existing = [p for p in paths.values() if os.path.exists(p) and not os.path.islink(p)]"),
+    ("S4 --force ignored", C, "            force = True\n", "            force = False\n"),
+    ("S4 --out-dir= unsupported", C, 'if tok.startswith("--out-dir="):', 'if False:'),
+    ("S4 default out dir changed", C, 'DEFAULT_OUT_DIR = "./snp-insights-out"', 'DEFAULT_OUT_DIR = "."'),
+    ("S4 annotate failure swallowed", C, "    if rc != 0:\n        return rc", "    if rc != 0:\n        pass"),
+    ("S4 exit code swallowed", C, "return 0 if rc is None else rc", "return 0"),
+    ("S4 unknown command exits 0", C, '    print(_usage(), file=sys.stderr)\n    return 2', '    print(_usage(), file=sys.stderr)\n    return 0'),
+    ("S4 version text changed", C, 'print("snp-insights " + __version__)', 'print("snp-insights v" + __version__)'),
+    ("S4 reminder removed", C, "    print(_REMINDER, file=sys.stderr)", "    pass"),
+    ("S4 help omits check-raw", C, '    ("check-raw", "inspect a raw DNA file offline"),\n', ''),
+    ("S4 fetch mapped to build_panel", C, '"fetch": "fetch_reference"', '"fetch": "build_panel"'),
+    ("S4 injects flag into every subcommand", C, "rc = module.main(list(args))", 'rc = module.main(list(args) + ["--accept-privacy-risk"])'),
+    ("S4 pyproject version mismatch", P, 'version = "0.1.0"', 'version = "0.1.1"'),
+    ("S4 pyproject gains a dependency", P, "dependencies = []", 'dependencies = ["requests"]'),
+    ("S4 console script target wrong", P, 'snp_insights.cli:main', 'snp_insights.cli:run'),
+    ("S4 __version__ changed", I_, '__version__ = "0.1.0"', '__version__ = "0.2.0"'),
+    ("S4 build_panel stdout print removed (AL-007)", B, "    else:\n        print(text)\n    return 0", "    return 0"),
 ]
 
 
@@ -88,6 +118,8 @@ def fresh(tmp):
         dest = os.path.join(tmp, d)
         shutil.rmtree(dest, ignore_errors=True)
         shutil.copytree(os.path.join(ROOT, d), dest, ignore=shutil.ignore_patterns("__pycache__"))
+    for f in COPY_FILES:
+        shutil.copy(os.path.join(ROOT, f), os.path.join(tmp, f))
 
 
 def failing_checks(tmp):

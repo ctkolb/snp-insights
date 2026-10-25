@@ -401,6 +401,27 @@ Clarifications decided after reading the five tool `main()` functions
   need `tomllib` (absent before Python 3.11): check `pyproject.toml` with plain
   text or regex parsing, and use `tomllib` only if importable.
 
+Round 2 decisions (found by the orchestrator's own smoke test of `run`, 2026-10-24):
+
+- **D-O.** `run` treats any output path that **exists as a symlink** (including a
+  dangling one) as existing: the no-clobber check uses `os.path.lexists`, and a
+  symlinked output path is refused **even with `--force`** (exit 1, nothing
+  written, message names the path). Verified defect: a dangling symlink at
+  `report.md` made `run` write through the link to a location outside the output
+  directory, with no `--force`.
+- **D-P.** If `--out-dir` exists as a file, or the directory cannot be created,
+  `run` prints a one-line error to stderr and returns 1, with no traceback and no
+  output written.
+- **D-Q.** `snp-insights run -h` and `run --help` print `run`'s own usage
+  (positionals RAW and PANEL, `--out-dir`, `--force`, the note that other options
+  go to `narrate`, and that `-o/--out` is refused) and exit 0. Previously this
+  exited 2 with "run needs RAW and PANEL".
+- Gates: `S4.run_no_clobber_symlink` (dangling symlink and valid symlink at each
+  of the four names: refused, target never created, exit 1, also with `--force`),
+  `S4.run_out_dir_is_file`, `S4.run_out_dir_equals_form` (`--out-dir=DIR`),
+  `S4.run_default_out_dir` (no `--out-dir`: files land in `./snp-insights-out`
+  relative to the working directory), `S4.run_help`.
+
 Fence: no change to Stage 3 rules, the gate itself, `validate_report`, schema,
 or the guard. No packaging of `tools/` or `stage*/` into a wheel.
 
