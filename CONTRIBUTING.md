@@ -16,9 +16,24 @@ pip install jsonschema              # optional; enables schema-validation passes
 ## Required checks before you push
 
 ```bash
-python tests/test_pipeline.py       # tests (includes the guard tests)
+python tests/test_pipeline.py       # tests (includes the guard, evidence,
+                                    # category, and CLI gate suites)
 python scripts/guard.py --full      # privacy/publication guard
 ```
+
+`tests/test_pipeline.py` hooks in `tests/test_guard.py`, `tests/test_evidence.py`,
+`tests/test_category.py`, and `tests/test_cli.py`; each also runs standalone
+(e.g. `python tests/test_cli.py`).
+
+An optional deeper check applies one deliberate bug at a time to a temp copy and
+reports any the tests fail to catch:
+
+```bash
+python scripts/loop_mutations.py    # exits non-zero on a surviving mutation
+```
+
+It takes a few minutes; the mutations that are accepted as redundant or
+untestable are recorded in [`docs/accepted-limits.md`](docs/accepted-limits.md).
 
 If you have [gitleaks](https://github.com/gitleaks/gitleaks) installed, the
 hooks also run it. CI runs all of the above plus a full-history secret scan; a
