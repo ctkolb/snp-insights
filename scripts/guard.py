@@ -360,6 +360,10 @@ def check_gitignore_selftest():
         if proc.returncode == 0:
             findings.append(Finding(
                 "gitignore", p, detail="application path is ignored"))
+        elif proc.returncode != 1:
+            findings.append(Finding(
+                "gitignore", p,
+                detail=f"git check-ignore failed (exit {proc.returncode})"))
     return findings
 
 
