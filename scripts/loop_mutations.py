@@ -115,6 +115,19 @@ MUTATIONS = [
     ("S4 console script target wrong", P, 'snp_insights.cli:main', 'snp_insights.cli:run'),
     ("S4 __version__ changed", I_, '__version__ = "0.1.0"', '__version__ = "0.2.0"'),
     ("S4 build_panel stdout print removed (AL-007)", B, "    else:\n        print(text)\n    return 0", "    return 0"),
+    ("S4 umask not applied", C, "old_umask = os.umask(0o077)", "old_umask = os.umask(0o022)"),
+    ("S4 umask group-readable", C, "old_umask = os.umask(0o077)", "old_umask = os.umask(0o027)"),
+    ("S4 umask not restored", C, "        os.umask(old_umask)", "        pass"),
+    ("S4 repo dirs not front-loaded", C, "        while path in sys.path:\n            sys.path.remove(path)\n        sys.path.insert(0, path)", "        if path not in sys.path:\n            sys.path.insert(0, path)"),
+    ("S4 sys.modules integrity check skipped", C, "    bad = _integrity_error()\n    if bad is not None:\n        raise bad", "    bad = None\n    if bad is not None:\n        raise bad"),
+    ("S4 post-import location check removed", C, "    if not path or not _within_root(path):\n        raise _ToolIntegrityError", "    if False:\n        raise _ToolIntegrityError"),
+    ("S4 run integrity check before outputs removed", C, "    bad = _integrity_error()\n    if bad is not None:\n        print(_integrity_message(bad), file=sys.stderr)\n        return 1", "    pass"),
+    ("S4 integrity refusal exits 0", C, "        print(_integrity_message(exc), file=sys.stderr)\n        return 1\n    return _call(module, args)", "        print(_integrity_message(exc), file=sys.stderr)\n        return 0\n    return _call(module, args)"),
+    ("S4 within-root prefix without separator", C, "real.startswith(root + os.sep)", "real.startswith(root)"),
+    ("S4 within-root uses abspath not realpath", C, "    real = os.path.realpath(path)", "    real = os.path.abspath(path)"),
+    ("S4 -- tail placed after -o wrong", C, '[findings] + forwarded + ["-o", report] + ["--"] + after', '[findings] + forwarded + ["--"] + after + ["-o", report]'),
+    ("S4 -- separator dropped", C, '["-o", report] + ["--"] + after', '["-o", report] + after'),
+    ("S4 -- tail interpreted by run", C, '    if "--" in args:', "    if False:"),
 ]
 
 
