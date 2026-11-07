@@ -676,7 +676,7 @@ def run(check):
         checks = [
             'name = "snp-insights"',
             'version = "%s"' % snp_insights.__version__,
-            'requires-python = ">=3.9"',
+            'requires-python = ">=3.12"',
             "dependencies = []",
             "GPL-3.0-or-later",
             'snp-insights = "snp_insights.cli:main"',
