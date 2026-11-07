@@ -105,7 +105,7 @@ are the enforcement.**
 `.github/workflows/ci.yml` runs three separate jobs on pushes and PRs to
 `main`, all with `permissions: contents: read`:
 
-1. `test` — `python tests/test_pipeline.py` on Python 3.9/3.12, plus actionlint.
+1. `test` — `python tests/test_pipeline.py` on Python 3.12/3.14, plus actionlint.
 2. `privacy-guard` — `guard.py --full` with `fetch-depth: 0`.
 3. `secret-scan` — gitleaks over full history, run from a pinned release binary
    (`--redact` keeps values out of logs).

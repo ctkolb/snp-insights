@@ -18,13 +18,13 @@ concurrency:
 jobs:
   test:
     name: test (py${{ matrix.python }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        # The project documents Python 3.9+; test the floor and a current one.
-        python: ["3.9", "3.12"]
+        # The project documents Python 3.12+; test the floor and a current one.
+        python: ["3.12", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -45,7 +45,7 @@ jobs:
 
   privacy-guard:
     name: privacy guard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       # Full history so the guard can scan commit messages and the branch name.
@@ -65,7 +65,7 @@ jobs:
 
   secret-scan:
     name: secret scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

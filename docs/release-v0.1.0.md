@@ -3,6 +3,27 @@
 Planning draft for owner approval. This is a new release run, not a continuation
 of the completed stages in `loop-spec.md`.
 
+## Current decision — 2026-11-07 (CI-DEC-01)
+
+Initial CI/support stage uses Python >=3.12, CI Python 3.12 and 3.14 on
+ubuntu-24.04. Existing tests, optional schema validation, workflow lint,
+privacy/security jobs, and committed hooks are retained. Historical loop
+decisions remain historical. Integration and release transition require separate
+reviewed gates. Version remains 0.1.0; runtime dependencies remain empty and the
+schema extra remains optional.
+
+This initial stage is limited to the support floor, matrix, and matching active
+guidance. The floor assertion is revised in a tests-only regression commit before
+the support change. Candidate checks and independent review precede separately
+authorized local integration and release-branch transition. The complete release
+plan is deferred until after that transition; the proposed scope below is retained
+as planning context, not an implementation dispatch.
+
+The existing annotated `v0.1.0` tag remains untouched. Its disposition is pending
+before release closure planning; no tag creation, replacement, or publication is
+authorized. Actual remote protection and hosted checks remain NOT_CHECKED until
+owner evidence. See `branch-protection.md` for the owner coordination boundary.
+
 ## Objective and agreed preferences
 
 Produce a useful, traceable report from an owner's AncestryDNA text file using

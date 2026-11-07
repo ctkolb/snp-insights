@@ -57,8 +57,9 @@ and stand behind generated code as if you wrote it.
 
 ## Conventions & environment
 
-- **Python**: run tests with `python tests/test_pipeline.py` (no framework, no
-  deps). `jsonschema` is optional (enables schema-validation passes).
+- **Python**: Python 3.12+ is required; run tests with
+  `python tests/test_pipeline.py` (no framework, no deps). `jsonschema` is
+  optional (enables schema-validation passes).
 - **Commit** coherent changesets with descriptive messages; see the Safety
   contract above. Branch off `main` before committing; never push.
 - **Ollama** binds IPv4 only; the client uses `http://127.0.0.1:11434/v1`.
@@ -120,30 +121,20 @@ tests/    test_pipeline.py + test_evidence.py, test_category.py, test_cli.py,
 
 ## NEXT STEP (do this first, next session)
 
-Run the **full local pipeline on the real AncestryDNA file** with a fetched
-carrier panel — the first real end-to-end report. Nothing here is sent online.
+Complete independent review of the initial CI/support stage: Python 3.12+,
+CI Python 3.12/3.14 on ubuntu-24.04, and retained tests, optional schema
+validation, workflow lint, privacy/security jobs, and committed hooks. Local
+integration and release-branch transition require separately dispatched,
+reviewed gates; see `docs/release-v0.1.0.md`. Whole-release planning follows
+that transition. Historical build-loop decisions remain historical.
 
-```bash
-# 1. fetch reference data for the carrier targets (small mode; ClinVar summary
-#    is phenotype-aware ~0.5 GB; GWAS via Open Targets needs no download)
-python -m snp_insights fetch --targets data/targets.carrier.json \
-    --gwas-mode ot --cache ~/.cache/snp-insights
-
-# 2. build the carrier panel from the cache
-python -m snp_insights build-panel --targets data/targets.carrier.json \
-    --cache ~/.cache/snp-insights -o data/panel.carrier.json
-
-# 3. see which targets the array actually covers
-python -m snp_insights check-raw /path/to/AncestryDNA.txt --panel data/panel.carrier.json
-
-# 4. annotate + narrate locally in one step (no network)
-python -m snp_insights run /path/to/AncestryDNA.txt data/panel.carrier.json \
-    --model qwen2.5:14b
-```
-
-Watch for: parser errors on the live APIs at real panel size; `effect_allele`
-strand-mismatch warnings from `build_panel`; any `not_covered` targets that
-suggest the panel/target set needs adjusting. Paste the output back for analysis.
+The real-data checkpoint is owner-only, in a separate local environment. Keep
+real DNA, findings, reports, private logs, and hashes outside all agent-accessible
+repository, mailbox, export, and scratch trees. The owner may confirm local
+completion without sharing results. Use synthetic fixtures in coding/review
+sessions; reproduce failures synthetically before sharing them. Fetch public
+references only from curated public targets, never personal coverage or genotypes.
+Do not request private outputs for analysis.
 
 ## Roadmap to beta
 
@@ -153,8 +144,9 @@ locally, with tests green and a single documented entrypoint.
 
 Priority order (rough):
 
-1. **Real-data validation** (the NEXT STEP above). Shake out live parsers at
-   panel scale; fix anything that breaks; confirm states look right.
+1. **Real-data validation** (after reviewed CI/local integration and release
+   planning). The owner performs the private checkpoint described above; coding
+   sessions validate parser and call-state behavior with synthetic fixtures.
 2. **Curate a usable panel.** Review `data/targets.carrier.json` and
    `data/targets.traits.json` (currently DRAFT): verify rsID↔condition, fill
    `effect_allele`, drop shaky entries, grow to ~20 carrier / ~30 traits.
@@ -173,9 +165,9 @@ Priority order (rough):
 7. **Stage 3 model choice.** Benchmark local models (qwen2.5:14b, others) on
    skeleton mode with a golden set; pick and document the default. Consider
    stronger models via `--endpoint openrouter` for those who opt in.
-8. **Tests & CI.** Add an integration test (stage2 → stage3 template on
-   fixtures); add a GitHub Actions workflow running `tests/test_pipeline.py`;
-   consider a hygiene check.
+8. **Tests & CI — PRESENT.** The workflow runs `tests/test_pipeline.py` with
+   optional schema validation, actionlint, privacy guard, and secret scanning.
+   Review the initial support update and retain offline bare/schema coverage.
 9. **Docs polish.** Troubleshooting (Ollama not running, API 429s, WAF), the
    manual SNPedia flow, and an explicit "not medical advice" reminder in the
    report and README.

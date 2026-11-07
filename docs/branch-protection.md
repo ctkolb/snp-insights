@@ -12,10 +12,18 @@ use the owner's authenticated `gh` CLI.
 
 All four CI check-run names must be required — not just tests:
 
-- `test (py3.9)`
 - `test (py3.12)`
+- `test (py3.14)`
 - `privacy guard`
 - `secret scan`
+
+The owner alone inspects actual branch protection and rulesets, then coordinates
+retiring `test (py3.9)` and requiring `test (py3.12)` and `test (py3.14)` as the
+matrix change reaches remote `main`. Preserve `privacy guard` and `secret scan`
+and sequence the change to avoid a missing required check blocking integration.
+Record owner evidence of effective settings and hosted checks; until then, both
+remain NOT_CHECKED. Agents never push or change remote settings. Pending remote
+coordination alone does not block an otherwise approved local fast-forward.
 
 ## Option A — ruleset (recommended)
 
@@ -42,8 +50,8 @@ Save this as `/tmp/protect-main.json`:
       "parameters": {
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
-          { "context": "test (py3.9)" },
           { "context": "test (py3.12)" },
+          { "context": "test (py3.14)" },
           { "context": "privacy guard" },
           { "context": "secret scan" }
         ]
@@ -71,7 +79,7 @@ gh api -X PUT repos/ctkolb/snp-insights/branches/main/protection \
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["test (py3.9)", "test (py3.12)", "privacy guard", "secret scan"]
+    "contexts": ["test (py3.12)", "test (py3.14)", "privacy guard", "secret scan"]
   },
   "enforce_admins": true,
   "required_pull_request_reviews": { "required_approving_review_count": 0 },
