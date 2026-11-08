@@ -142,16 +142,19 @@ def _guard_ctx(repo, denylist=None):
     """Point the guard at a synthetic repository with a scrubbed Git environment;
     every global it touches is restored in `finally`."""
     old_root, old_env, old_load = guard._ROOT, dict(os.environ), guard.load_denylist
+    old_cwd = os.getcwd()
     for key in [k for k in os.environ if k.startswith("GIT_")]:
         del os.environ[key]
     os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
     os.environ["GIT_CONFIG_GLOBAL"] = "/dev/null"
     guard._ROOT = repo
+    os.chdir(repo)
     if denylist is not None:
-        guard.load_denylist = lambda: denylist
+        guard.load_denylist = lambda root=None: denylist
     try:
         yield
     finally:
+        os.chdir(old_cwd)
         os.environ.clear()
         os.environ.update(old_env)
         guard._ROOT = old_root
@@ -294,6 +297,7 @@ def run(check):
     _history_api(check)
     _env_classifier(check)
     _hook_env(check)
+    _r22_checks(check)
     _ci_static(check)
     _ci_dispatch(check)
     _doc_checks(check)
@@ -1046,8 +1050,8 @@ def _env_classifier(check):
              "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_NAMESPACE",
              "GIT_SHALLOW_FILE", "GIT_GRAFT_FILE", "GIT_REPLACE_REF_BASE",
              "GIT_NO_REPLACE_OBJECTS", "GIT_IMPLICIT_WORK_TREE", "GIT_CEILING_DIRECTORIES",
-             "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_TRACE", "GIT_TRACE2", "GIT_ASKPASS",
-             "GIT_PUSH_OPTION_COUNT", "GIT_EDITOR", "GIT_SNP_TEST_SENTINEL")
+             "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+             "GIT_PUSH_OPTION_COUNT", "GIT_SNP_TEST_SENTINEL")
     guarded("ENV.class_IV_every_other_name_refused", lambda: all(
         classify({n: SENT})[0] is False for n in names))
     guarded("ENV.case_sensitive_names", lambda: classify({"git_index_file": SENT})[0])
@@ -1286,6 +1290,367 @@ def _hook_env(check):
                 lambda case=case, setup=setup: refused(case.split(".")[0], setup))
 
 
+# --- R22: history setup failures, history root discovery, ignored-name class --
+R22_IGNORED = (
+    "GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_TEMPLATE_DIR", "GIT_PAGER", "GIT_PAGER_IN_USE",
+    "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE", "GIT_COMMITTER_NAME",
+    "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE", "GIT_SSH", "GIT_SSH_COMMAND", "GIT_ASKPASS",
+    "GIT_EXTERNAL_DIFF", "GIT_DIFF_OPTS", "GIT_TRACE", "GIT_TRACE_SETUP", "GIT_TRACE_PACKET",
+    "GIT_TRACE2", "GIT_TRACE2_EVENT", "GIT_TRACE2_PERF")
+R22_REFUSED = (
+    "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_SHALLOW_FILE", "GIT_GRAFT_FILE",
+    "GIT_REPLACE_REF_BASE", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+    "GIT_FOO")
+R22_SETUP_MSG = "history setup could not complete"
+R22_ROOT_MSG = "repository could not be resolved"
+R22_DENY_MSG = "denylist could not be read"
+R22_CANARY = "snpcanaryterm"
+R22_CHILD_NAMES = {"GIT_OPTIONAL_LOCKS", "GIT_TERMINAL_PROMPT", "GIT_CONFIG_NOSYSTEM",
+                   "GIT_CONFIG_GLOBAL"}
+
+
+@contextlib.contextmanager
+def _r22_patch(obj, name, value):
+    old = getattr(obj, name)
+    setattr(obj, name, value)
+    try:
+        yield
+    finally:
+        setattr(obj, name, old)
+
+
+def _r22_getcwd(exc):
+    def boom():
+        raise exc
+    return _r22_patch(os, "getcwd", boom)
+
+
+def _r22_root_step(exc):
+    """subprocess.run raises for the history root call only (pinned argv)."""
+    real = subprocess.run
+
+    def fake(argv, *args, **kwargs):
+        if "--show-toplevel" in argv and "--no-replace-objects" in argv:
+            raise exc
+        return real(argv, *args, **kwargs)
+    return _r22_patch(subprocess, "run", fake)
+
+
+def _r22_denylist_io(kind, exc):
+    """builtins.open fails for `.sensitive-terms` at open or at read."""
+    import builtins
+    real = builtins.open
+
+    class Reader:
+        def __init__(self, handle):
+            self._handle = handle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            self._handle.close()
+            return False
+
+        def read(self, *_):
+            raise exc
+
+    def fake(file, *args, **kwargs):
+        if str(file).endswith(".sensitive-terms"):
+            if kind == "open":
+                raise exc
+            return Reader(real(os.devnull))
+        return real(file, *args, **kwargs)
+    return _r22_patch(builtins, "open", fake)
+
+
+def _r22_inproc(work, patch=None):
+    """guard.main(["--full"]) in-process on a synthetic repository; the patch is
+    applied after the guard context is entered. Returns (rc, out, err, exc)."""
+    import io
+    out, err = io.StringIO(), io.StringIO()
+    rc, exc = None, None
+    with _guard_ctx(work):
+        os.environ.pop("SENSITIVE_TERMS", None)
+        with contextlib.ExitStack() as stack:
+            if patch is not None:
+                stack.enter_context(patch())
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                try:
+                    rc = guard.main(["--full"])
+                except SystemExit as stop:
+                    rc = stop.code
+                except Exception as caught:  # recorded: a traceback is a failure
+                    exc = caught
+    return rc, out.getvalue(), err.getvalue(), exc
+
+
+def _r22_cli(work, extra_env=None, bin_dir=None):
+    """A real `guard.py --full` process inside a synthetic repository."""
+    base = os.path.dirname(work)
+    home = os.path.join(base, "home")
+    os.makedirs(home, exist_ok=True)
+    if bin_dir is None:
+        bin_dir = os.path.join(base, "bin")
+        os.makedirs(bin_dir, exist_ok=True)
+        if not os.path.exists(os.path.join(bin_dir, "git")):
+            os.symlink(guard._GIT_EXE, os.path.join(bin_dir, "git"))
+    env = {"PATH": bin_dir + ":/usr/bin:/bin", "HOME": home, "LC_ALL": "C",
+           "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+    env.update(extra_env or {})
+    proc = subprocess.run(
+        (sys.executable, "-I", os.path.join(work, "scripts", "guard.py"), "--full"),
+        cwd=work, env=env, capture_output=True, text=True, timeout=300)
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def _r22_failure_ok(res, work, message):
+    """Exit 1, incomplete receipt, the fixed message, and no traceback, path,
+    exception class or errno text, or canary."""
+    rc, out, err, *rest = res
+    text = out + err
+    base = os.path.basename(os.path.dirname(work))
+    leaks = ("Traceback", "Errno", "Error:", R22_CANARY, "injected", work,
+             os.path.realpath(work), base)
+    return (not rest or rest[0] is None) and rc == 1 \
+        and re.search(r"guard: history selected=\S+ scanned=\d+ complete=no", out) is not None \
+        and message in text and not any(leak in text for leak in leaks)
+
+
+def _r22_checks(check):
+    def guarded(name, fn):
+        try:
+            check(name, bool(fn()))
+        except Exception as exc:
+            check(name + " [" + type(exc).__name__ + "]", False)
+
+    ip_work, _ = _full_fixture()
+    cli_work, cli_base = _full_fixture()
+    denylist_path = lambda work: os.path.join(work, ".sensitive-terms")  # noqa: E731
+
+    # R21-F2: expected I/O failures in history setup are a fixed history failure.
+    def denylist_directory():
+        path = denylist_path(cli_work)
+        os.mkdir(path)
+        with open(os.path.join(path, "entry"), "w", encoding="utf-8") as fh:
+            fh.write(R22_CANARY + "\n")
+        try:
+            rc, out, err = _r22_cli(cli_work)
+        finally:
+            os.remove(os.path.join(path, "entry"))
+            os.rmdir(path)
+        return _r22_failure_ok((rc, out, err), cli_work, R22_DENY_MSG)
+    guarded("R22.F2.denylist_directory", denylist_directory)
+
+    def denylist_mode000():
+        path = denylist_path(cli_work)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(R22_CANARY + "\n")
+        os.chmod(path, 0)
+        try:
+            readable = os.access(path, os.R_OK)
+            if readable:
+                print("  NOTE R22.F2.denylist_mode000: this user can read mode-000 files; "
+                      "the directory and injected-OSError cases carry R21-F2")
+                return True
+            rc, out, err = _r22_cli(cli_work)
+        finally:
+            os.chmod(path, 0o600)
+            os.remove(path)
+        return _r22_failure_ok((rc, out, err), cli_work, R22_DENY_MSG)
+    guarded("R22.F2.denylist_mode000", denylist_mode000)
+
+    def with_term_file(patch):
+        path = denylist_path(ip_work)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(R22_CANARY + "\n")
+        try:
+            return _r22_inproc(ip_work, patch)
+        finally:
+            os.remove(path)
+
+    boom = lambda: OSError(13, f"{R22_CANARY} injected {ip_work}")  # noqa: E731
+    guarded("R22.F2.inject_getcwd", lambda: _r22_failure_ok(
+        _r22_inproc(ip_work, lambda: _r22_getcwd(boom())), ip_work, R22_SETUP_MSG))
+    guarded("R22.F2.inject_root_step", lambda: _r22_failure_ok(
+        _r22_inproc(ip_work, lambda: _r22_root_step(boom())), ip_work, R22_ROOT_MSG))
+    guarded("R22.F2.inject_denylist_open", lambda: _r22_failure_ok(
+        with_term_file(lambda: _r22_denylist_io("open", boom())), ip_work, R22_DENY_MSG))
+    guarded("R22.F2.inject_denylist_read", lambda: _r22_failure_ok(
+        with_term_file(lambda: _r22_denylist_io("read", boom())), ip_work, R22_DENY_MSG))
+
+    def missing_file_is_normal():
+        rc, out, err, exc = _r22_inproc(ip_work)
+        return (exc is None and rc == 0 and "history selected=1 scanned=1 complete=yes" in out
+                and R22_DENY_MSG not in out + err)
+    guarded("R22.F2.missing_file_is_normal", missing_file_is_normal)
+
+    def propagates(patch, kind, repo=None):
+        repo = repo or _hg_feature()
+        try:
+            with _guard_ctx(repo):
+                with patch():
+                    guard._scan_history()
+        except kind:
+            return True
+        return False
+    guarded("R22.F2.typeerror_getcwd_not_swallowed", lambda: propagates(
+        lambda: _r22_getcwd(TypeError("programming error")), TypeError))
+
+    def typeerror_denylist():
+        repo = _hg_feature()
+        with open(denylist_path(repo), "w", encoding="utf-8") as fh:
+            fh.write(R22_CANARY + "\n")
+        return propagates(lambda: _r22_denylist_io("open", TypeError("programming error")),
+                          TypeError, repo)
+    guarded("R22.F2.typeerror_denylist_not_swallowed", typeerror_denylist)
+
+    # R21-F1: history root discovery uses the pinned runner, never the generic helper.
+    def generic_helper_never_called():
+        repo = _hg_feature()
+        calls = []
+        real_root, real_git = guard.repo_root, guard.git
+
+        def rec_root():
+            calls.append("repo_root")
+            return real_root()
+
+        def rec_git(*args, **kwargs):
+            calls.append("git")
+            return real_git(*args, **kwargs)
+        with _guard_ctx(repo):
+            guard.repo_root, guard.git = rec_root, rec_git
+            try:
+                scan = guard._scan_history()
+            finally:
+                guard.repo_root, guard.git = real_root, real_git
+        return scan.complete and scan.selected == 1 and not calls
+    guarded("R22.F1.generic_helper_never_called", generic_helper_never_called)
+
+    def hgit_root_used():
+        repo = _hg_feature()
+        d = tempfile.mkdtemp(prefix="snp-insights-hg-")
+        log = os.path.join(d, "root.log")
+        open(log, "w").close()
+        body = (f'case " $* " in *" --show-toplevel "*) printf "ARGV %s\\n" "$*" >> "{log}"; '
+                f"/usr/bin/env | /usr/bin/cut -d= -f1 | /usr/bin/grep '^GIT_' | "
+                f"/usr/bin/sed 's/^/NAME /' >> \"{log}\";; esac")
+        with _git_exe(_wrap_git(d, body)):
+            scan = _scan(repo)
+        lines = open(log, encoding="utf-8").read().splitlines()
+        names = {ln[5:] for ln in lines if ln.startswith("NAME ")}
+        argv = [ln for ln in lines if ln.startswith("ARGV ")]
+        return (scan.complete and argv == ["ARGV --no-replace-objects rev-parse --show-toplevel"]
+                and {"GIT_OPTIONAL_LOCKS", "GIT_TERMINAL_PROMPT"} <= names
+                and names <= R22_CHILD_NAMES)
+    guarded("R22.F1.hgit_root_used", hgit_root_used)
+
+    def denylist_read_from_history_root():
+        repo = _hg_feature(("mentions " + HG_SENTINEL,))
+        with open(denylist_path(repo), "w", encoding="utf-8") as fh:
+            fh.write(HG_SENTINEL + "\n")
+        decoy = tempfile.mkdtemp(prefix="snp-insights-hg-")
+        sub = os.path.join(repo, "sub")
+        os.makedirs(sub)
+        with _guard_ctx(repo):
+            guard._ROOT = decoy
+            os.chdir(sub)
+            scan = guard._scan_history()
+        return ("denylist-term" in _hg_labels(scan.findings)
+                and HG_SENTINEL not in _text(scan.findings))
+    guarded("R22.F1.denylist_read_from_hgit_root", denylist_read_from_history_root)
+
+    def root_failure_fixed_message():
+        repo = _hg_feature()
+        d = tempfile.mkdtemp(prefix="snp-insights-hg-")
+        body = f'case " $* " in *" --show-toplevel "*) echo {HG_CANARY}; exit 3;; esac'
+        with _git_exe(_wrap_git(d, body)):
+            scan = _scan(repo)
+        return ([str(f) for f in scan.findings] == ["history: [history-git] — " + R22_ROOT_MSG]
+                and not scan.complete and scan.selected is None
+                and HG_CANARY not in _text(scan.findings))
+    guarded("R22.F1.root_failure_fixed_message", root_failure_fixed_message)
+
+    # A1/D3: exactly 22 enumerated names are ignored; the rest stays refused.
+    guarded("R22.A1.ignored_set_exact", lambda: len(R22_IGNORED) == 22
+            and guard._ENV_IGNORED == frozenset(R22_IGNORED) | {"GIT_PREFIX", "GIT_EXEC_PATH"})
+
+    wbin = os.path.join(cli_base, "wbin")
+    os.makedirs(wbin)
+    log = os.path.join(cli_base, "child-names.log")
+    _wrap_git(wbin, f'if [ "$1" = "--no-replace-objects" ]; then /usr/bin/env | '
+              f'/usr/bin/cut -d= -f1 | /usr/bin/grep \'^GIT_\' >> "{log}"; '
+              f'echo "--" >> "{log}"; fi', name="git")
+
+    def alone(name):
+        open(log, "w").close()
+        value = f"{SENT}-{name}"
+        rc, out, err = _r22_cli(cli_work, {name: value}, bin_dir=wbin)
+        lines = open(log, encoding="utf-8").read().splitlines()
+        seen = {ln for ln in lines if ln != "--"}
+        return (rc == 0 and RECEIPT_RE.search(out) is not None and "complete=yes" in out
+                and "--" in lines and name not in seen
+                and {"GIT_OPTIONAL_LOCKS", "GIT_TERMINAL_PROMPT"} <= seen
+                and seen <= R22_CHILD_NAMES and value not in out + err)
+    for name in R22_IGNORED:
+        guarded(f"R22.A1.name.{name}", lambda name=name: alone(name))
+
+    def combined_real_push():
+        fx = _hook_fixture()
+        sent = f"{SENT}-combined"
+        extra = {"GIT_EDITOR": "true", "GIT_SSH_COMMAND": "ssh -o BatchMode=yes",
+                 "GIT_AUTHOR_NAME": sent, "GIT_AUTHOR_EMAIL": "author@example.invalid",
+                 "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z", "GIT_COMMITTER_NAME": sent,
+                 "GIT_COMMITTER_EMAIL": "author@example.invalid",
+                 "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z", "GIT_TRACE": "1"}
+        rc, out = _hook_push(fx, extra_env=extra)
+        m = RECEIPT_RE.search(out)
+        return (fx.unchanged and rc == 0 and m is not None and int(m.group(1)) >= 1
+                and m.group(1) == m.group(2) and "refs/heads/feature" in _bare_refs(fx)
+                and sent not in out)
+    guarded("R22.A1.combined_real_push", combined_real_push)
+
+    def refused_real_run(name):
+        value = f"{SENT}-{name}"
+        rc, out, err = _r22_cli(cli_work, {name: value})
+        return (rc == 1 and ENV_MSG in err and "complete=no" in out and value not in out + err
+                and "Traceback" not in err)
+    for name in R22_REFUSED:
+        guarded(f"R22.A1.refused.{name}", lambda name=name: refused_real_run(name))
+
+    repo = _hg_feature()
+    other = _hg_feature(prefix="snp-insights-hg-other-")
+    base_env = {"PATH": os.environ.get("PATH", ""), "HOME": "/nonexistent"}
+
+    def classify(extra, cwd=repo):
+        return guard._classify_git_env({**base_env, **extra}, cwd)
+
+    own = {"GIT_DIR": os.path.join(repo, ".git"), "GIT_WORK_TREE": repo}
+    foreign = {"GIT_DIR": os.path.join(other, ".git")}
+    guarded("R22.A1.git_dir_work_tree_unchanged", lambda: (
+        lambda ok: ok[0] and "GIT_DIR" not in ok[1] and "GIT_WORK_TREE" not in ok[1])(
+        classify({**own, "GIT_PREFIX": "p"})) and not classify(foreign)[0])
+    guarded("R22.A1.git_dir_work_tree_with_ignored_name", lambda: (
+        lambda ok: ok[0] and not [k for k in ok[1] if k in ("GIT_DIR", "GIT_WORK_TREE",
+                                                           "GIT_EDITOR")])(
+        classify({**own, "GIT_EDITOR": SENT})) and not classify(
+        {**foreign, "GIT_EDITOR": SENT})[0])
+    fixed = {"GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1",
+             "GIT_CONFIG_SYSTEM": "/dev/null", "GIT_CONFIG_GLOBAL": "/dev/null"}
+    guarded("R22.A1.class_III_unchanged", lambda: all(
+        classify({k: v, "GIT_PREFIX": "p"})[0] and not classify({k: v + "x"})[0]
+        for k, v in fixed.items()))
+    guarded("R22.A1.class_III_with_ignored_name", lambda: all(
+        classify({k: v, "GIT_EDITOR": SENT})[0]
+        and classify({k: v, "GIT_EDITOR": SENT})[1][k] == v
+        and not classify({k: v + "x", "GIT_EDITOR": SENT})[0] for k, v in fixed.items()))
+    guarded("R22.A1.no_prefix_or_wildcard", lambda: all(
+        not classify({n: SENT})[0] for n in (
+            "GIT_EDITORX", "GIT_TRACE3", "GIT_AUTHOR_NAMES", "GIT_SSH_VARIANT",
+            "GIT_PAGER_X", "GIT_COMMITTER_TZ", "GIT_TRACE2_X")))
+
+
 # --- CI binding: the workflow's dispatch body, run offline (C3) -------------
 def _ci_text():
     with open(os.path.join(ROOT, ".github", "workflows", "ci.yml"), encoding="utf-8") as fh:
@@ -1489,11 +1854,14 @@ def _doc_checks(check):
     hook = (
         "The history scan in `guard.py --full` accepts the environment Git gives a hook\n"
         "(`GIT_PREFIX`, `GIT_EXEC_PATH`, and `GIT_DIR` / `GIT_WORK_TREE` when they name\n"
-        "this repository) and refuses any other inherited `GIT_*` variable with a\n"
-        "generic message. `git -c key=value push` sets `GIT_CONFIG_PARAMETERS`, so repeat\n"
-        "the push without `-c`. Do not work around a refusal with `--no-verify`.\n")
+        "this repository), ignores the enumerated names listed in the inherited `GIT_*`\n"
+        "item above, and refuses any other inherited `GIT_*` variable with a generic\n"
+        "message. `git -c key=value push` sets `GIT_CONFIG_PARAMETERS`, so repeat the\n"
+        "push without `-c`. Do not work around a refusal with `--no-verify`.\n")
     check("DOC.ci_trust_assumptions_exact_bytes", doc.count(trust) == 1)
     check("DOC.hook_environment_paragraph_exact_bytes", doc.count(hook) == 1)
+    check("DOC.ignored_class_lists_all_22_names",
+          all(f"`{n}`" in doc for n in R22_IGNORED) and "no wildcard" in doc)
     check("DOC.states_path_trust_and_offline_wording",
           "trusted host inputs" in doc and "does not\n  enforce it" in doc)
 
