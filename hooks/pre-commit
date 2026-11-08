@@ -6,6 +6,17 @@ set -eu
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 
+# Refuse commits made directly on the main branch (override: ALLOW_MAIN_COMMIT=1).
+branch="$(git symbolic-ref --short -q HEAD || true)"
+default="$(git symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)"
+if [ -z "${ALLOW_MAIN_COMMIT:-}" ] && [ -n "$branch" ]; then
+    if [ "$branch" = main ] || [ "$branch" = master ] ||
+        { [ -n "$default" ] && [ "$branch" = "$default" ]; }; then
+        echo "pre-commit: refusing to commit directly to '$branch'. Branch first: git switch -c <name>" >&2
+        exit 1
+    fi
+fi
+
 python3 scripts/guard.py --staged
 
 if command -v gitleaks >/dev/null 2>&1; then

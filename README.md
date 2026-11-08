@@ -73,7 +73,7 @@ LICENSE        GNU GPL v3.0-or-later
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.12+
 - `jsonschema` (optional) — enables JSON Schema validation passes. The semantic
   rule checks are pure standard library.
 - [Ollama](https://ollama.com) (optional) — required only for Stage 3 with a

@@ -18,13 +18,13 @@ concurrency:
 jobs:
   test:
     name: test (py${{ matrix.python }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        # The project documents Python 3.9+; test the floor and a current one.
-        python: ["3.9", "3.12"]
+        # The project documents Python 3.12+; test the floor and a current one.
+        python: ["3.12", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -45,12 +45,14 @@ jobs:
 
   privacy-guard:
     name: privacy guard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      # Full history so the guard can scan commit messages and the branch name.
+      # The exact event commit with full history, so the guard can scan the
+      # commit messages of the range the event describes.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -59,13 +61,100 @@ jobs:
         # Hashed owner terms come from a repository secret (newline-separated
         # sha256: entries). Unset is fine — the local list is primary and the
         # job must pass without it.
+        #
+        # The history range comes from the runner's event JSON, read as data by
+        # the fixed code below and passed to the guard as argv (never spliced
+        # into shell source). A missing, stale or inconsistent event refuses.
+        # The branch name is the event's own assertion, not proof of provenance.
         env:
           SENSITIVE_TERMS: ${{ secrets.SENSITIVE_TERMS }}
-        run: python scripts/guard.py --full
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+
+          OID = re.compile(r"[0-9a-f]{40}")
+
+
+          def refuse(message):
+              print("privacy-guard: " + message, file=sys.stderr)
+              sys.exit(1)
+
+
+          def git(*args, ok=(0,)):
+              proc = subprocess.run(["git", *args], capture_output=True, text=True)
+              if proc.returncode not in ok:
+                  refuse("a required Git check failed")
+              return proc.returncode, proc.stdout.strip()
+
+
+          def oid(value):
+              if not isinstance(value, str) or not OID.fullmatch(value) or set(value) == {"0"}:
+                  refuse("event context is missing or malformed")
+              return value
+
+
+          def obj(value):
+              return value if isinstance(value, dict) else {}
+
+
+          try:
+              with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as fh:
+                  event = json.load(fh)
+              name = os.environ["GITHUB_EVENT_NAME"]
+              sha = os.environ["GITHUB_SHA"]
+              repository = os.environ["GITHUB_REPOSITORY"]
+              ref = os.environ["GITHUB_REF"]
+          except (KeyError, OSError, ValueError):
+              refuse("event context is unavailable")
+          event = obj(event)
+          oid(sha)
+          if git("rev-parse", "--verify", "--end-of-options", "HEAD^{commit}")[1] != sha:
+              refuse("checked-out commit does not match the event")
+          if git("rev-parse", "--is-shallow-repository")[1] != "false":
+              refuse("checkout is shallow")
+
+          if name == "push":
+              if ref != "refs/heads/main" or event.get("ref") != "refs/heads/main":
+                  refuse("only pushes to main are supported")
+              if event.get("deleted") is not False or event.get("forced") is not False:
+                  refuse("deleted or forced pushes are not supported")
+              before, after = oid(event.get("before")), oid(event.get("after"))
+              if after != sha:
+                  refuse("event commit does not match the checkout")
+              git("merge-base", "--is-ancestor", before, after)
+              base, branch = before, "main"
+          elif name == "pull_request":
+              pr = obj(event.get("pull_request"))
+              target, source = obj(pr.get("base")), obj(pr.get("head"))
+              if event.get("action") not in ("opened", "synchronize", "reopened"):
+                  refuse("unsupported pull request action")
+              if target.get("ref") != "main" or obj(target.get("repo")).get("full_name") != repository:
+                  refuse("pull request does not target main in this repository")
+              base, head = oid(target.get("sha")), oid(source.get("sha"))
+              branch = source.get("ref")
+              if not isinstance(branch, str) or not branch:
+                  refuse("event context is missing or malformed")
+              parents = git("rev-list", "--parents", "-n", "1", sha)[1].split()
+              if parents != [sha, base, head]:
+                  refuse("checkout is not the merge of the event's base and head")
+          else:
+              refuse("unsupported event")
+
+          # Normalize to a detached HEAD; the asserted branch travels as data.
+          if git("symbolic-ref", "--quiet", "HEAD", ok=(0, 1))[0] == 0:
+              git("checkout", "--quiet", "--detach", sha)
+          guard = [sys.executable, "scripts/guard.py", "--full",
+                   "--history-base=" + base, "--history-branch=" + branch]
+          sys.exit(subprocess.run(guard).returncode)
+          PY
 
   secret-scan:
     name: secret scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
