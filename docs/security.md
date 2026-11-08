@@ -120,16 +120,23 @@ python scripts/guard.py --full --history-branch <name>          # detached HEAD 
   local paths only; the managed sandbox has network capability and does not
   enforce it, and nothing here claims stronger isolation.
 - Inherited `GIT_*` environment. The history scan classifies every inherited
-  `GIT_*` name and never prints a name or value: `GIT_PREFIX` and
-  `GIT_EXEC_PATH` are ignored; `GIT_DIR` and `GIT_WORK_TREE` must resolve to the
-  repository found from the current directory and are then dropped; five names
-  are accepted only with their fixed value (`GIT_OPTIONAL_LOCKS=0`,
-  `GIT_TERMINAL_PROMPT=0`, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_SYSTEM=/dev/null`,
-  `GIT_CONFIG_GLOBAL=/dev/null`); every other `GIT_*` name is refused with
-  `history-git` ("inherited Git environment not permitted"). That includes
-  `GIT_CONFIG_PARAMETERS`, which `git -c key=value push` sets, and harmless
-  names such as an editor or SSH override exported in your shell: unset them
-  for the push. Git calls run with a copy of the environment without any
+  `GIT_*` name and never prints a name or value: `GIT_PREFIX`, `GIT_EXEC_PATH`
+  and 22 enumerated names that cannot change what a history read sees are
+  ignored (`GIT_EDITOR`, `GIT_SEQUENCE_EDITOR`, `GIT_TEMPLATE_DIR`, `GIT_PAGER`,
+  `GIT_PAGER_IN_USE`, `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_AUTHOR_DATE`,
+  `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL`, `GIT_COMMITTER_DATE`, `GIT_SSH`,
+  `GIT_SSH_COMMAND`, `GIT_ASKPASS`, `GIT_EXTERNAL_DIFF`, `GIT_DIFF_OPTS`,
+  `GIT_TRACE`, `GIT_TRACE_SETUP`, `GIT_TRACE_PACKET`, `GIT_TRACE2`,
+  `GIT_TRACE2_EVENT`, `GIT_TRACE2_PERF`; exact names, no wildcard); `GIT_DIR` and
+  `GIT_WORK_TREE` must resolve to the repository found from the current
+  directory and are then dropped; five names are accepted only with their fixed
+  value (`GIT_OPTIONAL_LOCKS=0`, `GIT_TERMINAL_PROMPT=0`, `GIT_CONFIG_NOSYSTEM=1`,
+  `GIT_CONFIG_SYSTEM=/dev/null`, `GIT_CONFIG_GLOBAL=/dev/null`); every other
+  `GIT_*` name is refused with `history-git` ("inherited Git environment not
+  permitted"). That includes `GIT_CONFIG_PARAMETERS`, which `git -c key=value
+  push` sets, and any name not listed above, including names added by future Git
+  versions until each is reviewed. Ignoring a name here does not sanitize or
+  change the outer push. Git calls run with a copy of the environment without any
   `GIT_*` name.
 
 ### Denylist model
@@ -164,9 +171,10 @@ are the enforcement.**
 
 The history scan in `guard.py --full` accepts the environment Git gives a hook
 (`GIT_PREFIX`, `GIT_EXEC_PATH`, and `GIT_DIR` / `GIT_WORK_TREE` when they name
-this repository) and refuses any other inherited `GIT_*` variable with a
-generic message. `git -c key=value push` sets `GIT_CONFIG_PARAMETERS`, so repeat
-the push without `-c`. Do not work around a refusal with `--no-verify`.
+this repository), ignores the enumerated names listed in the inherited `GIT_*`
+item above, and refuses any other inherited `GIT_*` variable with a generic
+message. `git -c key=value push` sets `GIT_CONFIG_PARAMETERS`, so repeat the
+push without `-c`. Do not work around a refusal with `--no-verify`.
 
 A push from a detached `HEAD` is refused (no branch context); push from an
 attached branch. The hook runs `tests/test_pipeline.py` before the guard, so
