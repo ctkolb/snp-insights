@@ -622,6 +622,27 @@ def _history_api(check):
             and s.selected == 2 and s.scanned == 1 and not s.complete
     guarded("HG-01.undecodable_message_counts_unscanned", bad_decode_continues)
 
+    def each_command_fails():
+        d = tempfile.mkdtemp(prefix="snp-insights-hg-")
+        for sub in ("rev-parse", "symbolic-ref", "merge-base", "rev-list", "show"):
+            exe = _wrap_git(d, f'case " $* " in *" {sub} "*) echo {HG_CANARY}; exit 3;; esac',
+                            name="fail-" + sub)
+            with _git_exe(exe):
+                s = _scan(_hg_feature(("a", "b")))
+            if ("history-git" not in _hg_labels(s.findings) or s.complete
+                    or "history-secret" in _hg_labels(s.findings)
+                    or HG_CANARY in _text(s.findings)):
+                return False
+        return True
+    guarded("HG-01.each_command_failure_fails_closed", each_command_fails)
+
+    def ref_format_exec_failure():
+        repo = _hg_feature()
+        with _git_exe(None):
+            rc, out, err = _run_main(["--full", "--history-branch", "ok/name"], repo)
+        return rc == 1 and "[history-git]" in err and "complete=no" in out and "ok/name" not in out + err
+    guarded("HG-05.check_ref_format_exec_failure_is_exit_1", ref_format_exec_failure)
+
     # HG-02: base resolution.
     def base_oids(repo):
         return _fx(repo, "rev-list", "--reverse", "main..HEAD").split()
@@ -933,6 +954,28 @@ def _history_api(check):
                 and "Traceback" not in err and "complete=no" in out)
     guarded("HG-08.full_entry_io_failure_fixed", io_boundary)
 
+    def attached_override_cli():
+        repo = _hg_feature(prefix=f"snp-insights-hg-{SENT}-att-")
+        rc, out, err = _run_main(["--full", "--history-branch", "asserted"], repo)
+        return (rc == 2 and "selected=unknown scanned=0 complete=no" in out
+                and SENT not in out + err and "guard: invalid arguments" in err)
+    guarded("HG-05.attached_override_cli_exit_2", attached_override_cli)
+
+    def selftest_io_boundary():
+        repo, _ = _full_fixture()
+        real = guard.check_gitignore_selftest
+
+        def boom():
+            raise OSError(f"{SENT} secret path")
+        guard.check_gitignore_selftest = boom
+        try:
+            rc, out, err = _run_main(["--full"], repo)
+        finally:
+            guard.check_gitignore_selftest = real
+        return (rc == 1 and "[guard-io]" in err and SENT not in out + err
+                and "complete=no" in out and "selected=1 scanned=1" in out)
+    guarded("HG-08.selftest_io_failure_fixed_history_still_runs", selftest_io_boundary)
+
     def other_modes_unchanged():
         repo, _ = _full_fixture()
         rc, out, _ = _run_main(["--all"], repo)
@@ -1022,6 +1065,11 @@ def _env_classifier(check):
                 and snapshot[name] == "value-" + SENT and name not in os.environ)
         return all(results)
     guarded("ENV.history_scan_refuses_generically", scan_refuses_without_echo)
+
+    def other_layers_continue():
+        rc, out, err = _run_main(["--full"], repo, env={"GIT_SNP_TEST_SENTINEL": SENT})
+        return rc == 1 and "[allowlist]" in err and ENV_MSG in err and SENT not in out + err
+    guarded("ENV.other_layers_still_run_on_refusal", other_layers_continue)
 
     def refusal_keeps_other_layers():
         repo2, _ = _full_fixture(("clean synthetic message",))
