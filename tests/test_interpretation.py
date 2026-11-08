@@ -21,6 +21,7 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.join(ROOT, "stage2"))
 
@@ -99,6 +100,33 @@ def _sig(f):
 
 def _caveat_texts(f):
     return list(f["caveats"])
+
+
+class _Gate(AssertionError):
+    pass
+
+
+def _require(label, cond):
+    """Fail the current gate at the first unmet condition, naming it."""
+    if not cond:
+        raise _Gate(label)
+
+
+BUILD_REFUSED_MESSAGE = ("error: genome build refused: only GRCh37 is supported and the raw "
+                         "file's stated build must match the panel build; no output was written")
+
+
+def _write_panel(directory, panel, name="panel.json"):
+    path = os.path.join(directory, name)
+    with open(path, "w") as fh:
+        json.dump(panel, fh)
+    return path
+
+
+def _sha256(path):
+    import hashlib
+    with open(path, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()
 
 
 def _run_main(argv):
@@ -342,16 +370,372 @@ def _run_characterization(attempt):
     attempt("R2A.build_absent_still_annotates", build_absent_still_annotates)
 
 
+def _uninterpretable(f):
+    return (f["state"] == "covered_uninterpretable" and f["call"]["state"] == "uninterpretable"
+            and f["call"]["zygosity"] == "unknown")
+
+
+def _run_interpretation(attempt):
+    from caveats import CAVEAT_REGISTRY, STATE_CAVEAT
+
+    ind_d = _variant("rs900003", "7", 3000, None, None, effect="D", assay="indel")
+
+    # --- R2A.effect_neither_allele_is_uninterpretable (P1) ---------------------
+    def effect_neither_allele_is_uninterpretable():
+        for a1, a2 in (("C", "C"), ("C", "T"), ("T", "T")):
+            f = _finding([("rs900001", 1, 1000, a1, a2)], _effect_variant())
+            _require(f"{a1}/{a2} on effect A (ref G alt A) is uninterpretable, got {_sig(f)}", _uninterpretable(f))
+        # a stray third letter next to the effect allele is not detected either
+        f = _finding([("rs900001", 1, 1000, "A", "C")], _effect_variant())
+        _require(f"A/C is uninterpretable, got {_sig(f)}", _uninterpretable(f))
+        return True
+    attempt("R2A.effect_neither_allele_is_uninterpretable", effect_neither_allele_is_uninterpretable)
+
+    # --- R2A.effect_junk_letter_is_uninterpretable (P2) ------------------------
+    def effect_junk_letter_is_uninterpretable():
+        for a1, a2 in (("X", "X"), ("A", "X"), ("-", "-"), ("a", "a")):
+            f = _finding([("rs900001", 1, 1000, a1, a2)], _effect_variant())
+            _require(f"{a1}/{a2} is uninterpretable, got {_sig(f)}", _uninterpretable(f))
+        return True
+    attempt("R2A.effect_junk_letter_is_uninterpretable", effect_junk_letter_is_uninterpretable)
+
+    # --- R2A.effect_indel_letters_on_snp_uninterpretable (P3) ------------------
+    def effect_indel_letters_on_snp_uninterpretable():
+        for a1, a2 in (("I", "D"), ("I", "I"), ("D", "D")):
+            f = _finding([("rs900001", 1, 1000, a1, a2)], _effect_variant())
+            _require(f"{a1}/{a2} on a SNP is uninterpretable, got {_sig(f)}", _uninterpretable(f))
+        return True
+    attempt("R2A.effect_indel_letters_on_snp_uninterpretable", effect_indel_letters_on_snp_uninterpretable)
+
+    # --- R2A.effect_snp_letters_on_indel_uninterpretable (P10) -----------------
+    def effect_snp_letters_on_indel_uninterpretable():
+        for a1, a2 in (("A", "A"), ("A", "C"), ("D", "A")):
+            f = _finding([("rs900003", 7, 3000, a1, a2)], ind_d)
+            _require(f"{a1}/{a2} on an indel is uninterpretable, got {_sig(f)}", _uninterpretable(f))
+        return True
+    attempt("R2A.effect_snp_letters_on_indel_uninterpretable", effect_snp_letters_on_indel_uninterpretable)
+
+    # --- R2A.effect_unknown_nonset_cannot_assert_reference ---------------------
+    def effect_unknown_nonset_cannot_assert_reference():
+        # effect A with no known reference/alternate: the non-effect set is unknown
+        nothing = _variant("rs900001", "1", 1000, None, None, effect="A")
+        for a1, a2 in (("C", "C"), ("G", "G"), ("C", "G")):
+            f = _finding([("rs900001", 1, 1000, a1, a2)], nothing)
+            _require(f"{a1}/{a2} with unknown non-effect set is uninterpretable, got {_sig(f)}",
+                     _uninterpretable(f))
+        # the effect allele itself is still detected without a declared non-effect set
+        f = _finding([("rs900001", 1, 1000, "A", "G")], nothing)
+        _require(f"A/G is still detected, got {_sig(f)}", f["state"] == "detected")
+        # only the effect allele declared (ref == effect, alt unknown): still no reference claim
+        only_ref = _variant("rs900001", "1", 1000, "A", None, effect="A")
+        f = _finding([("rs900001", 1, 1000, "C", "C")], only_ref)
+        _require(f"C/C with only the effect declared is uninterpretable, got {_sig(f)}", _uninterpretable(f))
+        return True
+    attempt("R2A.effect_unknown_nonset_cannot_assert_reference", effect_unknown_nonset_cannot_assert_reference)
+
+    # --- R2A.uninterpretable_caveat_present_and_validates ----------------------
+    def uninterpretable_caveat_present_and_validates():
+        panel = _panel(_effect_variant())
+        doc = _findings([("rs900001", 1, 1000, "C", "C")], panel)
+        f = doc["findings"][0]
+        _require(f"state is covered_uninterpretable, got {f['state']}", f["state"] == "covered_uninterpretable")
+        _require("the uninterpretable caveat text is on the finding",
+                 CAVEAT_REGISTRY[STATE_CAVEAT["covered_uninterpretable"]] in f["caveats"])
+        jsonschema = _jsonschema()
+        if jsonschema is not None:
+            jsonschema.Draft202012Validator(_load(SCHEMA_PATH)).validate(doc)
+        return True
+    attempt("R2A.uninterpretable_caveat_present_and_validates", uninterpretable_caveat_present_and_validates)
+
+    # --- R2A.chromosome_mismatch_not_high ---------------------------------------
+    def chromosome_mismatch_not_high():
+        # the same rsID on another chromosome is not the panel locus
+        f = _finding([("rs900001", 2, 1000, "A", "A")], _effect_variant())
+        _require(f"rsID on another chromosome is not covered, got {_sig(f)}", f["state"] == "not_covered")
+        _require("no call is made", f["call"] == {"state": "not_applicable"})
+        # position fallback still applies, at medium confidence
+        rows = [("rs900001", 2, 1000, "A", "A"), ("rs900777", 1, 1000, "G", "G")]
+        g = _finding(rows, _effect_variant())
+        level = g["confidence"]["annotation_mapping"]["level"]
+        _require(f"the position fallback maps at medium, got {level}", level == "medium")
+        _require("the basis says the match is by position",
+                 g["confidence"]["annotation_mapping"]["basis"][-1].startswith("matched by position"))
+        return True
+    attempt("R2A.chromosome_mismatch_not_high", chromosome_mismatch_not_high)
+
+    # --- R2A.duplicate_rsid_conflict_uninterpretable -----------------------------
+    def duplicate_rsid_conflict_uninterpretable():
+        for variant, rsid, pos, first, second in (
+                (_effect_variant(), "rs900001", 1000, ("A", "A"), ("G", "G")),
+                (_refalt_variant(), "rs900002", 2000, ("G", "G"), ("A", "A"))):
+            rows = [(rsid, 1, pos, *first), (rsid, 1, pos, *second)]
+            f = _finding(rows, variant)
+            _require(f"conflicting duplicate rows are uninterpretable, got {_sig(f)}", _uninterpretable(f))
+            _require("the uninterpretable caveat is present", CAVEAT_REGISTRY["uninterpretable"] in f["caveats"])
+            _require("the basis names the conflict",
+                     any("conflicting duplicate" in b for b in f["confidence"]["annotation_mapping"]["basis"]))
+            # a different position on the repeated row is also a conflict
+            moved = [(rsid, 1, pos, *first), (rsid, 1, pos + 5, *first)]
+            g = _finding(moved, variant)
+            _require(f"duplicate rows at different positions conflict, got {_sig(g)}", _uninterpretable(g))
+        # identical and reordered duplicates agree, so they are not a conflict
+        same = _finding([("rs900001", 1, 1000, "A", "G"), ("rs900001", 1, 1000, "G", "A")], _effect_variant())
+        _require(f"reordered duplicate alleles still agree, got {_sig(same)}", _sig(same)[:3] == ("detected", "called", "het"))
+        twice = _finding([("rs900001", 1, 1000, "A", "A")] * 2, _effect_variant())
+        _require(f"identical duplicate rows still agree, got {_sig(twice)}", _sig(twice)[:3] == ("detected", "called", "hom_alt"))
+        return True
+    attempt("R2A.duplicate_rsid_conflict_uninterpretable", duplicate_rsid_conflict_uninterpretable)
+
+
+def _build_doc(rows, panel, build):
+    return _findings(rows, panel, build=build)
+
+
+def _run_build(attempt):
+    rows = [("rs900001", 1, 1000, "A", "G"), ("rs900002", 1, 2000, "G", "G")]
+    panel = _panel(_effect_variant(), _refalt_variant())
+    old_literal = "build GRCh37 match"
+    stated_text = "file build GRCh37 matches panel build GRCh37"
+    absent_text = "build not stated in file; assumed to match panel build GRCh37"
+
+    def rsid_basis(doc):
+        return [f["confidence"]["annotation_mapping"]["basis"] for f in doc["findings"]
+                if f["rsid"] and f["confidence"]["annotation_mapping"]["basis"][0] != "matched by position; rsID absent from file"]
+
+    def refusal(raw_rows, build, the_panel, extra_check=None):
+        """Run annotate.main on a refused input; returns (rc, stdout, stderr, out_path, dir_listing)."""
+        with tempfile.TemporaryDirectory() as d:
+            raw = _write_raw(d, raw_rows, build=build)
+            pp = _write_panel(d, the_panel)
+            out = os.path.join(d, "findings.json")
+            rc, so, se = _run_main([raw, pp, "-o", out, "--aliases", os.path.join(d, "none.json")])
+            return rc, so, se, os.path.exists(out)
+
+    # --- R2A.build_mismatch_refused_exit_nonzero --------------------------------
+    def build_mismatch_refused_exit_nonzero():
+        import annotate
+        rc, so, se, wrote = refusal(rows, "38", panel)
+        _require(f"annotate.main returns 2, got {rc}", rc == 2)
+        _require(f"stderr equals the fixed message exactly, got {se!r}", se == BUILD_REFUSED_MESSAGE + "\n")
+        err = None
+        with tempfile.TemporaryDirectory() as d:
+            try:
+                annotate.build_findings(_write_raw(d, rows, build="38"), panel, {})
+            except Exception as exc:  # noqa: BLE001
+                err = exc
+        _require("build_findings raises", err is not None)
+        _require(f"it raises the dedicated refusal exception, got {type(err).__name__}",
+                 type(err).__name__ == "BuildRefused")
+        return True
+    attempt("R2A.build_mismatch_refused_exit_nonzero", build_mismatch_refused_exit_nonzero)
+
+    # --- R2A.build_mismatch_writes_no_output ------------------------------------
+    def build_mismatch_writes_no_output():
+        with tempfile.TemporaryDirectory() as d:
+            raw = _write_raw(d, rows, build="38")
+            pp = _write_panel(d, panel)
+            none = os.path.join(d, "none.json")
+            absent_out = os.path.join(d, "absent.json")
+            rc, _so, _se = _run_main([raw, pp, "-o", absent_out, "--aliases", none])
+            _require(f"a refusal exits non-zero, got {rc}", rc != 0)
+            _require("-o PATH stays absent", not os.path.exists(absent_out))
+            kept = os.path.join(d, "kept.json")
+            with open(kept, "w") as fh:
+                fh.write('{"pre": "existing"}\n')
+            before = _sha256(kept)
+            rc, _so, _se = _run_main([raw, pp, "-o", kept, "--aliases", none])
+            _require(f"a refusal onto an existing PATH exits non-zero, got {rc}", rc != 0)
+            _require("a pre-existing PATH is byte-identical (sha256 before == after)", _sha256(kept) == before)
+            rc, so, _se = _run_main([raw, pp, "--aliases", none])
+            _require(f"a refusal without -o exits non-zero, got {rc}", rc != 0)
+            _require(f"stdout is empty without -o, got {len(so)} bytes", so == "")
+        return True
+    attempt("R2A.build_mismatch_writes_no_output", build_mismatch_writes_no_output)
+
+    # --- R2A.build_mismatch_run_writes_no_files ---------------------------------
+    def build_mismatch_run_writes_no_files():
+        from snp_insights import cli
+        with tempfile.TemporaryDirectory() as d:
+            raw = _write_raw(d, rows, build="38")
+            pp = _write_panel(d, panel)
+            out_dir = os.path.join(d, "run-out")
+            err, out = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(out):
+                rc = cli.main(["run", raw, pp, "--out-dir", out_dir, "--template-only"])
+            _require(f"run returns non-zero, got {rc}", rc != 0)
+            present = [n for n in cli._OUTPUT_NAMES if os.path.lexists(os.path.join(out_dir, n))]
+            _require(f"none of the run's output names exists, found {present}", not present)
+        return True
+    attempt("R2A.build_mismatch_run_writes_no_files", build_mismatch_run_writes_no_files)
+
+    # --- R2A.panel_build_not_grch37_refused --------------------------------------
+    def panel_build_not_grch37_refused():
+        bad = _panel(_effect_variant(), _refalt_variant(), genome_build="GRCh38")
+        for label, build in (("stated 37.1", "37.1"), ("not stated", None), ("stated 38", "38")):
+            rc, so, se, wrote = refusal(rows, build, bad)
+            _require(f"panel GRCh38 with raw {label} exits 2, got {rc}", rc == 2)
+            _require(f"panel GRCh38 with raw {label} prints the fixed message, got {se!r}",
+                     se == BUILD_REFUSED_MESSAGE + "\n")
+            _require(f"panel GRCh38 with raw {label} writes nothing", not wrote and so == "")
+        return True
+    attempt("R2A.panel_build_not_grch37_refused", panel_build_not_grch37_refused)
+
+    # --- R2A.build_match_records_state -------------------------------------------
+    def build_match_records_state():
+        for build in ("37.1", "37"):
+            doc = _build_doc(rows, panel, build)
+            prov = doc["provenance"]
+            _require(f"build {build}: genome_build is the panel build", prov["genome_build"] == "GRCh37")
+            _require(f"build {build}: input_build is GRCh37, got {prov.get('input_build')!r}",
+                     prov.get("input_build") == "GRCh37")
+            _require(f"build {build}: build_basis is file_statement, got {prov.get('build_basis')!r}",
+                     prov.get("build_basis") == "file_statement")
+            bases = rsid_basis(doc)
+            _require("every finding is rsID-located", len(bases) == len(doc["findings"]))
+            for basis in bases:
+                _require(f"build {build}: basis states the stated match, got {basis}", stated_text in basis)
+                _require(f"build {build}: the old literal is gone, got {basis}", old_literal not in basis)
+        return True
+    attempt("R2A.build_match_records_state", build_match_records_state)
+
+    # --- R2A.build_absent_provenance_unknown --------------------------------------
+    def build_absent_provenance_unknown():
+        doc = _build_doc(rows, panel, None)
+        prov = doc["provenance"]
+        _require(f"input_build is unknown, got {prov.get('input_build')!r}", prov.get("input_build") == "unknown")
+        _require(f"build_basis is not_stated, got {prov.get('build_basis')!r}", prov.get("build_basis") == "not_stated")
+        _require("genome_build stays the panel build", prov["genome_build"] == "GRCh37")
+
+        def observed_grch37(node):
+            if isinstance(node, dict):
+                return any((k == "input_build" and v == "GRCh37") or observed_grch37(v) for k, v in node.items())
+            if isinstance(node, list):
+                return any(observed_grch37(v) for v in node)
+            return False
+        _require("input_build is not GRCh37 anywhere in the document", not observed_grch37(doc))
+        return True
+    attempt("R2A.build_absent_provenance_unknown", build_absent_provenance_unknown)
+
+    # --- R2A.build_absent_basis_states_assumption ----------------------------------
+    def build_absent_basis_states_assumption():
+        doc = _build_doc(rows, panel, None)
+        bases = rsid_basis(doc)
+        _require("every finding is rsID-located", len(bases) == len(doc["findings"]))
+        for basis in bases:
+            _require(f"basis states the assumption, got {basis}", absent_text in basis)
+            _require(f"no basis claims the file build matched, got {basis}",
+                     old_literal not in basis and stated_text not in basis)
+        return True
+    attempt("R2A.build_absent_basis_states_assumption", build_absent_basis_states_assumption)
+
+    # --- R2A.findings_schema_valid -------------------------------------------------
+    def findings_schema_valid():
+        jsonschema = _jsonschema()
+        validator = jsonschema.Draft202012Validator(_load(SCHEMA_PATH)) if jsonschema else None
+        for label, build, want_input, want_basis in (("stated", "37.1", "GRCh37", "file_statement"),
+                                                      ("absent", None, "unknown", "not_stated")):
+            doc = _build_doc(rows, panel, build)
+            prov = doc["provenance"]
+            _require(f"{label}: schema_version is 1.1.0, got {doc['schema_version']!r}", doc["schema_version"] == "1.1.0")
+            _require(f"{label}: input_build is {want_input}, got {prov.get('input_build')!r}",
+                     prov.get("input_build") == want_input)
+            _require(f"{label}: build_basis is {want_basis}, got {prov.get('build_basis')!r}",
+                     prov.get("build_basis") == want_basis)
+            _require(f"{label}: genome_build is GRCh37", prov["genome_build"] == "GRCh37")
+            if validator is not None:
+                validator.validate(doc)
+        return True
+    attempt("R2A.findings_schema_valid", findings_schema_valid)
+
+    # --- R2A.schema_file_declares_build_fields (runs without jsonschema) -------------
+    def schema_file_declares_build_fields():
+        schema = _load(SCHEMA_PATH)
+        props = schema["$defs"]["provenance"]["properties"]
+        _require("provenance declares input_build and build_basis", "input_build" in props and "build_basis" in props)
+        _require("the version enum is exactly 1.0.0 and 1.1.0",
+                 schema["properties"]["schema_version"] == {"enum": ["1.0.0", "1.1.0"]})
+        conds = [c for c in schema.get("allOf", []) if "1.1.0" in json.dumps(c.get("if", {}))]
+        _require("one conditional keys on 1.1.0", len(conds) == 1)
+        then = json.dumps(conds[0].get("then", {}))
+        _require("the 1.1.0 branch requires input_build and build_basis",
+                 "input_build" in then and "build_basis" in then)
+        return True
+    attempt("R2A.schema_file_declares_build_fields", schema_file_declares_build_fields)
+
+    # --- R2A.schema_enforces_build_fields (schema runs only) ---------------------------
+    def schema_enforces_build_fields():
+        jsonschema = _jsonschema()
+        validator = jsonschema.Draft202012Validator(_load(SCHEMA_PATH))
+
+        def rejected(doc):
+            return bool(list(validator.iter_errors(doc)))
+
+        import copy
+        good = _build_doc(rows, panel, "37.1")
+        _require(f"the generated document is 1.1.0, got {good['schema_version']!r}", good["schema_version"] == "1.1.0")
+        _require("the generated document carries input_build and build_basis",
+                 "input_build" in good["provenance"] and "build_basis" in good["provenance"])
+        _require("positive control: a valid 1.1.0 document validates", not rejected(good))
+        for field in ("input_build", "build_basis"):
+            doc = copy.deepcopy(good)
+            del doc["provenance"][field]
+            _require(f"a 1.1.0 document without {field} is rejected", rejected(doc))
+        for field, bad in (("input_build", "GRCh38"), ("input_build", ""), ("build_basis", "guessed"),
+                           ("build_basis", "")):
+            doc = copy.deepcopy(good)
+            doc["provenance"][field] = bad
+            _require(f"{field} = {bad!r} is rejected", rejected(doc))
+        legacy = copy.deepcopy(good)
+        legacy["schema_version"] = "1.0.0"
+        del legacy["provenance"]["input_build"]
+        del legacy["provenance"]["build_basis"]
+        _require("a 1.0.0 document missing both fields is still accepted", not rejected(legacy))
+        return True
+    if _jsonschema() is None:
+        _skip("R2A.schema_enforces_build_fields", "jsonschema not installed")
+    else:
+        attempt("R2A.schema_enforces_build_fields", schema_enforces_build_fields)
+
+    # --- R2A.error_messages_do_not_echo_data (INV-09) -----------------------------------
+    def error_messages_do_not_echo_data():
+        from snp_insights import cli
+        sentinels = ["rs77777777", "99.9", "GRCh99", "GRChSENTINEL", "sentinel_raw_name", "Zq"]
+        sentinel_rows = [("rs77777777", 1, 1000, "A", "G")]
+        for label, build, the_panel in (("file build", "99.9", panel),
+                                        ("panel build", "37.1", _panel(_effect_variant(), genome_build="GRChSENTINEL"))):
+            with tempfile.TemporaryDirectory() as d:
+                raw = _write_raw(d, sentinel_rows, build=build, name="sentinel_raw_name.txt")
+                pp = _write_panel(d, the_panel, name="sentinel_panel_name.json")
+                digest = _sha256(raw)
+                rc, so, se = _run_main([raw, pp, "-o", os.path.join(d, "o.json")])
+                _require(f"{label}: refusal exits 2, got {rc}", rc == 2)
+                _require(f"{label}: stderr is exactly the fixed message, got {se!r}", se == BUILD_REFUSED_MESSAGE + "\n")
+                _require(f"{label}: stdout is empty", so == "")
+                err, out = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stderr(err), contextlib.redirect_stdout(out):
+                    cli.main(["run", raw, pp, "--out-dir", os.path.join(d, "run-out"), "--template-only"])
+                seen = err.getvalue() + out.getvalue() + se + so
+                for needle in sentinels + [digest, raw, pp, os.path.basename(raw), os.path.basename(pp)]:
+                    _require(f"{label}: output does not echo {needle[:12]!r}", needle not in seen)
+        return True
+    attempt("R2A.error_messages_do_not_echo_data", error_messages_do_not_echo_data)
+
+
 def run(check):
     def attempt(name, fn):
         try:
             result = fn()
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            print(f"  detail {name}: {type(exc).__name__}: {exc}")
             check(name, False)
             return
+        if not result:
+            print(f"  detail {name}: gate returned false")
         check(name, bool(result))
 
     _run_characterization(attempt)
+    _run_interpretation(attempt)
+    _run_build(attempt)
 
 
 def main():
