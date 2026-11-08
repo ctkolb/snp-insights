@@ -768,6 +768,12 @@ def main(argv=None):
             print(scan.receipt())
             print(f"  {scan.findings[0]}", file=sys.stderr)
             return 1
+        except _EXPECTED_IO:
+            scan = _HistoryScan()
+            scan.fail("history-git", "history setup could not complete")
+            print(scan.receipt())
+            print(f"  {scan.findings[0]}", file=sys.stderr)
+            return 1
         if rc != 0:
             _usage_error(True)
 
