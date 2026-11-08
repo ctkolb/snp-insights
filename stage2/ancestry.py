@@ -6,6 +6,8 @@ Handles the conventions that break naive parsers:
   - numeric chromosomes: 23=X, 24=Y, 25=PAR, 26=MT
   - no-calls represented as "0"
   - alleles split across two columns
+  - a repeated rsID keeps the last row; rsIDs whose repeated rows disagree are
+    reported in "conflicting_rsids"
 """
 import re
 
@@ -19,10 +21,16 @@ def normalize_chromosome(value):
     return NUMERIC_CHROMOSOME.get(v, v)
 
 
+def _identity(row):
+    """What a repeated rsID row must agree on: locus and genotype, allele order aside."""
+    return (row["chromosome"], row["position"], tuple(sorted((row["allele1"], row["allele2"]))))
+
+
 def parse_ancestry(path):
     meta = {"array_version": None, "converter_version": None, "genome_build": None, "strand": "forward"}
     rows = {}
     by_position = {}
+    conflicting = set()
     row_count = 0
     with open(path) as fh:
         for line in fh:
@@ -47,7 +55,12 @@ def parse_ancestry(path):
                 pos = int(pos)
             except ValueError:
                 continue
-            rows[rsid] = {"rsid": rsid, "chromosome": chrom, "position": pos, "allele1": a1, "allele2": a2}
+            row = {"rsid": rsid, "chromosome": chrom, "position": pos, "allele1": a1, "allele2": a2}
+            earlier = rows.get(rsid)
+            if earlier is not None and _identity(earlier) != _identity(row):
+                conflicting.add(rsid)
+            rows[rsid] = row
             by_position[(chrom, pos)] = rsid
             row_count += 1
-    return {"meta": meta, "rows": rows, "by_position": by_position, "row_count": row_count}
+    return {"meta": meta, "rows": rows, "by_position": by_position, "row_count": row_count,
+            "conflicting_rsids": conflicting}

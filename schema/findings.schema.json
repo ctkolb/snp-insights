@@ -7,11 +7,21 @@
   "additionalProperties": false,
   "required": ["schema_version", "provenance", "findings", "contradictions"],
   "properties": {
-    "schema_version": { "const": "1.0.0" },
+    "schema_version": { "enum": ["1.0.0", "1.1.0"] },
     "provenance": { "$ref": "#/$defs/provenance" },
     "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
     "contradictions": { "type": "array", "items": { "$ref": "#/$defs/contradiction" } }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "schema_version": { "const": "1.1.0" } }, "required": ["schema_version"] },
+      "then": {
+        "properties": {
+          "provenance": { "required": ["input_build", "build_basis"] }
+        }
+      }
+    }
+  ],
   "$defs": {
     "provenance": {
       "type": "object",
@@ -25,7 +35,9 @@
         "input_hash": { "type": "string", "description": "sha256 hex of the raw input file" },
         "array_version": { "type": "string", "examples": ["AncestryDNA V2.0"] },
         "converter_version": { "type": ["string", "null"] },
-        "genome_build": { "const": "GRCh37" },
+        "genome_build": { "const": "GRCh37", "description": "The build of the annotation panel: what every position in the findings refers to. It is not the build the raw file states; see input_build." },
+        "input_build": { "enum": ["GRCh37", "unknown"], "description": "The build the raw file states; 'unknown' when the file has no build statement. A stated build that differs from the panel build is refused, so no other value is reachable. Required from schema_version 1.1.0." },
+        "build_basis": { "enum": ["file_statement", "not_stated"], "description": "How input_build was established: 'file_statement' (read from the file) or 'not_stated' (assumed to match the panel build). Required from schema_version 1.1.0." },
         "strand": { "const": "forward" },
         "inferred_sex": { "enum": ["male", "female", "unknown"], "description": "Inferred from the raw file (Y calls and X heterozygosity); determines hemizygous calls on X/Y." },
         "manifest_row_count": { "type": "integer", "minimum": 1 },

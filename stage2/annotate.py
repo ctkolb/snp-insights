@@ -25,6 +25,20 @@ from ancestry import parse_ancestry  # noqa: E402
 PIPELINE_VERSION = "0.1.0"
 NO_CALL = "0"
 
+# Letters an assayability class can report; anything else cannot be interpreted.
+ALPHABET = {"snp": frozenset("ACGT"), "indel": frozenset("ID")}
+SUPPORTED_BUILD = "GRCh37"
+BUILD_REFUSED_MESSAGE = ("error: genome build refused: only GRCh37 is supported and the raw file's "
+                         "stated build must match the panel build; no output was written")
+
+
+class BuildRefused(Exception):
+    """The raw file's build, or the panel's, is not the supported one.
+
+    Deliberately carries no detail: the message is fixed so nothing from the
+    user's file can reach an error stream.
+    """
+
 
 def sha256_file(path):
     h = hashlib.sha256()
@@ -65,6 +79,33 @@ def classify(alleles, ref, alt):
     return "unknown", None
 
 
+def classify_effect(alleles, effect, ref, alt, assayability):
+    """Return (zygosity, is_variant) for an entry curated by its effect allele.
+
+    is_variant is None when the call cannot be interpreted: a letter outside the
+    assayability alphabet, a letter outside the declared allele set, or no
+    effect allele and no declared non-effect allele to call it reference by.
+    Indels are biallelic (I/D), so their non-effect allele is the other letter;
+    for a SNP it must come from the declared reference/alternate alleles.
+    """
+    alphabet = ALPHABET.get(assayability, ALPHABET["snp"])
+    if effect not in alphabet or any(a not in alphabet for a in alleles):
+        return "unknown", None
+    if assayability == "indel":
+        declared = alphabet
+        non_effect = alphabet - {effect}
+    else:
+        declared = {a for a in (ref, alt) if a} | {effect}
+        non_effect = declared - {effect}
+        if non_effect and any(a not in declared for a in alleles):
+            return "unknown", None
+    if effect in alleles:
+        return ("hom_alt" if alleles[0] == alleles[1] else "het"), True
+    if non_effect and all(a in non_effect for a in alleles):
+        return "hom_ref", False
+    return "unknown", None
+
+
 def is_no_call(a1, a2):
     return a1 == NO_CALL or a2 == NO_CALL
 
@@ -102,30 +143,45 @@ def adjust_zygosity(zygosity, chrom, sex):
     return zygosity
 
 
-def locate(variant, raw, merges=None):
+def build_basis_note(raw, panel_build=SUPPORTED_BUILD):
+    """Say what was checked about the build: a stated match, or an assumption."""
+    if raw["meta"].get("genome_build"):
+        return f"file build {raw['meta']['genome_build']} matches panel build {panel_build}"
+    return f"build not stated in file; assumed to match panel build {panel_build}"
+
+
+def locate(variant, raw, merges=None, panel_build=SUPPORTED_BUILD):
     """Return (row, covered, mapping_level, basis)."""
     merges = merges or {}
     rsid, chrom, pos = variant["rsid"], variant["chromosome"], variant["position"]
-    basis = ["rsID+position agree with dbSNP snapshot", "build GRCh37 match"]
+    other_chromosome = []
     if rsid:
         canon = merges.get(rsid, rsid)
         row = raw["rows"].get(rsid) or raw.get("by_canon", {}).get(canon)
-        if row:
+        if row and row["chromosome"] != chrom:
+            # the same rsID on another chromosome is not this locus
+            other_chromosome = ["rsID present in file on a different chromosome; not matched"]
+        elif row:
+            same_position = row["position"] == pos
+            agreed = "rsID, chromosome and position" if same_position else "rsID and chromosome"
+            basis = [f"{agreed} agree with dbSNP snapshot", build_basis_note(raw, panel_build)]
             if canon != rsid:
                 basis = basis + [f"dbSNP merge map applied ({rsid}->{canon})"]
-            if row["position"] != pos:
+            if not same_position:
                 return row, True, "medium", basis + ["position differs from snapshot"]
             return row, True, "high", basis
     if (chrom, pos) in raw["by_position"]:
         other = raw["by_position"][(chrom, pos)]
-        return raw["rows"][other], True, "medium", ["matched by position; rsID absent from file"]
-    return None, False, "high", ["panel locus (rsID+position) not present in file manifest"]
+        return (raw["rows"][other], True, "medium",
+                other_chromosome + ["matched by position; rsID absent from file"])
+    return (None, False, "high",
+            other_chromosome + ["panel locus (rsID+position) not present in file manifest"])
 
 
-def annotate_variant(variant, raw, merges=None, sex="unknown"):
+def annotate_variant(variant, raw, merges=None, sex="unknown", panel_build=SUPPORTED_BUILD):
     chrom, pos = variant["chromosome"], variant["position"]
     ref, alt = variant["reference_allele"], variant["alternate_allele"]
-    row, covered, level, basis = locate(variant, raw, merges)
+    row, covered, level, basis = locate(variant, raw, merges, panel_build)
     manifest_source = "raw file manifest"
     if raw["meta"].get("array_version"):
         manifest_source = f"AncestryDNA {raw['meta']['array_version']} file manifest"
@@ -142,6 +198,12 @@ def annotate_variant(variant, raw, merges=None, sex="unknown"):
         state = "not_covered"
         coverage = {"state": "not_covered", "source": manifest_source}
         call = {"state": "not_applicable"}
+    elif row["rsid"] in raw.get("conflicting_rsids", ()):
+        # repeated rows for this rsID disagree: no one genotype can be reported
+        basis = basis + ["conflicting duplicate rows for this rsID in the file"]
+        state = "covered_uninterpretable"
+        coverage = {"state": "covered", "source": manifest_source}
+        call = {"state": "uninterpretable", "zygosity": "unknown", "strand": strand}
     elif is_no_call(row["allele1"], row["allele2"]):
         state = "covered_nocall"
         coverage = {"state": "covered", "source": manifest_source}
@@ -152,10 +214,9 @@ def annotate_variant(variant, raw, merges=None, sex="unknown"):
         if effect:
             # Detection is keyed on the curated effect allele, not dbSNP's alt
             # (which is assembly-oriented and can be the common allele). Zygosity
-            # is relative to the effect allele: hom_ref = no effect copies.
-            present = effect in alleles
-            zygosity = ("hom_alt" if alleles[0] == alleles[1] else "het") if present else "hom_ref"
-            is_variant = present
+            # is relative to the effect allele: hom_ref = no effect copies, and
+            # only when every called allele is a declared non-effect allele.
+            zygosity, is_variant = classify_effect(alleles, effect, ref, alt, variant["assayability"])
         else:
             zygosity, is_variant = classify(alleles, ref, alt)
         coverage = {"state": "covered", "source": manifest_source}
@@ -279,19 +340,36 @@ def compute_contradictions(findings, aliases=None):
     return contradictions
 
 
+def check_builds(panel, raw):
+    """Refuse (BuildRefused) unless the panel is GRCh37 and any stated file build matches it.
+
+    Returns (panel_build, input_build, build_basis).
+    """
+    panel_build = panel.get("genome_build") or SUPPORTED_BUILD
+    file_build = raw["meta"].get("genome_build")
+    if panel_build != SUPPORTED_BUILD or (file_build and file_build != panel_build):
+        raise BuildRefused()
+    if file_build:
+        return panel_build, file_build, "file_statement"
+    return panel_build, "unknown", "not_stated"
+
+
 def build_findings(raw_path, panel, aliases=None):
     merges = panel.get("merges", {}) or {}
     raw = parse_ancestry(raw_path)
+    panel_build, input_build, build_basis = check_builds(panel, raw)
     raw["by_canon"] = {}
     for r in raw["rows"].values():
         raw["by_canon"].setdefault(merges.get(r["rsid"], r["rsid"]), r)
     sex = infer_sex(raw)
-    findings = [annotate_variant(v, raw, merges, sex) for v in panel["variants"]]
+    findings = [annotate_variant(v, raw, merges, sex, panel_build) for v in panel["variants"]]
     provenance = {
         "input_hash": sha256_file(raw_path),
         "array_version": raw["meta"].get("array_version") or "unknown",
         "converter_version": raw["meta"].get("converter_version"),
-        "genome_build": raw["meta"].get("genome_build") or "GRCh37",
+        "genome_build": panel_build,
+        "input_build": input_build,
+        "build_basis": build_basis,
         "strand": "forward",
         "inferred_sex": sex,
         "manifest_row_count": raw["row_count"],
@@ -300,7 +378,7 @@ def build_findings(raw_path, panel, aliases=None):
         "annotation_snapshots": panel.get("sources", []),
     }
     return {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "provenance": provenance,
         "findings": findings,
         "contradictions": compute_contradictions(findings, aliases),
@@ -317,7 +395,11 @@ def main(argv=None):
 
     with open(args.panel) as fh:
         panel = json.load(fh)
-    doc = build_findings(args.raw, panel, load_aliases(args.aliases))
+    try:
+        doc = build_findings(args.raw, panel, load_aliases(args.aliases))
+    except BuildRefused:
+        print(BUILD_REFUSED_MESSAGE, file=sys.stderr)
+        return 2
     text = json.dumps(doc, indent=2)
 
     try:
