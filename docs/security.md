@@ -58,7 +58,8 @@ until it is deliberately allowlisted.
 5. **denylist** — owner-specific terms, plain or `sha256:<hex>`.
 6. **`.gitignore` self-test** — sensitive paths must be ignored, application
    paths must not be (and must exist/be tracked).
-7. **history** — the current branch name and commit messages since `main`.
+7. **history** — the branch name and the commit messages of an explicit range
+   (default `main..HEAD`); see [History scan](#history-scan).
 
 ```bash
 python scripts/guard.py --staged   # fast: staged files only (pre-commit)
@@ -69,6 +70,67 @@ python scripts/guard.py --hash "some private term"   # print its sha256: digest
 
 Exit status is nonzero on any finding. Findings print a path and line only —
 **never** a matched secret or private term.
+
+### History scan
+
+`--full` scans the branch name and the commit messages of a range. The range is
+`refs/heads/main..HEAD` by default; the options below are accepted only with an
+explicit `--full`, and any other combination (including `--all`, `--staged`,
+`--hash` or no mode) is a usage error:
+
+```bash
+python scripts/guard.py --full --history-base <40-hex commit>   # scan <commit>..HEAD
+python scripts/guard.py --full --history-branch <name>          # detached HEAD only
+```
+
+- `--history-base` takes exactly 40 lowercase hex digits (no abbreviation or
+  revision expression). It is resolved once to a commit (an annotated tag is
+  peeled), must be an ancestor of `HEAD`, and the range is then bound to commit
+  IDs, so a moving branch cannot change it mid-run. An empty range passes and is
+  reported as `selected=0`; it is never evidence of coverage.
+- On an attached `HEAD` the branch name is read from the full symbolic ref
+  (exactly `refs/heads/` stripped). A detached `HEAD` has no name: pass
+  `--history-branch` (a caller assertion, validated as a legal branch name and
+  used only as text) or the scan reports `history-context` and an incomplete
+  receipt. The messages are still scanned. Supplying it on an attached `HEAD`
+  is a usage error.
+- Every full run prints a receipt:
+  `guard: history selected=N scanned=M complete=yes|no`. `N` is the number of
+  commits in the range, `M` the number whose message was fully read and scanned.
+  `complete=yes` requires every Git step to succeed and `M == N`. Content
+  findings still fail the run even when the receipt is complete; `unknown` or
+  `no` never proves a clean history.
+- Git failures (not a repository, unborn `HEAD`, shallow clone, missing or
+  non-ancestor base, unreadable object, timeout, undecodable text, an
+  inherited-environment refusal) are `history-git` findings and exit 1, never a
+  clean empty result. Messages are decoded strictly; Git is called with
+  replacement objects and signature display disabled, without a shell, with a
+  10 second limit per call. Exit 2 is a usage error.
+- Diagnostics use fixed text and counts. They do not echo branch names, commit
+  messages, arguments, Git's stderr, paths or tracebacks, and argument errors
+  print fixed usage text only. This covers the local guard. Hosted runner logs
+  (checkout output, environment and argument echoes) are outside the guard's
+  control.
+- `PATH` and the `git` executable it selects are trusted host inputs. The guard
+  resolves `git` once at startup and uses that executable for every history
+  call; it makes no claim of resistance to a hostile `PATH`.
+- The final re-check detects `HEAD` or the default base moving during the scan,
+  but it is not a lock: a move away and back, or a concurrent edit, can escape
+  it. Audited runs should have a single writer. Offline means the tests use
+  local paths only; the managed sandbox has network capability and does not
+  enforce it, and nothing here claims stronger isolation.
+- Inherited `GIT_*` environment. The history scan classifies every inherited
+  `GIT_*` name and never prints a name or value: `GIT_PREFIX` and
+  `GIT_EXEC_PATH` are ignored; `GIT_DIR` and `GIT_WORK_TREE` must resolve to the
+  repository found from the current directory and are then dropped; five names
+  are accepted only with their fixed value (`GIT_OPTIONAL_LOCKS=0`,
+  `GIT_TERMINAL_PROMPT=0`, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_SYSTEM=/dev/null`,
+  `GIT_CONFIG_GLOBAL=/dev/null`); every other `GIT_*` name is refused with
+  `history-git` ("inherited Git environment not permitted"). That includes
+  `GIT_CONFIG_PARAMETERS`, which `git -c key=value push` sets, and harmless
+  names such as an editor or SSH override exported in your shell: unset them
+  for the push. Git calls run with a copy of the environment without any
+  `GIT_*` name.
 
 ### Denylist model
 
@@ -100,19 +162,51 @@ Both skip the external scanner gracefully if gitleaks is absent and warn that
 CI remains the backstop. Hooks are a convenience; **CI and branch protection
 are the enforcement.**
 
+The history scan in `guard.py --full` accepts the environment Git gives a hook
+(`GIT_PREFIX`, `GIT_EXEC_PATH`, and `GIT_DIR` / `GIT_WORK_TREE` when they name
+this repository) and refuses any other inherited `GIT_*` variable with a
+generic message. `git -c key=value push` sets `GIT_CONFIG_PARAMETERS`, so repeat
+the push without `-c`. Do not work around a refusal with `--no-verify`.
+
+A push from a detached `HEAD` is refused (no branch context); push from an
+attached branch. The hook runs `tests/test_pipeline.py` before the guard, so
+those steps still see an inherited environment the guard has not yet
+validated; this is a documented residual, not an accepted limit.
+
 ## 5. CI
 
 `.github/workflows/ci.yml` runs three separate jobs on pushes and PRs to
 `main`, all with `permissions: contents: read`:
 
 1. `test` — `python tests/test_pipeline.py` on Python 3.12/3.14, plus actionlint.
-2. `privacy-guard` — `guard.py --full` with `fetch-depth: 0`.
+2. `privacy-guard` — `guard.py --full` on the exact event commit with
+   `fetch-depth: 0`. A small fixed dispatch in the workflow reads the runner's
+   event JSON as data and passes `--history-base` (a push's `before`, or a pull
+   request's base commit) and `--history-branch` (`main`, or the pull request's
+   head ref) as argv. It refuses new, deleted, forced or zero-`before` pushes, a
+   stale or inconsistent pull-request merge commit, and any other event.
 3. `secret-scan` — gitleaks over full history, run from a pinned release binary
    (`--redact` keeps values out of logs).
 
 The `SENSITIVE_TERMS` repository secret is optional; the guard passes when it is
 unset. Third-party actions are pinned to commit SHAs; Dependabot keeps the pins
 current (see `.github/dependabot.yml`).
+
+### CI trust assumptions
+
+- **Same-repository pull requests are trusted with `SENSITIVE_TERMS`.** This
+  repository is solo-owned and the secret holds `sha256:`-hashed terms only.
+  Workflow and guard code in a same-repository pull request can read the secret
+  during the `privacy-guard` job, and the owner accepts that. Revisit this
+  before anyone else gets push access.
+- **Fork pull requests do not receive the secret.** The built-in patterns and the
+  synthetic denylist tests still run, but owner terms are not checked there; that
+  is a known coverage gap, closed by running the guard locally before merge.
+- The workflow does not use `pull_request_target` or `workflow_run`, and no
+  secret is added or made conditional on the event.
+- Considered and rejected: providing the secret only on `push` to `main`. It
+  would keep it away from pull-request code but delay owner-term findings until
+  after merge.
 
 ## 6. Audit matrix
 
@@ -128,7 +222,7 @@ Status as of the hardening pass. "Verified" = exercised by a canary (see §8).
 | Large-file guard | present & verified | `scripts/guard.py` |
 | Secret/PII pattern scan | present & verified | `scripts/guard.py` |
 | Hashed denylist (local + CI secret) | present & verified | `.sensitive-terms*`, CI |
-| History / branch-name scan | present & verified | `scripts/guard.py` |
+| History / branch-name scan | present; tested offline, hosted runs not yet observed | `scripts/guard.py` |
 | Guard tests | present & verified | `tests/test_guard.py` |
 | Committed hooks | present | `hooks/` |
 | CI test / privacy / secret jobs | present | `.github/workflows/ci.yml` |

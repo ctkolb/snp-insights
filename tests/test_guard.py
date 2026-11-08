@@ -294,6 +294,9 @@ def run(check):
     _history_api(check)
     _env_classifier(check)
     _hook_env(check)
+    _ci_static(check)
+    _ci_dispatch(check)
+    _doc_checks(check)
 
     # S3. packaging paths are allowed but never data-bearing -----------------
     def s3(name, fn):
@@ -1233,6 +1236,218 @@ def _hook_env(check):
     for case, setup in cases.items():
         guarded(f"HOOK-ENV-{case}.refused_with_no_change",
                 lambda case=case, setup=setup: refused(case.split(".")[0], setup))
+
+
+# --- CI binding: the workflow's dispatch body, run offline (C3) -------------
+def _ci_text():
+    with open(os.path.join(ROOT, ".github", "workflows", "ci.yml"), encoding="utf-8") as fh:
+        return fh.read()
+
+
+def _dispatch_source():
+    lines = _ci_text().splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.strip() == "python - <<'PY'") + 1
+    end = next(i for i in range(start, len(lines)) if lines[i].strip() == "PY")
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    return "\n".join(ln[indent:] for ln in lines[start:end]) + "\n"
+
+
+def _ci_static(check):
+    text = _ci_text()
+    src = _dispatch_source()
+    privacy = text[text.index("  privacy-guard:"):text.index("  secret-scan:")]
+    check("CI.triggers_unchanged",
+          "on:\n  push:\n    branches: [main]\n  pull_request:\n    branches: [main]\n" in text
+          and "pull_request_target" not in text and "workflow_run" not in text)
+    check("CI.permissions_and_jobs_unchanged",
+          "permissions:\n  contents: read\n" in text
+          and all(k in text for k in ("  test:\n    name: test (py${{ matrix.python }})",
+                                      "  privacy-guard:\n    name: privacy guard",
+                                      "  secret-scan:\n    name: secret scan"))
+          and text.count("timeout-minutes:") == 3)
+    check("CI.secret_mapping_unchanged_and_single",
+          text.count("secrets.") == 1
+          and "        env:\n          SENSITIVE_TERMS: ${{ secrets.SENSITIVE_TERMS }}\n" in privacy)
+    check("CI.privacy_checkout_exact_sha_full_depth",
+          "          ref: ${{ github.sha }}\n          fetch-depth: 0\n" in privacy)
+    check("CI.no_expression_in_run_source", "${{" not in src and "${{" not in
+          privacy[privacy.index("run: |"):])
+    check("CI.test_job_still_runs_pipeline",
+          "        run: python tests/test_pipeline.py\n" in text)
+    check("CI.action_pins_unchanged",
+          text.count("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1") == 3
+          and text.count("actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97") == 2)
+    check("CI.guard_invoked_by_argv_not_shell",
+          "sys.executable, \"scripts/guard.py\", \"--full\"" in src and "shell=True" not in src
+          and "eval" not in src and "os.system" not in src)
+
+
+def _ci_dispatch(check):
+    def guarded(name, fn):
+        try:
+            check(name, bool(fn()))
+        except Exception as exc:
+            check(name + " [" + type(exc).__name__ + "]", False)
+
+    src = _dispatch_source()
+    import json
+    repository = "owner/synthetic"
+
+    def setup(kind):
+        repo, base = _full_fixture(("clean synthetic message",))
+        main = _fx(repo, "rev-parse", "main")
+        feature = _fx(repo, "rev-parse", "feature")
+        merge = None
+        if kind == "pr":
+            _fx(repo, "switch", "-q", "-c", "mergeref", "main")
+            _fx(repo, "merge", "-q", "--no-ff", "-m", "Merge synthetic pull request", "feature")
+            merge = _fx(repo, "rev-parse", "HEAD")
+        _fx(repo, "switch", "-q", "--detach", merge or feature)
+        return repo, base, main, feature, merge
+
+    def run(repo, base, name, event, sha, ref="refs/heads/main", raw=None, drop=None):
+        path = os.path.join(base, "event.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(raw if raw is not None else json.dumps(event))
+        env = {"PATH": os.environ.get("PATH", ""), "HOME": base, "LC_ALL": "C",
+               "GITHUB_EVENT_NAME": name, "GITHUB_EVENT_PATH": path, "GITHUB_SHA": sha,
+               "GITHUB_REF": ref, "GITHUB_REPOSITORY": repository}
+        env.pop(drop, None)
+        proc = subprocess.run((sys.executable, "-I", "-c", src), cwd=repo, env=env,
+                              capture_output=True, text=True, timeout=300)
+        return proc.returncode, proc.stdout, proc.stderr
+
+    def refused(result):
+        rc, out, err = result
+        return (rc == 1 and err.startswith("privacy-guard: ") and "guard: history" not in out
+                and SENT not in out + err and "Traceback" not in err)
+
+    def push_event(main, feature, **over):
+        event = {"ref": "refs/heads/main", "before": main, "after": feature,
+                 "deleted": False, "forced": False, "created": False}
+        event.update(over)
+        return event
+
+    def push_ok():
+        repo, base, main, feature, _ = setup("push")
+        rc, out, _ = run(repo, base, "push", push_event(main, feature), feature)
+        empty = run(repo, base, "push", push_event(feature, feature), feature)
+        return (rc == 0 and "history selected=1 scanned=1 complete=yes" in out
+                and empty[0] == 0 and "history selected=0 scanned=0 complete=yes" in empty[1])
+    guarded("CI.dispatch_push_accepts_fast_forward_and_empty", push_ok)
+
+    def push_refusals():
+        repo, base, main, feature, _ = setup("push")
+        other = _fx(repo, "commit-tree", "-m", "unrelated", _fx(repo, "write-tree"))
+        cases = [
+            run(repo, base, "push", push_event("0" * 40, feature), feature),
+            run(repo, base, "push", push_event("0" * 40, feature, created=True), feature),
+            run(repo, base, "push", push_event(main, feature, deleted=True), feature),
+            run(repo, base, "push", push_event(main, feature, forced=True), feature),
+            run(repo, base, "push", push_event(other, feature), feature),
+            run(repo, base, "push", push_event("3" * 40, feature), feature),
+            run(repo, base, "push", push_event(main, feature, ref="refs/heads/" + SENT), feature),
+            run(repo, base, "push", push_event(main, feature), feature, ref="refs/heads/" + SENT),
+            run(repo, base, "push", push_event(main, main), feature),
+            run(repo, base, "push", push_event(main, feature), main),
+            run(repo, base, "push", push_event(main.upper(), feature), feature),
+            run(repo, base, "push", push_event(main, feature), feature, raw="{" + SENT),
+            run(repo, base, "push", {}, feature),
+            run(repo, base, "push", push_event(main, feature), feature, drop="GITHUB_EVENT_PATH"),
+            run(repo, base, "push", push_event(main, feature), feature, drop="GITHUB_REF"),
+            run(repo, base, "schedule", push_event(main, feature), feature),
+            run(repo, base, "workflow_dispatch", {}, feature),
+        ]
+        return all(refused(c) for c in cases)
+    guarded("CI.dispatch_push_refuses_unsafe_contexts", push_refusals)
+
+    def pr_event(main, feature, branch="topic/synthetic", **over):
+        event = {"action": "synchronize", "pull_request": {
+            "base": {"ref": "main", "sha": main, "repo": {"full_name": repository}},
+            "head": {"ref": branch, "sha": feature, "repo": {"full_name": "other/fork"}}}}
+        for key, value in over.items():
+            event["pull_request"][key] = value
+        return event
+
+    def pr_ok():
+        repo, base, main, feature, merge = setup("pr")
+        rc, out, _ = run(repo, base, "pull_request", pr_event(main, feature), merge,
+                         ref="refs/pull/1/merge")
+        return rc == 0 and "history selected=2 scanned=2 complete=yes" in out
+    guarded("CI.dispatch_pull_request_merge_tuple_accepted", pr_ok)
+
+    def pr_attached_is_normalized_and_branch_is_data():
+        repo, base, main, feature, merge = setup("pr")
+        _fx(repo, "switch", "-q", "mergeref")
+        marker = os.path.join(repo, "CI_PWNED")
+        rc, out, _ = run(repo, base, "pull_request",
+                         pr_event(main, feature, branch="x$(touch${IFS}CI_PWNED);`id`"),
+                         merge, ref="refs/pull/1/merge")
+        return rc == 0 and "complete=yes" in out and not os.path.exists(marker) \
+            and _fx(repo, "symbolic-ref", "--quiet", "HEAD", check_rc=False) == ""
+    guarded("CI.dispatch_normalizes_head_and_never_executes_branch", pr_attached_is_normalized_and_branch_is_data)
+
+    def pr_refusals():
+        repo, base, main, feature, merge = setup("pr")
+        stale = _fx(repo, "commit-tree", "-m", "stale", _fx(repo, "write-tree"))
+        run_pr = lambda event, sha=merge, **kw: run(  # noqa: E731
+            repo, base, "pull_request", event, sha, ref="refs/pull/1/merge", **kw)
+        bad_base = pr_event(main, feature)
+        bad_base["pull_request"]["base"]["repo"]["full_name"] = "other/" + SENT
+        wrong_ref = pr_event(main, feature)
+        wrong_ref["pull_request"]["base"]["ref"] = "dev"
+        closed = pr_event(main, feature)
+        closed["action"] = "closed"
+        cases = [
+            run_pr(pr_event(stale, feature)),               # stale base: first parent differs
+            run_pr(pr_event(main, stale)),                  # head is not the second parent
+            run_pr(bad_base), run_pr(wrong_ref), run_pr(closed),
+            run_pr(pr_event(main, feature), sha=feature),   # direct head checkout
+            run_pr(pr_event(main, feature, branch="")),
+            run_pr({"action": "opened"}),
+            run_pr({"action": "opened", "pull_request": "x"}),
+            run_pr(pr_event("0" * 40, feature)),
+        ]
+        return all(refused(c) for c in cases)
+    guarded("CI.dispatch_pull_request_refuses_stale_or_inconsistent", pr_refusals)
+
+    def pr_bad_branch_is_guard_usage_error():
+        repo, base, main, feature, merge = setup("pr")
+        rc, out, err = run(repo, base, "pull_request",
+                           pr_event(main, feature, branch="bad..name" + SENT), merge,
+                           ref="refs/pull/1/merge")
+        return rc == 2 and SENT not in out + err and "guard: invalid arguments" in err
+    guarded("CI.dispatch_invalid_asserted_branch_fails_closed", pr_bad_branch_is_guard_usage_error)
+
+
+def _doc_checks(check):
+    with open(os.path.join(ROOT, "docs", "security.md"), encoding="utf-8") as fh:
+        doc = fh.read()
+    trust = (
+        "### CI trust assumptions\n\n"
+        "- **Same-repository pull requests are trusted with `SENSITIVE_TERMS`.** This\n"
+        "  repository is solo-owned and the secret holds `sha256:`-hashed terms only.\n"
+        "  Workflow and guard code in a same-repository pull request can read the secret\n"
+        "  during the `privacy-guard` job, and the owner accepts that. Revisit this\n"
+        "  before anyone else gets push access.\n"
+        "- **Fork pull requests do not receive the secret.** The built-in patterns and the\n"
+        "  synthetic denylist tests still run, but owner terms are not checked there; that\n"
+        "  is a known coverage gap, closed by running the guard locally before merge.\n"
+        "- The workflow does not use `pull_request_target` or `workflow_run`, and no\n"
+        "  secret is added or made conditional on the event.\n"
+        "- Considered and rejected: providing the secret only on `push` to `main`. It\n"
+        "  would keep it away from pull-request code but delay owner-term findings until\n"
+        "  after merge.\n")
+    hook = (
+        "The history scan in `guard.py --full` accepts the environment Git gives a hook\n"
+        "(`GIT_PREFIX`, `GIT_EXEC_PATH`, and `GIT_DIR` / `GIT_WORK_TREE` when they name\n"
+        "this repository) and refuses any other inherited `GIT_*` variable with a\n"
+        "generic message. `git -c key=value push` sets `GIT_CONFIG_PARAMETERS`, so repeat\n"
+        "the push without `-c`. Do not work around a refusal with `--no-verify`.\n")
+    check("DOC.ci_trust_assumptions_exact_bytes", doc.count(trust) == 1)
+    check("DOC.hook_environment_paragraph_exact_bytes", doc.count(hook) == 1)
+    check("DOC.states_path_trust_and_offline_wording",
+          "trusted host inputs" in doc and "does not\n  enforce it" in doc)
 
 
 def _hash_cli_ok(check):
