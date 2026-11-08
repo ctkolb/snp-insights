@@ -267,11 +267,12 @@ def check_secrets(paths, contents=None):
     return findings
 
 
-def load_denylist():
+def load_denylist(root=None):
     """Plain lowercase terms and sha256 hex digests from a gitignored file
-    and/or the SENSITIVE_TERMS env var. Never from a tracked file."""
+    and/or the SENSITIVE_TERMS env var. Never from a tracked file. `root`
+    defaults to the cached repository root for legacy callers."""
     raw_lines = []
-    local = os.path.join(repo_root(), ".sensitive-terms")
+    local = os.path.join(repo_root() if root is None else root, ".sensitive-terms")
     if os.path.exists(local):
         with open(local, encoding="utf-8", errors="replace") as fh:
             raw_lines.extend(fh.read().splitlines())
@@ -384,7 +385,15 @@ ENV_REFUSED = "inherited Git environment not permitted"
 # Inherited GIT_* names fall in exactly one class (see docs/security.md):
 #   I   ignored, never passed on        II  validated against discovery, dropped
 #   III accepted only with a fixed value  IV  everything else is refused
-_ENV_IGNORED = frozenset({"GIT_PREFIX", "GIT_EXEC_PATH"})
+_ENV_IGNORED = frozenset({
+    "GIT_PREFIX", "GIT_EXEC_PATH",
+    "GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_TEMPLATE_DIR", "GIT_PAGER",
+    "GIT_PAGER_IN_USE", "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE",
+    "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE", "GIT_SSH",
+    "GIT_SSH_COMMAND", "GIT_ASKPASS", "GIT_EXTERNAL_DIFF", "GIT_DIFF_OPTS",
+    "GIT_TRACE", "GIT_TRACE_SETUP", "GIT_TRACE_PACKET", "GIT_TRACE2",
+    "GIT_TRACE2_EVENT", "GIT_TRACE2_PERF",
+})
 _ENV_VALIDATED = ("GIT_DIR", "GIT_WORK_TREE")
 _ENV_FIXED = {
     "GIT_OPTIONAL_LOCKS": "0",
@@ -506,6 +515,18 @@ def _child_env_stripped():
     return child
 
 
+def _history_root(env, cwd):
+    """Repository top level from the pinned runner in the classified child
+    environment; the generic PATH helper is never used on the history path."""
+    _, out = _hgit("root", ["rev-parse", "--show-toplevel"], env, cwd)
+    text = _utf8("root", out)
+    if text.endswith("\n"):
+        text = text[:-1]
+    if not os.path.isabs(text):
+        raise _HistoryError("root")
+    return text
+
+
 def _branch_syntax_ok(name):
     return (isinstance(name, str) and name != "" and not name.startswith("-")
             and all(0x20 <= ord(c) != 0x7F for c in name))
@@ -513,13 +534,18 @@ def _branch_syntax_ok(name):
 
 def _scan_history(base=None, branch=None):
     scan = _HistoryScan()
-    ok_env, env = _classify_git_env()
+    try:
+        cwd = os.getcwd()
+        ok_env, env = _classify_git_env(None, cwd)
+    except _EXPECTED_IO:
+        scan.fail("history-git", "history setup could not complete")
+        return scan
     if not ok_env:
         scan.fail("history-git", ENV_REFUSED)
         return scan
     try:
-        root = repo_root()
-    except _EXPECTED_IO:
+        root = _history_root(env, cwd)
+    except (_HistoryError,) + _EXPECTED_IO:
         scan.fail("history-git", "repository could not be resolved")
         return scan
     try:
@@ -557,7 +583,11 @@ def _scan_history_body(scan, env, root, base, branch):
         name = branch
     else:
         raise _HistoryError("branch-context")
-    plain, hashed = load_denylist()
+    try:
+        plain, hashed = load_denylist(root)
+    except _EXPECTED_IO:
+        scan.fail("history-git", "denylist could not be read")
+        return
     if name is not None and (plain or hashed):
         for _, label in scan_text_for_denylist(name, plain, hashed):
             scan.findings.append(Finding(label, "branch", detail="owner-specific term"))
