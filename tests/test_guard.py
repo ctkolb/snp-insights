@@ -10,6 +10,7 @@ Each check has at least one positive and one negative case so the guard's rules
 cannot silently rot. The decoy strings here are why the guard exempts this file
 from its own secret scan.
 """
+import contextlib
 import os
 import shutil
 import subprocess
@@ -89,6 +90,140 @@ def _is_ignored(repo, path):
     return proc.returncode == 0
 
 
+# --- synthetic history repositories (HG-*) ----------------------------------
+HG_SENTINEL = "zzsentinelterm"
+HG_CANARY = "AKIA" + "B" * 16
+
+
+def _fixture_env(home):
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update({
+        "HOME": home, "LC_ALL": "C",
+        "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_AUTHOR_NAME": "Test Author", "GIT_AUTHOR_EMAIL": "author@example.invalid",
+        "GIT_COMMITTER_NAME": "Test Author", "GIT_COMMITTER_EMAIL": "author@example.invalid",
+        "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z", "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z",
+    })
+    return env
+
+
+def _fx(repo, *args, check_rc=True, text=True):
+    proc = subprocess.run(
+        ("git", "-c", "gc.auto=0", "-c", "commit.gpgsign=false") + args, cwd=repo,
+        env=_fixture_env(os.path.join(repo, ".home") if os.path.isdir(repo) else repo),
+        capture_output=True, text=text)
+    if check_rc and proc.returncode != 0:
+        raise RuntimeError("fixture git failed")
+    return proc.stdout.strip() if text else proc.stdout
+
+
+def _hg_repo(prefix="snp-insights-hg-"):
+    """A synthetic repository with one commit on `main`; returns its path."""
+    repo = tempfile.mkdtemp(prefix=prefix)
+    os.makedirs(os.path.join(repo, ".home"))
+    _fx(repo, "init", "-q")
+    _fx(repo, "symbolic-ref", "HEAD", "refs/heads/main")
+    _hg_commit(repo, "base commit")
+    return repo
+
+
+def _hg_commit(repo, message, name="f.txt"):
+    with open(os.path.join(repo, name), "a", encoding="utf-8") as fh:
+        fh.write(message + "\n")
+    _fx(repo, "add", "--", name)
+    _fx(repo, "commit", "-q", "-m", message)
+    return _fx(repo, "rev-parse", "HEAD")
+
+
+@contextlib.contextmanager
+def _guard_ctx(repo, denylist=None):
+    """Point the guard at a synthetic repository with a scrubbed Git environment;
+    every global it touches is restored in `finally`."""
+    old_root, old_env, old_load = guard._ROOT, dict(os.environ), guard.load_denylist
+    for key in [k for k in os.environ if k.startswith("GIT_")]:
+        del os.environ[key]
+    os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
+    os.environ["GIT_CONFIG_GLOBAL"] = "/dev/null"
+    guard._ROOT = repo
+    if denylist is not None:
+        guard.load_denylist = lambda: denylist
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(old_env)
+        guard._ROOT = old_root
+        guard.load_denylist = old_load
+
+
+def _hg_findings(repo, denylist=None, **kwargs):
+    with _guard_ctx(repo, denylist):
+        return guard.check_history(**kwargs)
+
+
+def _hg_labels(findings):
+    return sorted({f.check for f in findings})
+
+
+def _history_synthetic(check):
+    """Replaces the former assertion against this repository's live history.
+
+    Positive controls pin behavior that must hold before and after the history
+    hardening; the `red` cases assert the corrected behavior (HG-01/04/06)."""
+    def repo_with(*messages, branch="feature"):
+        repo = _hg_repo()
+        if messages:
+            _fx(repo, "switch", "-q", "-c", branch)
+            for m in messages:
+                _hg_commit(repo, m)
+        return repo
+
+    # CHARACTERIZATION: valid attached nonempty clean, genuine empty clean.
+    r = repo_with("clean synthetic message")
+    check("HG.pos.attached_nonempty_clean", _hg_findings(r) == [])
+    r = repo_with()
+    check("HG.pos.empty_range_clean", _hg_findings(r) == [])
+    # CHARACTERIZATION: message and branch hits (labels only, never values).
+    r = repo_with("leak " + HG_CANARY)
+    check("HG.pos.msg_secret", "history-secret" in _hg_labels(_hg_findings(r)))
+    r = repo_with("mentions " + HG_SENTINEL)
+    check("HG.pos.msg_plain",
+          "denylist-term" in _hg_labels(_hg_findings(r, ([HG_SENTINEL], set()))))
+    r = repo_with("visit Wonderland today")
+    check("HG.pos.msg_hash",
+          "denylist-hash" in _hg_labels(_hg_findings(r, ([], {guard._sha256("wonderland")}))))
+    r = repo_with("clean message", branch="feature-" + HG_SENTINEL)
+    check("HG.pos.branch_plain",
+          "denylist-term" in _hg_labels(_hg_findings(r, ([HG_SENTINEL], set()))))
+    r = repo_with("clean message", branch="visit-wonderland-x")
+    check("HG.pos.branch_hash",
+          "denylist-hash" in _hg_labels(_hg_findings(r, ([], {guard._sha256("wonderland")}))))
+
+    # FAILING reds against the pre-hardening API.
+    plain = tempfile.mkdtemp(prefix="snp-insights-hg-")
+    check("HG.red.nonrepo_history_git",
+          "history-git" in _hg_labels(_hg_findings(plain)))
+    r = repo_with("work")
+    _fx(r, "branch", "-q", "-D", "main")
+    check("HG.red.missing_main_history_git",
+          "history-git" in _hg_labels(_hg_findings(r)))
+    r = repo_with("work")
+    with open(os.path.join(r, ".git", "refs", "heads", "main"), "w") as fh:
+        fh.write("1" * 40 + "\n")
+    check("HG.red.failed_log_history_git",
+          "history-git" in _hg_labels(_hg_findings(r)))
+    r = repo_with("leak " + HG_CANARY)
+    _fx(r, "switch", "-q", "--detach")
+    labels = _hg_labels(_hg_findings(r))
+    check("HG.red.detached_nocontext_history_context",
+          "history-context" in labels and "history-secret" in labels)
+    r = repo_with("clean message", branch="feature-" + HG_SENTINEL)
+    rendered = [str(f) for f in _hg_findings(r, ([HG_SENTINEL], set()))]
+    check("HG.red.branch_diag_omits_sentinel",
+          any("[denylist-term]" in t for t in rendered)
+          and not any(HG_SENTINEL in t for t in rendered))
+
+
 def run(check):
     # 1. allowlist ----------------------------------------------------------
     check("guard allowlist accepts app", not guard.check_allowlist(["stage2/ancestry.py"]))
@@ -152,8 +287,8 @@ def run(check):
         os.remove(tmp)
     check("guard allows small file", not guard.check_large_files(["README.md"]))
 
-    # 8. history scan (integration; clean repo -> no findings) --------------
-    check("guard history scan clean", not guard.check_history())
+    # 8. history scan (synthetic repositories; never this repo's own history) -
+    _history_synthetic(check)
 
     # S3. packaging paths are allowed but never data-bearing -----------------
     def s3(name, fn):
