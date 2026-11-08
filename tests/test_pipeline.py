@@ -30,6 +30,7 @@ import test_guard  # noqa: E402
 import test_evidence  # noqa: E402
 import test_category  # noqa: E402
 import test_cli  # noqa: E402
+import test_interpretation  # noqa: E402
 
 FIX = os.path.join(ROOT, "fixtures")
 DATA = os.path.join(ROOT, "data")
@@ -368,6 +369,7 @@ def main():
     test_evidence.run(check)
     test_category.run(check)
     test_cli.run(check)
+    test_interpretation.run(check)
     for name in PASSED:
         print(f"  ok   {name}")
     for name in FAILED:
