@@ -298,6 +298,7 @@ def run(check):
     _env_classifier(check)
     _hook_env(check)
     _r22_checks(check)
+    _r27_checks(check)
     _ci_static(check)
     _ci_dispatch(check)
     _doc_checks(check)
@@ -1652,6 +1653,63 @@ def _r22_checks(check):
 
 
 # --- CI binding: the workflow's dispatch body, run offline (C3) -------------
+# --- R27: --history-branch validation survives an expected getcwd failure -----
+def _r27_history_branch(work, patch=None):
+    """guard.main(["--full", "--history-branch", ...]) in-process on a synthetic
+    detached-HEAD repository; the patch is applied after the guard context is
+    entered. Returns (rc, out, err, exc)."""
+    import io
+    out, err = io.StringIO(), io.StringIO()
+    rc, exc = None, None
+    with _guard_ctx(work):
+        os.environ.pop("SENSITIVE_TERMS", None)
+        with contextlib.ExitStack() as stack:
+            if patch is not None:
+                stack.enter_context(patch())
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                try:
+                    rc = guard.main(["--full", "--history-branch", "team/probe"])
+                except SystemExit as stop:
+                    rc = stop.code
+                except Exception as caught:  # recorded: a traceback is a failure
+                    exc = caught
+    return rc, out.getvalue(), err.getvalue(), exc
+
+
+def _r27_checks(check):
+    def guarded(name, fn):
+        try:
+            check(name, bool(fn()))
+        except Exception as exc:
+            check(name + " [" + type(exc).__name__ + "]", False)
+
+    work, _ = _full_fixture()
+    _fx(work, "switch", "-q", "--detach")
+
+    def expected_failure(exc):
+        rc, out, err, caught = _r27_history_branch(work, lambda: _r22_getcwd(exc))
+        text = out + err
+        leaks = ("Traceback", "CANARY", "Errno", "OSError", "PermissionError", "synthetic", work)
+        return (caught is None and rc == 1 and "complete=no" in out and "history-git" in text
+                and R22_SETUP_MSG in text and not any(leak in text for leak in leaks))
+    guarded("R27.F1.history_branch_getcwd_oserror", lambda: expected_failure(
+        OSError(13, f"synthetic getcwd failure CANARY {work}")))
+    guarded("R27.F1.history_branch_getcwd_permission", lambda: expected_failure(
+        PermissionError(13, f"synthetic getcwd failure CANARY {work}")))
+
+    def typeerror_not_swallowed():
+        _, _, _, caught = _r27_history_branch(
+            work, lambda: _r22_getcwd(TypeError("programming error")))
+        return isinstance(caught, TypeError)
+    guarded("R27.F1.history_branch_getcwd_typeerror_not_swallowed", typeerror_not_swallowed)
+
+    def valid_unchanged():
+        rc, out, err, caught = _r27_history_branch(work)
+        return (caught is None and rc == 0 and "complete=yes" in out
+                and "history-git" not in out + err and "Traceback" not in err)
+    guarded("R27.F1.history_branch_valid_unchanged", valid_unchanged)
+
+
 def _ci_text():
     with open(os.path.join(ROOT, ".github", "workflows", "ci.yml"), encoding="utf-8") as fh:
         return fh.read()
