@@ -1049,6 +1049,38 @@ def check_required_headings(text):
     return [f"headings: {h!r} missing" for h in DOC_REQUIRED_HEADINGS if h not in titles]
 
 
+# Full-clause pins for rules whose polarity matters. Phrases are compared after
+# collapsing whitespace (the document wraps lines) and ignoring case.
+REPORT_SAFETY_PRESENT = (
+    "the entry can be reported without implying a diagnosis or an absolute risk, "
+    "and its only honest wording is not a recommendation",
+)
+REPORT_SAFETY_ABSENT = ("cannot be reported", "can not be reported", "wording is a recommendation")
+FUNCTIONAL_RULE_PRESENT = ("only when at least one gwas group is present",)
+PAIR_CONDITION_RULE_PRESENT = (
+    "the t2 `pair condition` cell must equal the t1 `label used in report` exactly",
+)
+
+
+def _flat(text):
+    return " ".join(text.split()).lower()
+
+
+def check_doc_clause(text, title, present, absent=()):
+    """Errors unless section `title` holds every phrase in `present`; a phrase in `absent`
+    is an error anywhere in the whole document (title None checks only `absent`)."""
+    errors = []
+    if title is not None:
+        body = section_body(text, title)
+        if body is None:
+            return [f"clause: heading {title!r} missing"]
+        flat = _flat(body)
+        errors += [f"clause: {title!r} lacks {p!r}" for p in present if p.lower() not in flat]
+    whole = _flat(text)
+    errors += [f"clause: document contains {a!r}" for a in absent if a.lower() in whole]
+    return errors
+
+
 def check_row_matches_entries(t1_rows, entries):
     by_id, errors = {e.get("rsid"): e for e in entries}, []
     rows = _live(t1_rows, "included")
@@ -2035,7 +2067,9 @@ def _run_replication(attempt):
     def functional_needs_gwas_p():
         rows = [_gwas("a", "9003101", "cohort-a", "1e-6"), _functional()]
         _require("expected not-significant", _rep(rows)[0] == "not-significant")
-        _require("functional alone must be single-study", _rep([_functional()])[0] == "single-study")
+        status, groups, drops = _rep([_functional()])
+        _require(f"functional alone must be zero groups and no-counted-evidence, got {status} {groups}",
+                 status == "no-counted-evidence" and groups == [])
         bad = dict(_functional(), **{"p-value": "3e-9"})
         _require("a functional row may not carry a p-value", _rep([_gwas("a", "9003101", "cohort-a", "1e-6"), bad])[2]["f"] == "p-malformed")
         return True
@@ -2395,6 +2429,158 @@ def _run_real(attempt):
         _real(attempt, name, fn)
 
 
+# =============================================================================
+# Fix round r44: cross-table joins, document clauses, evaluator rule, boundaries.
+# =============================================================================
+def _run_fix_round(attempt):
+    # --- joins (D-43-2) ---------------------------------------------------------
+    def pair_condition_cases(check, code):
+        for idx in (0, 1):
+            for value in ("Entirely unrelated condition", "example condition one", "Example condition one.", "", "-"):
+                w = good_world()
+                w["t2"][idx]["pair condition"] = value
+                rs = w["t2"][idx]["rsID"]
+                _has(check(w), f"{code}: {rs}", f"T2 row {idx}, {value!r}")
+
+    def clinvar_pair_condition_equals_label():
+        w = good_world()
+        _clean(check_clinvar_table(w["t1"], w["t2"], w["t5"]), "good world, clinvar table")
+        pair_condition_cases(lambda w: check_clinvar_table(w["t1"], w["t2"], w["t5"]), "pair-condition-differs")
+        return True
+    attempt("R1B.syn_t2_pair_condition_equals_t1_label", clinvar_pair_condition_equals_label)
+
+    def health_pair_condition_equals_label():
+        w = good_world()
+        _clean(check_health_rows(w["t1"], w["t2"], w["t3"]), "good world, health rows")
+        pair_condition_cases(lambda w: check_health_rows(w["t1"], w["t2"], w["t3"]), "health-pair-condition-differs")
+        return True
+    attempt("R1B.syn_health_pair_condition_equals_t1_label", health_pair_condition_equals_label)
+
+    def health_pair_allele_equals_effect_allele():
+        w = good_world()
+        w["t2"][0].update({"pair allele (fwd GRCh37)": "A", "considered records": "9001001=A/match/P/2"})
+        _has(check_health_rows(w["t1"], w["t2"], w["t3"]), "health-pair-allele-differs: rs9000002",
+             "T2 allele A vs T1 allele G")
+        return True
+    attempt("R1B.syn_health_pair_allele_equals_effect_allele", health_pair_allele_equals_effect_allele)
+
+    def t2_row_needs_t1_row():
+        w = good_world()
+        w["t2"].append(_t2("rs9000077", "G", "9001001=G/match/P/2", "9001001", "P", "2", "eligible"))
+        _has(check_clinvar_table(w["t1"], w["t2"], w["t5"]), "t2-without-t1: rs9000077", "orphan T2 row")
+        return True
+    attempt("R1B.syn_t2_row_needs_t1_row", t2_row_needs_t1_row)
+
+    # --- document clauses (D-43-1, D-43-3) ----------------------------------------
+    def doc_clause_checker():
+        good = ("## Criteria\n\n7. Report safety: the entry can be reported without implying a diagnosis or\n"
+                "   an absolute risk, and its only honest wording is not a\n   recommendation.\n\n## Next\n\nother\n")
+        _clean(check_doc_clause(good, "Criteria", REPORT_SAFETY_PRESENT, REPORT_SAFETY_ABSENT), "wrapped clause")
+        _clean(check_doc_clause(good.replace("can be", "CAN BE"), "Criteria", REPORT_SAFETY_PRESENT,
+                                REPORT_SAFETY_ABSENT), "case is ignored")
+        for why, text in (
+                ("inverted can/cannot", good.replace("entry can be", "entry cannot be")),
+                ("spaced inversion", good.replace("entry can be", "entry can not be")),
+                ("second half inverted", good.replace("is not a\n   recommendation", "is a\n   recommendation")),
+                ("clause absent", good.replace("7. Report safety", "7. Report safety (see below)").replace(
+                    "can be reported", "is reported")),
+                ("clause in another section", good.replace("## Criteria", "## Elsewhere")),
+        ):
+            _has(check_doc_clause(text, "Criteria", REPORT_SAFETY_PRESENT, REPORT_SAFETY_ABSENT), "clause", why)
+        _has(check_doc_clause(good + "\n## Other\n\nit cannot be reported so\n", "Criteria", REPORT_SAFETY_PRESENT,
+                              REPORT_SAFETY_ABSENT), "document contains", "inverted phrase in another section")
+        _has(check_doc_clause(good.replace("## Criteria", "## Criteria extra"), "Criteria", REPORT_SAFETY_PRESENT),
+             "heading", "missing heading")
+        return True
+    attempt("R1B.syn_doc_clause_checker", doc_clause_checker)
+
+    def doc_report_safety_clause():
+        errors = check_doc_clause(read_doc(), "Criteria", REPORT_SAFETY_PRESENT, REPORT_SAFETY_ABSENT)
+        _require("; ".join(errors), not errors)
+        return True
+    attempt("R1B.doc_report_safety_clause", doc_report_safety_clause)
+
+    def doc_functional_group_rule():
+        errors = check_doc_clause(read_doc(), "Replication", FUNCTIONAL_RULE_PRESENT)
+        _require("; ".join(errors), not errors)
+        return True
+    attempt("R1B.doc_functional_group_rule", doc_functional_group_rule)
+
+    def doc_pair_condition_rule():
+        errors = check_doc_clause(read_doc(), "ClinVar pair rule", PAIR_CONDITION_RULE_PRESENT)
+        _require("; ".join(errors), not errors)
+        return True
+    attempt("R1B.doc_pair_condition_rule", doc_pair_condition_rule)
+
+    # --- evaluator rule (D-43-3) ---------------------------------------------------
+    def functional_only_is_zero_groups():
+        for rows in ([_functional()], [_functional(), _functional("g", "9003198", "cohort-g")]):
+            status, groups, drops = _rep(rows)
+            _require(f"functional-only evidence must be zero groups, got {status} {groups}",
+                     status == "no-counted-evidence" and groups == [])
+            _require("functional-only evidence must have no other exclusion reason than no-independent-confirmation",
+                     replication_exclusion_code(status, drops) == "no-independent-confirmation")
+        status, _, _ = _rep([_functional(), _functional("g", "9003198", "cohort-g", direction="down")])
+        _require(f"opposing functional rows are a conflict, got {status}", status == "conflicting-evidence")
+        a = _gwas("a", "9003101", "cohort-a", "2e-9")
+        status, groups, _ = _rep([a, _functional()])
+        _require(f"one gwas group plus a functional group is replicated, got {status} {groups}",
+                 status == "replicated" and len(groups) == 2)
+        return True
+    attempt("R1B.syn_replication_functional_only_is_zero_groups", functional_only_is_zero_groups)
+
+    # --- boundaries (D-43-4) -------------------------------------------------------
+    def alleles_accept_t():
+        for letter in "ACGT":
+            _require(f"{letter} must be a valid SNP allele", allele_ok(letter, "snp"))
+            _require(f"{letter} must be valid with no kind", allele_ok(letter, None))
+            _require(f"{letter} must not be a valid indel allele", not allele_ok(letter, "indel"))
+            items, errors = parse_considered(f"9001001={letter}/match/P/2", letter)
+            _require(f"considered item {letter}: {errors}", not errors and items[0]["letter"] == letter)
+            rec = {"chrom": "1", "pos": 100, "ref": "C" if letter != "C" else "G", "alt": letter}
+            _require(f"placement alt {letter}", map_placement(rec, dict(rec)) == (letter, None))
+        w = good_world()
+        _both(_set_entry("rs9000001", effect_allele="T"), _set_row("rs9000001", allele="T"))(w)
+        _clean(check_effect_alleles(w["t1"], w["entries"]), "effect allele T")
+        w = good_world()
+        _set_row("rs9000001", allele="T")(w)
+        _has(check_effect_alleles(w["t1"], w["entries"]), "allele-differs", "T1 T against targets A")
+        return True
+    attempt("R1B.syn_alleles_accept_t", alleles_accept_t)
+
+    def p_value_bounds():
+        # r41 3.2: p-value is a decimal in (0,1] or '-'; <= 0, > 1 and non-numeric are p-malformed.
+        for cell, want in (("1", 1.0), ("1.0", 1.0), ("0.5", 0.5), ("5e-8", 5e-8), ("1e-300", 1e-300),
+                           ("1.000000000000000000000000000000e-300", 1e-300), ("0." + "0" * 40 + "1", 1e-41),
+                           (".5", 0.5)):
+            got = _parse_p(cell)
+            _require(f"p {cell!r}: expected {(want, None)}, got {got}", got == (want, None))
+        for cell in ("0", "0.0", "1.0000001", "2", "1e1", "-0.5", "-1e-5", "NA", "<1e-8", "", "1e-5x", "e-5"):
+            got = _parse_p(cell)
+            _require(f"p {cell!r}: expected p-malformed, got {got}", got == (None, "p-malformed"))
+        _require("a dash is p-missing", _parse_p("-") == (None, "p-missing"))
+        _require("p exactly 1 is an eligible, non-significant row",
+                 _rep(_base_rows(p1="1", p2="1e-6"))[0] == "not-significant")
+        _require("a very small p counts", _rep(_base_rows(p1="1e-300", p2="1"))[0] == "replicated")
+        return True
+    attempt("R1B.syn_p_value_bounds", p_value_bounds)
+
+    def source_dates_calendar():
+        for good in ("2024-02-29", "2000-02-29", "2023-12-31", "2024-01-15", "2025-06-30", "2024-12-31"):
+            _require(f"{good} must be a valid date", date_ok(good))
+            w = good_world()
+            _set_row("rs9000001", date=good)(w)
+            _clean(check_provenance(w["t1"]), f"retrieved {good}")
+        for bad in ("2023-02-29", "2100-02-29", "2023-04-31", "2024-13-01", "2024-00-10", "2024-1-5", "24-01-01",
+                    "2024-02-30", ""):
+            _require(f"{bad!r} must be an invalid date", not date_ok(bad))
+            w = good_world()
+            _set_row("rs9000001", date=bad)(w)
+            _has(check_provenance(w["t1"]), "date-invalid", f"retrieved {bad!r}")
+        return True
+    attempt("R1B.syn_source_dates_calendar", source_dates_calendar)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -2414,6 +2600,7 @@ def run(check):
     _run_replication(attempt)
     _run_doc_helpers(attempt)
     _run_doc(attempt)
+    _run_fix_round(attempt)
     _run_real(attempt)
 
 
