@@ -1085,6 +1085,17 @@ PAIR_CONDITION_RULE_PRESENT = (
 EVIDENCE_NOT_IN_PACK_PRESENT = (
     "the code `evidence-not-in-pack` applies only when the status is `no-counted-evidence`",
 )
+TARGETS_KEYS_RULE_PRESENT = (
+    "an entry has exactly these keys",
+    "the evidence tier is derived by the build and never written in the targets file",
+    "placement fields come from the dbsnp map supplied at build time",
+)
+CURATOR_JUDGMENTS_PRESENT = (
+    "are curator judgments that no checker derives",
+    "the t1 `rationale` cell states the basis for each",
+    "the data review reassesses all three independently for every row",
+    "an ancestry exception cites an owner decision id in the `limitations` cell",
+)
 
 
 def _flat(text):
@@ -1198,11 +1209,11 @@ def good_world():
                 allele="-", bs="-", src="-", date="-", dec="excluded", code="non-autosomal-out-of-scope"),
         ],
         "entries": [
-            {"rsid": "rs9000001", "chromosome": "1", "gene": "GENEA", "condition": "Example trait",
+            {"rsid": "rs9000001", "gene": "GENEA", "condition": "Example trait",
              "assayability": "snp", "effect_allele": "A", "category": "trait", "result_type": "trait"},
-            {"rsid": "rs9000002", "chromosome": "7", "gene": "GENEB", "condition": "Example condition one",
+            {"rsid": "rs9000002", "gene": "GENEB", "condition": "Example condition one",
              "assayability": "snp", "effect_allele": "G", "category": "carrier", "result_type": "carrier_status"},
-            {"rsid": "rs9000003", "chromosome": "22", "gene": "GENEC", "condition": "Example condition two",
+            {"rsid": "rs9000003", "gene": "GENEC", "condition": "Example condition two",
              "assayability": "indel", "effect_allele": "D", "category": "carrier", "result_type": "risk_association"},
         ],
         "t2": [
@@ -2746,6 +2757,78 @@ def _run_r47(attempt):
     attempt("R1B.syn_inheritance_susc_rejects_wrong_result_type", susc_rejects_wrong_result_type)
 
 
+# =============================================================================
+# Fix round r50 (D-49-1, D-49-2): the targets key allowlist and the curator
+# judgments sentence.
+# =============================================================================
+def _target_entry(**kw):
+    base = {"rsid": "rs9000001", "gene": "GENEA", "condition": "Example trait",
+            "category": "trait", "result_type": "trait", "effect_allele": "A",
+            "assayability": "snp", "strand": "forward"}
+    base.update(kw)
+    return base
+
+
+def _targets_obj(*entries):
+    return {"_note": "invented", "panel_version": "0.1.0", "genome_build": "GRCh37",
+            "strand": "forward", "variants": list(entries)}
+
+
+def _run_r50(attempt):
+    # --- D-49-1: the targets entry key allowlist ------------------------------
+    def targets_shape_accepts_exact_eight_keys():
+        res = check_targets_shape(_targets_obj(_target_entry()))
+        _clean(res, "all eight allowed keys")
+        _require("an accepted entry must be counted", res.rows_checked == 1)
+        return True
+    attempt("R1B.syn_targets_shape_accepts_exact_eight_keys", targets_shape_accepts_exact_eight_keys)
+
+    def targets_shape_accepts_required_plus_gene_condition():
+        entry = {k: v for k, v in _target_entry().items()
+                 if k in ("rsid", "category", "result_type", "effect_allele", "assayability", "gene", "condition")}
+        res = check_targets_shape(_targets_obj(entry))
+        _clean(res, "required keys plus gene and condition")
+        _require("an accepted entry must be counted", res.rows_checked == 1)
+        return True
+    attempt("R1B.syn_targets_shape_accepts_required_plus_gene_condition",
+            targets_shape_accepts_required_plus_gene_condition)
+
+    for forbidden in ("association", "clinvar", "snpedia", "gnomad_af", "chromosome",
+                      "position", "reference_allele", "alternate_allele", "cls", "zz_extra"):
+        def rejects_unknown(forbidden=forbidden):
+            res = check_targets_shape(_targets_obj(_target_entry(**{forbidden: "invented"})))
+            _has(res, f"unknown key {forbidden}", f"forbidden key {forbidden!r}")
+            return True
+        attempt(f"R1B.syn_targets_shape_rejects_unknown_{forbidden}", rejects_unknown)
+
+    def targets_shape_sorts_unknown_keys():
+        res = check_targets_shape(_targets_obj(_target_entry(zz_extra="x", association="y")))
+        codes = [e for e in res if "unknown key" in e]
+        _require(f"one error per unknown key: {codes}", len(codes) == 2)
+        _require(f"unknown keys must be sorted: {codes}", codes == [
+            "shape: variants[0] unknown key association", "shape: variants[0] unknown key zz_extra"])
+        return True
+    attempt("R1B.syn_targets_shape_sorts_unknown_keys", targets_shape_sorts_unknown_keys)
+
+    def targets_shape_real_empty_targets_still_valid():
+        _clean(check_targets_shape(read_targets()), "empty data/targets.release.json")
+        return True
+    attempt("R1B.syn_targets_shape_real_empty_targets_still_valid", targets_shape_real_empty_targets_still_valid)
+
+    # --- D-49-2: the curator-judgment sentence --------------------------------
+    def doc_targets_key_rule():
+        errors = check_doc_clause(read_doc(), "Method", TARGETS_KEYS_RULE_PRESENT)
+        _require("; ".join(errors), not errors)
+        return True
+    attempt("R1B.doc_targets_key_rule", doc_targets_key_rule)
+
+    def doc_curator_judgments():
+        errors = check_doc_clause(read_doc(), "Criteria", CURATOR_JUDGMENTS_PRESENT)
+        _require("; ".join(errors), not errors)
+        return True
+    attempt("R1B.doc_curator_judgments", doc_curator_judgments)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -2767,6 +2850,7 @@ def run(check):
     _run_doc(attempt)
     _run_fix_round(attempt)
     _run_r47(attempt)
+    _run_r50(attempt)
     _run_real(attempt)
 
 
