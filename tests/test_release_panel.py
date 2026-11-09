@@ -448,7 +448,7 @@ def check_build(header, t1_rows):
             continue
         if base != "GRCh37/forward" or flag not in ("", "strand-ambiguous"):
             errors.append(f"build-cell: {r['rsID']} {cell!r}")
-    return _result(errors, len(t1_rows) + 1)
+    return _result(errors, len(t1_rows))
 
 
 def check_strand(t1_rows, entries):
