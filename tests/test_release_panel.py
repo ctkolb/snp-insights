@@ -25,7 +25,9 @@ import itertools
 import json
 import os
 import re
+import shutil
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
@@ -1191,8 +1193,8 @@ def good_world():
                 allele="-", bs="-", src="-", date="-", dec="excluded", code="non-autosomal-out-of-scope"),
         ],
         "entries": [
-            {"rsid": "rs9000001", "chromosome": "1", "gene": "GENEA", "condition": None, "assayability": "snp",
-             "effect_allele": "A", "category": "trait", "result_type": "trait"},
+            {"rsid": "rs9000001", "chromosome": "1", "gene": "GENEA", "condition": "Example trait",
+             "assayability": "snp", "effect_allele": "A", "category": "trait", "result_type": "trait"},
             {"rsid": "rs9000002", "chromosome": "7", "gene": "GENEB", "condition": "Example condition one",
              "assayability": "snp", "effect_allele": "G", "category": "carrier", "result_type": "carrier_status"},
             {"rsid": "rs9000003", "chromosome": "22", "gene": "GENEC", "condition": "Example condition two",
@@ -2635,6 +2637,110 @@ def _run_fix_round(attempt):
     attempt("R1B.doc_evidence_not_in_pack_clause", doc_evidence_not_in_pack_clause)
 
 
+# =============================================================================
+# Fix round r47 (D-46-1..D-46-3): the targets condition/gene join, the wording
+# checker's denylist root, and three cross-table survivor gaps.
+# =============================================================================
+def _entry_of(w, rs):
+    return next(e for e in w["entries"] if e["rsid"] == rs)
+
+
+def _set_entry_value(rs, key, value):
+    def mutate(w):
+        _entry_of(w, rs)[key] = value
+    return mutate
+
+
+def _del_entry_key(rs, key):
+    def mutate(w):
+        del _entry_of(w, rs)[key]
+    return mutate
+
+
+def _populated_t1_text():
+    """The real document with its empty T1 table filled from the invented world."""
+    w = good_world()
+    rows = [[r[c] for c in T1_HEADER] for r in w["t1"]]
+    text = read_doc().replace(_table_md(T1_HEADER), _table_md(T1_HEADER, rows))
+    return text, w
+
+
+def _run_r47(attempt):
+    # --- D-46-1: the targets condition and gene join to T1 --------------------
+    rejects = []
+    for kind, rs in (("carrier", "rs9000002"), ("trait", "rs9000001")):
+        for key, unrelated in (("condition", "Unrelated condition value"), ("gene", "UNRELATEDGENE")):
+            rejects.append((f"{kind}_{key}_mismatch", _set_entry_value(rs, key, unrelated), "row-field-differs"))
+            rejects.append((f"{kind}_{key}_missing", _del_entry_key(rs, key), "row-field-differs"))
+            rejects.append((f"{kind}_{key}_null", _set_entry_value(rs, key, None), "row-field-differs"))
+    _syn(attempt, "row_matches_targets_label_and_gene",
+         lambda w: check_row_matches_entries(w["t1"], w["entries"]), rejects)
+
+    def populated_target_condition_mismatch():
+        text, w = _populated_t1_text()
+        t1 = doc_tables(text)["T1"]
+        _clean(check_row_matches_entries(t1, w["entries"]), "populated good world")
+        _entry_of(w, "rs9000002")["condition"] = "Unrelated invented condition"
+        _has(check_row_matches_entries(t1, w["entries"]), "row-field-differs",
+             "real-file gate: wrong target condition")
+        return True
+    attempt("R1B.syn_row_matches_targets_populated_real_file_condition",
+            populated_target_condition_mismatch)
+
+    # --- D-46-2: the wording checker reads the suite's own root ----------------
+    def wording_denylist_uses_copy_root():
+        import guard
+        old_root, old_cwd = guard._ROOT, os.getcwd()
+        outer = tempfile.mkdtemp(prefix="r47-outside-")
+        inner = tempfile.mkdtemp(prefix="r47-inner-")
+        try:
+            for root in (outer, inner):
+                with open(os.path.join(root, ".sensitive-terms"), "w", encoding="utf-8") as fh:
+                    fh.write("zzqtermzz\n")
+            guard._ROOT = None
+            os.chdir(outer)
+            errors = check_wording_generic("zzqtermzz\n")
+            _require(f"a cwd denylist must not reach the suite root: {errors}",
+                     not any("owner-specific" in e for e in errors))
+            plain, hashed = guard.load_denylist(inner)
+            _require("an explicit-root denylist must still be detected by guard",
+                     any("denylist" in label for _, label in guard.scan_text_for_denylist("zzqtermzz", plain, hashed)))
+        finally:
+            os.chdir(old_cwd)
+            guard._ROOT = old_root
+            shutil.rmtree(outer, ignore_errors=True)
+            shutil.rmtree(inner, ignore_errors=True)
+        return True
+    attempt("R1B.syn_wording_denylist_uses_copy_root", wording_denylist_uses_copy_root)
+
+    # --- D-46-3: three non-equivalent survivors --------------------------------
+    def clinvar_inventory_ids_differ_same_size():
+        t1 = [_t1(rsid="rs9000002", label="Example condition one", rt="carrier_status", cat="carrier", allele="A")]
+        row = _claim("9001001=A/match/P/2;9001002=C/other-allele/B/1", "eligible", "9001001", "P", "2", rs="rs9000002")
+        _clean(check_clinvar_table(t1, [row], [_t5("rs9000002", "9001001;9001002", "manifest:idx-1")]),
+               "inventory sets equal")
+        _has(check_clinvar_table(t1, [row], [_t5("rs9000002", "9001001;9001099", "manifest:idx-1")]),
+             "inventory-mismatch", "same size, different ids")
+        return True
+    attempt("R1B.syn_clinvar_inventory_ids_differ_same_size", clinvar_inventory_ids_differ_same_size)
+
+    def replication_t_allele_is_mismatch():
+        row = _gwas("a", "9009301", "cohort-a", "1e-9", allele="T")
+        status, _, drops = _rep([row], allele="A")
+        _require(f"a T allele against effect allele A must drop as allele-mismatch, got {drops} {status}",
+                 drops["a"] == "allele-mismatch")
+        return True
+    attempt("R1B.syn_replication_t_allele_is_mismatch", replication_t_allele_is_mismatch)
+
+    def susc_rejects_wrong_result_type():
+        w = good_world()
+        w["t3"][1]["model"] = "SUSC"
+        _set_row("rs9000003", rt="carrier_status")(w)
+        _has(check_inheritance_table(w["t1"], w["t3"]), "model-result-type", "SUSC on carrier_status")
+        return True
+    attempt("R1B.syn_inheritance_susc_rejects_wrong_result_type", susc_rejects_wrong_result_type)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -2655,6 +2761,7 @@ def run(check):
     _run_doc_helpers(attempt)
     _run_doc(attempt)
     _run_fix_round(attempt)
+    _run_r47(attempt)
     _run_real(attempt)
 
 
