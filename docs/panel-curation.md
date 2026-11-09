@@ -89,7 +89,9 @@ the report words it). Exactly three pairs are allowed:
 | `risk_association` | `carrier` | susceptibility or dominant condition with incomplete penetrance; association wording that never says carrier |
 
 Every other pair, a missing field, or a value outside these vocabularies
-(including case variants) is rejected.
+(including case variants) is rejected. The allowed pairs apply to every row of
+table T1 whatever its decision (`included`, `reserve` or `excluded`), not only
+to the entries placed in the targets file.
 
 ## Exclusion rule AUTO-1
 
@@ -310,7 +312,10 @@ equivalent), `allele-mismatch` (the row's effect allele is not the entry's),
 `evidence-not-in-pack` (the orientation source is absent or not in the evidence
 pack; a functional row also needs its publication in the pack),
 `direction-missing`, `p-missing` or `p-malformed` (association rows only; a
-functional row has no p-value). Rows that pass are direction-eligible. Two more
+functional row has no p-value). A `p-value` cell is a decimal string in
+`(0, 1]`; a string that is nonzero as text but whose float value underflows to
+`0.0` (for example `1e-400`) is rejected as `p-malformed`. Rows that pass are
+direction-eligible. Two more
 checks decide whether a row can form an independent group: `cohort-unknown` and
 `evidence-not-in-pack` (the cohort source). Unknown independence, unverified
 orientation or an unrecorded direction therefore never count. A publication
@@ -332,8 +337,9 @@ the p-value requirement.
 | `replicated` | two or more groups, all directions equal, and at least one eligible association row at or below the threshold |
 
 An entry that is not `replicated` is excluded with `conflicting-evidence`,
-`single-study`, `no-independent-confirmation` or, when rows were dropped for
-unverified orientation, unknown cohort or missing evidence, `evidence-not-in-pack`.
+`single-study` or `no-independent-confirmation`; the code `evidence-not-in-pack`
+applies only when the status is `no-counted-evidence` and some rows were dropped
+for unverified orientation, unknown cohort or missing evidence.
 The `counted` cell of T4 is a claim the checker recomputes.
 
 ## Typed ids

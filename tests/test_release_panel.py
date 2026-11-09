@@ -321,7 +321,11 @@ def check_pairs(entries):
 
 
 def check_t1_pairs(t1_rows):
-    return _result([], len(t1_rows))
+    errors = []
+    for r in t1_rows:
+        if not pair_ok(r.get("category"), r.get("result type")):
+            errors.append(f"pair-invalid: {r.get('rsID')} ({r.get('category')!r}, {r.get('result type')!r})")
+    return _result(errors, len(t1_rows))
 
 
 # --- typed ids, provenance -----------------------------------------------------
@@ -675,6 +679,12 @@ def _inventory_ids(cell):
 def check_clinvar_table(t1_rows, t2_rows, t5_rows):
     errors, t1 = [], {r["rsID"]: r for r in t1_rows}
     inv = {r["rsID"]: r for r in t5_rows}
+    seen = set()
+    for row in t2_rows:
+        rs = row["rsID"]
+        if rs in seen:
+            errors.append(f"t2-duplicate-rsid: {rs}")
+        seen.add(rs)
     for row in t2_rows:
         rs = row["rsID"]
         base = t1.get(rs)
