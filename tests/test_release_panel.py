@@ -2833,6 +2833,59 @@ def _run_r50(attempt):
     attempt("R1B.doc_curator_judgments", doc_curator_judgments)
 
 
+# =============================================================================
+# Ticket 1B-B (snp-REL-B-BUILD-r51): the release data-completeness section.
+# ADD-ONLY: a new section appended after the 1B-A sections; no existing line is
+# edited. The pool is the 23 DRAFT rsIDs of data/targets.carrier.json and
+# data/targets.traits.json (read-only), in ticket order.
+# =============================================================================
+POOL_RSIDS = (
+    "rs334", "rs33930165", "rs113993960", "rs1800562", "rs1799945", "rs6025",
+    "rs1799963", "rs1050828", "rs28929474", "rs12913832", "rs1805007", "rs1805008",
+    "rs17822931", "rs4988235", "rs671", "rs1229984", "rs762551", "rs72921001",
+    "rs1426654", "rs16891982", "rs1800407", "rs1042602", "rs6152",
+)
+NON_AUTOSOMAL_POOL = ("rs1050828", "rs6152")
+GOAL_BOUND = 6
+RESERVE_BOUND = 3
+METHOD_HASH_1BA = "5d975e62ab8e4888594651735196b3d06208d2e57671289f902b621abdb4e1df"
+PACK_IDS = ("N0a", "N0b", "N0c")
+
+
+def _method_sections_text(text):
+    """The method sections: lines before the first exact `## Tables` heading,
+    with Status: lines dropped, joined by single newlines (ticket 1B-B C0)."""
+    pre = []
+    for line in text.split("\n"):
+        if line == "## Tables":
+            break
+        pre.append(line)
+    return "\n".join(ln for ln in pre if not ln.startswith("Status:"))
+
+
+def _pool_t1(text):
+    """T1 rows restricted to the pool; a missing/extra/duplicate rsID raises a
+    named error so the C1 run fails on the not-yet-filled tables."""
+    t1 = doc_tables(text)["T1"]
+    ids = [r["rsID"] for r in t1]
+    missing = [rs for rs in POOL_RSIDS if rs not in ids]
+    extra = [rs for rs in ids if rs not in POOL_RSIDS]
+    dups = sorted({i for i in ids if ids.count(i) > 1})
+    _require("T1 missing pool rows: " + ", ".join(missing), not missing)
+    _require("T1 has non-pool rows: " + ", ".join(sorted(extra)), not extra)
+    _require("T1 duplicate rows: " + ", ".join(dups), not dups)
+    return t1
+
+
+def _run_1b_b_char(attempt):
+    def method_sections_unchanged_since_1ba():
+        digest = hashlib.sha256(_method_sections_text(read_doc()).encode("utf-8")).hexdigest()
+        _require(f"method sections changed: sha256 {digest} != {METHOD_HASH_1BA}",
+                 digest == METHOD_HASH_1BA)
+        return True
+    attempt("R1B.char_method_sections_unchanged_since_1BA", method_sections_unchanged_since_1ba)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -2856,6 +2909,7 @@ def run(check):
     _run_r47(attempt)
     _run_r50(attempt)
     _run_real(attempt)
+    _run_1b_b_char(attempt)
 
 
 def main():
