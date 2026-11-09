@@ -2877,115 +2877,375 @@ def _pool_t1(text):
     return t1
 
 
+# --- pure checkers (r52): each returns a list of error strings, empty when the
+# gate holds. They take parsed rows or document text so invented fixtures can
+# exercise the logic without the real pack (ticket r52, O-6).
+def check_1bb_pool_rows_complete(t1_rows):
+    errors = []
+    ids = [r["rsID"] for r in t1_rows]
+    missing = [rs for rs in POOL_RSIDS if rs not in ids]
+    extra = [rs for rs in ids if rs not in POOL_RSIDS]
+    dups = sorted({i for i in ids if ids.count(i) > 1})
+    if missing:
+        errors.append("missing pool rows: " + ", ".join(missing))
+    if extra:
+        errors.append("non-pool rows: " + ", ".join(sorted(extra)))
+    if dups:
+        errors.append("duplicate rows: " + ", ".join(dups))
+    if len(ids) != len(POOL_RSIDS):
+        errors.append(f"expected one T1 row per pool rsID, got {len(ids)}")
+    return errors
+
+
+def check_1bb_non_autosomal_excluded(t1_rows):
+    errors, by = [], {r["rsID"]: r for r in t1_rows}
+    for rs in NON_AUTOSOMAL_POOL:
+        if rs not in by:
+            errors.append(f"missing row {rs}")
+            continue
+        row = by[rs]
+        if row["decision"] != "excluded":
+            errors.append(f"{rs} decision {row['decision']!r}, expected excluded")
+        if row["reason code"] != "non-autosomal-out-of-scope":
+            errors.append(f"{rs} reason code {row['reason code']!r}, expected non-autosomal-out-of-scope")
+    return errors
+
+
+def check_1bb_included_count_within_goal(t1_rows):
+    errors = []
+    for group in CATEGORIES:
+        n = len([r for r in _live(t1_rows, "included") if r["category"] == group])
+        if n > GOAL_BOUND:
+            errors.append(f"{group} has {n} included rows, bound is {GOAL_BOUND}")
+    return errors
+
+
+def check_1bb_reserves_per_group_bound(t1_rows):
+    errors = []
+    for group in CATEGORIES:
+        n = len([r for r in _live(t1_rows, "reserve") if r["category"] == group])
+        if n > RESERVE_BOUND:
+            errors.append(f"{group} has {n} reserve rows, bound is 0..{RESERVE_BOUND}")
+    return errors
+
+
+def check_1bb_provenance_block(text):
+    body = section_body(text, "Provenance block")
+    if body is None:
+        return ["Provenance block section missing"]
+    errors = [f"Provenance block does not name {tok}" for tok in PACK_IDS if tok not in body]
+    if re.search(r"\b[0-9a-f]{64}\b", body) is None:
+        errors.append("Provenance block has no 64-hex sha256")
+    if re.search(r"\b\d{4}-\d{2}-\d{2}\b", body) is None:
+        errors.append("Provenance block has no ISO date")
+    if "PLACEHOLDER" in body:
+        errors.append("Provenance block still has PLACEHOLDER")
+    return errors
+
+
+def check_1bb_included_has_evidence_rows(t1_rows, t2_rows, t3_rows, t4_rows):
+    t2_rs = {r["rsID"] for r in t2_rows}
+    t3_rs = {r["rsID"] for r in t3_rows}
+    t4_rs = {r["rsID"] for r in t4_rows}
+    errors = []
+    for r in _live(t1_rows, "included", "reserve"):
+        rs, cat = r["rsID"], r["category"]
+        if cat == "carrier":
+            if rs not in t2_rs:
+                errors.append(f"{rs} health {r['decision']} has no T2 row")
+            if rs not in t3_rs:
+                errors.append(f"{rs} health {r['decision']} has no T3 row")
+        elif cat == "trait":
+            if rs not in t4_rs:
+                errors.append(f"{rs} trait {r['decision']} has no T4 row")
+    return errors
+
+
+def check_1bb_evidence_index_ids(t1_rows, t2_rows, t3_rows, t4_rows, t5_rows):
+    pack_index = {r["rsID"]: set(split_ids(r["pack file index id"])) for r in t5_rows}
+    bad = []
+
+    def check(rs, ids):
+        for i in ids:
+            if not typed_id_ok(i):
+                bad.append(f"{rs}: malformed typed id {i!r}")
+            elif i not in pack_index.get(rs, set()):
+                bad.append(f"{rs}: {i} is not in the T5 pack file index id cell")
+
+    for r in t1_rows:
+        check(r["rsID"], split_ids(r["sources (typed ids)"]))
+    for r in t2_rows:
+        if r["resolution"] != "-":
+            check(r["rsID"], [r["resolution"]])
+    for r in t3_rows:
+        check(r["rsID"], split_ids(r["inheritance sources (typed ids)"]))
+    for r in t4_rows:
+        check(r["rsID"], [r["orientation source"], r["cohort source"]])
+    return bad
+
+
+def check_1bb_method_sections_hash(text):
+    digest = hashlib.sha256(_method_sections_text(text).encode("utf-8")).hexdigest()
+    if digest == METHOD_HASH_1BA:
+        return []
+    return [f"method sections changed: sha256 {digest} != {METHOD_HASH_1BA}"]
+
+
 def _run_1b_b_char(attempt):
     def method_sections_unchanged_since_1ba():
-        digest = hashlib.sha256(_method_sections_text(read_doc()).encode("utf-8")).hexdigest()
-        _require(f"method sections changed: sha256 {digest} != {METHOD_HASH_1BA}",
-                 digest == METHOD_HASH_1BA)
+        errors = check_1bb_method_sections_hash(read_doc())
+        _require("; ".join(errors), not errors)
         return True
     attempt("R1B.char_method_sections_unchanged_since_1BA", method_sections_unchanged_since_1ba)
 
 
 def _run_1b_b(attempt):
-    """Ticket 1B-B data-completeness gates: FAILING while the tables are empty
-    (each names the missing pool rows), green once the rows are filled."""
-    def pool_rows_complete():
-        t1 = doc_tables(read_doc())["T1"]
-        ids = [r["rsID"] for r in t1]
-        missing = [rs for rs in POOL_RSIDS if rs not in ids]
-        extra = [rs for rs in ids if rs not in POOL_RSIDS]
-        dups = sorted({i for i in ids if ids.count(i) > 1})
-        _require("missing pool rows: " + ", ".join(missing), not missing)
-        _require("non-pool rows: " + ", ".join(sorted(extra)), not extra)
-        _require("duplicate rows: " + ", ".join(dups), not dups)
-        _require(f"expected one T1 row per pool rsID, got {len(ids)}", len(ids) == len(POOL_RSIDS))
+    """Ticket 1B-B data-completeness gates on the real document; each runs the
+    same pure checker the invented fixtures below exercise (ticket r52, O-6)."""
+    def gate(name, fn):
+        def body():
+            text = read_doc()
+            tables = doc_tables(text)
+            errors = fn(text, tables)
+            _require(name + ": " + "; ".join(errors), not errors)
+            return True
+        attempt(name, body)
+
+    gate("R1B.pool_rows_complete", lambda x, t: check_1bb_pool_rows_complete(t["T1"]))
+    gate("R1B.draft_non_autosomal_candidates_excluded",
+         lambda x, t: check_1bb_non_autosomal_excluded(t["T1"]))
+    gate("R1B.included_count_within_goal", lambda x, t: check_1bb_included_count_within_goal(t["T1"]))
+    gate("R1B.reserves_per_group_bound", lambda x, t: check_1bb_reserves_per_group_bound(t["T1"]))
+    gate("R1B.provenance_block_complete", lambda x, t: check_1bb_provenance_block(x))
+    gate("R1B.every_included_has_t2_t3_or_t4_row",
+         lambda x, t: check_1bb_included_has_evidence_rows(t["T1"], t["T2"], t["T3"], t["T4"]))
+    gate("R1B.evidence_index_ids_resolvable",
+         lambda x, t: check_1bb_evidence_index_ids(t["T1"], t["T2"], t["T3"], t["T4"], t["T5"]))
+
+
+# --- invented fixtures for the 1B-B gates (ticket r52, O-6). Each family proves
+# the pure checker accepts a valid invented document and rejects a named bad
+# state; no pack data is read (the method-hash positive is the real document).
+def _1bb_syn_t1(rs, **kw):
+    base = {"rsID": rs, "gene": "GENEZ", "chrom (GRCh37)": "1",
+            "label used in report": "Invented label", "result type": "trait", "category": "trait",
+            "effect allele (fwd, GRCh37)": "-", "direction/meaning": "not applicable",
+            "build/strand": "-", "assayability_status": "unknown-provisional",
+            "assayability_source": "-", "sources (typed ids)": f"dbsnp:{rs}",
+            "retrieved (UTC date)": "2026-11-09", "rationale": "invented",
+            "limitations": "invented", "decision": "excluded",
+            "reason code": "no-independent-confirmation"}
+    base.update(kw)
+    return base
+
+
+def _1bb_syn_pool_t1():
+    rows = []
+    for rs in POOL_RSIDS:
+        if rs in NON_AUTOSOMAL_POOL:
+            rows.append(_1bb_syn_t1(rs, **{"chrom (GRCh37)": "X", "sources (typed ids)": "-",
+                                           "decision": "excluded",
+                                           "reason code": "non-autosomal-out-of-scope"}))
+        else:
+            rows.append(_1bb_syn_t1(rs))
+    return rows
+
+
+def _1bb_syn_doc(t1=(), t2=(), t3=(), t4=(), t5=(), prov=None,
+                 method=("## Method", "", "invented method text", "")):
+    def tbl(header, rows):
+        return _table_md(header, [[r[c] for c in header] for r in rows])
+    parts = list(method) + ["## Tables", "",
+                            tbl(T1_HEADER, t1), tbl(T2_HEADER, t2), tbl(T3_HEADER, t3),
+                            tbl(T4_HEADER, t4), tbl(T5_HEADER, t5),
+                            "## Provenance block", ""]
+    if prov is None:
+        prov = ["- Evidence pack ids: " + " ".join(PACK_IDS),
+                "- Pack manifest sha256: " + "a" * 64,
+                "- Retrieval dates (UTC, ISO): 2026-11-09"]
+    parts += list(prov)
+    return "\n".join(parts) + "\n"
+
+
+def _run_1b_b_syn(attempt):
+    def run(name, fn):
+        attempt(f"R1B.syn_1bb_{name}", fn)
+
+    def pool_accepts():
+        _require("pool positive fixture must pass",
+                 not check_1bb_pool_rows_complete(_1bb_syn_pool_t1()))
         return True
-    attempt("R1B.pool_rows_complete", pool_rows_complete)
+    run("pool_rows_complete_accepts", pool_accepts)
 
-    def draft_non_autosomal_candidates_excluded():
-        t1 = {r["rsID"]: r for r in doc_tables(read_doc())["T1"]}
-        for rs in NON_AUTOSOMAL_POOL:
-            _require(f"missing row {rs}", rs in t1)
-            row = t1[rs]
-            _require(f"{rs} decision {row['decision']!r}, expected excluded",
-                     row["decision"] == "excluded")
-            _require(f"{rs} reason code {row['reason code']!r}, expected non-autosomal-out-of-scope",
-                     row["reason code"] == "non-autosomal-out-of-scope")
+    def pool_rejects_missing():
+        _has(check_1bb_pool_rows_complete(_1bb_syn_pool_t1()[:-1]), "missing pool rows", "pool")
         return True
-    attempt("R1B.draft_non_autosomal_candidates_excluded", draft_non_autosomal_candidates_excluded)
+    run("pool_rows_complete_rejects_missing", pool_rejects_missing)
 
-    def included_count_within_goal():
-        t1 = _pool_t1(read_doc())
-        for group in CATEGORIES:
-            n = len([r for r in _live(t1, "included") if r["category"] == group])
-            _require(f"{group} has {n} included rows, bound is {GOAL_BOUND}", n <= GOAL_BOUND)
+    def pool_rejects_extra():
+        _has(check_1bb_pool_rows_complete(_1bb_syn_pool_t1() + [_1bb_syn_t1("rs9009999")]),
+             "non-pool rows", "pool")
         return True
-    attempt("R1B.included_count_within_goal", included_count_within_goal)
+    run("pool_rows_complete_rejects_extra", pool_rejects_extra)
 
-    def reserves_per_group_bound():
-        t1 = _pool_t1(read_doc())
-        for group in CATEGORIES:
-            n = len([r for r in _live(t1, "reserve") if r["category"] == group])
-            _require(f"{group} has {n} reserve rows, bound is 0..{RESERVE_BOUND}", n <= RESERVE_BOUND)
+    def pool_rejects_duplicate():
+        _has(check_1bb_pool_rows_complete(_1bb_syn_pool_t1() + [_1bb_syn_t1(POOL_RSIDS[0])]),
+             "duplicate rows", "pool")
         return True
-    attempt("R1B.reserves_per_group_bound", reserves_per_group_bound)
+    run("pool_rows_complete_rejects_duplicate", pool_rejects_duplicate)
 
-    def provenance_block_complete():
-        body = section_body(read_doc(), "Provenance block")
-        _require("Provenance block section missing", body is not None)
-        for tok in PACK_IDS:
-            _require(f"Provenance block does not name {tok}", tok in body)
-        _require("Provenance block has no 64-hex sha256",
-                 re.search(r"\b[0-9a-f]{64}\b", body) is not None)
-        _require("Provenance block has no ISO date",
-                 re.search(r"\b\d{4}-\d{2}-\d{2}\b", body) is not None)
-        _require("Provenance block still has PLACEHOLDER", "PLACEHOLDER" not in body)
+    def nonaut_accepts():
+        _require("non-autosomal positive fixture",
+                 not check_1bb_non_autosomal_excluded(_1bb_syn_pool_t1()))
         return True
-    attempt("R1B.provenance_block_complete", provenance_block_complete)
+    run("non_autosomal_accepts", nonaut_accepts)
 
-    def every_included_has_t2_t3_or_t4_row():
-        text = read_doc()
-        t1 = _pool_t1(text)
-        tables = doc_tables(text)
-        t2_rs = {r["rsID"] for r in tables["T2"]}
-        t3_rs = {r["rsID"] for r in tables["T3"]}
-        t4_rs = {r["rsID"] for r in tables["T4"]}
-        for r in _live(t1, "included", "reserve"):
-            rs, cat = r["rsID"], r["category"]
-            if cat == "carrier":
-                _require(f"{rs} health {r['decision']} has no T2 row", rs in t2_rs)
-                _require(f"{rs} health {r['decision']} has no T3 row", rs in t3_rs)
-            elif cat == "trait":
-                _require(f"{rs} trait {r['decision']} has no T4 row", rs in t4_rs)
+    def nonaut_rejects_kept():
+        rows = _1bb_syn_pool_t1()
+        next(r for r in rows if r["rsID"] == NON_AUTOSOMAL_POOL[0]).update(
+            {"decision": "included", "reason code": "-"})
+        _has(check_1bb_non_autosomal_excluded(rows), "expected excluded", "non-autosomal")
         return True
-    attempt("R1B.every_included_has_t2_t3_or_t4_row", every_included_has_t2_t3_or_t4_row)
+    run("non_autosomal_rejects_kept", nonaut_rejects_kept)
 
-    def evidence_index_ids_resolvable():
-        text = read_doc()
-        _pool_t1(text)
-        tables = doc_tables(text)
-        pack_index = {r["rsID"]: set(split_ids(r["pack file index id"])) for r in tables["T5"]}
-        bad = []
-
-        def check(rs, ids):
-            for i in ids:
-                if not typed_id_ok(i):
-                    bad.append(f"{rs}: malformed typed id {i!r}")
-                elif i not in pack_index.get(rs, set()):
-                    bad.append(f"{rs}: {i} is not in the T5 pack file index id cell")
-
-        for r in tables["T1"]:
-            check(r["rsID"], split_ids(r["sources (typed ids)"]))
-        for r in tables["T2"]:
-            if r["resolution"] != "-":
-                check(r["rsID"], [r["resolution"]])
-        for r in tables["T3"]:
-            check(r["rsID"], split_ids(r["inheritance sources (typed ids)"]))
-        for r in tables["T4"]:
-            check(r["rsID"], [r["orientation source"], r["cohort source"]])
-        _require("unresolvable typed ids: " + "; ".join(bad), not bad)
+    def nonaut_rejects_wrong_code():
+        rows = _1bb_syn_pool_t1()
+        next(r for r in rows if r["rsID"] == NON_AUTOSOMAL_POOL[0])["reason code"] = "ancestry-informative"
+        _has(check_1bb_non_autosomal_excluded(rows), "expected non-autosomal-out-of-scope",
+             "non-autosomal")
         return True
-    attempt("R1B.evidence_index_ids_resolvable", evidence_index_ids_resolvable)
+    run("non_autosomal_rejects_wrong_code", nonaut_rejects_wrong_code)
+
+    def _included_rows(n):
+        return [_1bb_syn_t1(f"rs90000{i:02d}", category="carrier", result_type="carrier_status",
+                            decision="included", **{"reason code": "-"}) for i in range(n)]
+
+    def _reserve_rows(n):
+        return [_1bb_syn_t1(f"rs90001{i:02d}", category="carrier", result_type="carrier_status",
+                            decision="reserve", **{"reason code": "-"}) for i in range(n)]
+
+    def goal_accepts():
+        _require("goal positive fixture",
+                 not check_1bb_included_count_within_goal(_included_rows(GOAL_BOUND)))
+        return True
+    run("included_count_accepts_bound", goal_accepts)
+
+    def goal_rejects_over():
+        _has(check_1bb_included_count_within_goal(_included_rows(GOAL_BOUND + 1)),
+             f"bound is {GOAL_BOUND}", "goal")
+        return True
+    run("included_count_rejects_over_bound", goal_rejects_over)
+
+    def reserves_accepts():
+        _require("reserve positive fixture",
+                 not check_1bb_reserves_per_group_bound(_reserve_rows(RESERVE_BOUND)))
+        return True
+    run("reserves_accepts_bound", reserves_accepts)
+
+    def reserves_rejects_over():
+        _has(check_1bb_reserves_per_group_bound(_reserve_rows(RESERVE_BOUND + 1)),
+             f"0..{RESERVE_BOUND}", "reserve")
+        return True
+    run("reserves_rejects_over_bound", reserves_rejects_over)
+
+    def prov_accepts():
+        _require("provenance positive fixture", not check_1bb_provenance_block(_1bb_syn_doc()))
+        return True
+    run("provenance_accepts", prov_accepts)
+
+    def prov_rejects_missing_pack():
+        prov = ["- Evidence pack ids: " + " ".join(PACK_IDS[:-1]),
+                "- sha256 " + "a" * 64, "- date 2026-11-09"]
+        _has(check_1bb_provenance_block(_1bb_syn_doc(prov=prov)), "does not name", "provenance")
+        return True
+    run("provenance_rejects_missing_pack", prov_rejects_missing_pack)
+
+    def prov_rejects_no_sha():
+        prov = ["- Evidence pack ids: " + " ".join(PACK_IDS), "- date 2026-11-09"]
+        _has(check_1bb_provenance_block(_1bb_syn_doc(prov=prov)), "no 64-hex sha256", "provenance")
+        return True
+    run("provenance_rejects_no_sha", prov_rejects_no_sha)
+
+    def prov_rejects_no_date():
+        prov = ["- Evidence pack ids: " + " ".join(PACK_IDS), "- sha256 " + "a" * 64]
+        _has(check_1bb_provenance_block(_1bb_syn_doc(prov=prov)), "no ISO date", "provenance")
+        return True
+    run("provenance_rejects_no_date", prov_rejects_no_date)
+
+    def prov_rejects_placeholder():
+        prov = ["- Evidence pack ids: " + " ".join(PACK_IDS), "PLACEHOLDER"]
+        _has(check_1bb_provenance_block(_1bb_syn_doc(prov=prov)), "PLACEHOLDER", "provenance")
+        return True
+    run("provenance_rejects_placeholder", prov_rejects_placeholder)
+
+    def evidence_accepts():
+        t1 = [_1bb_syn_t1("rs9000001", category="carrier", result_type="carrier_status",
+                          decision="included", **{"reason code": "-"})]
+        t2 = [_t2("rs9000001", "A", "9001001=A/match/P/2", "9001001", "P", "2", "eligible")]
+        t3 = [_t3("rs9000001", "AR", "one copy: carrier", "two copies: invented",
+                  "genereviews:NBK900001")]
+        _require("evidence positive fixture",
+                 not check_1bb_included_has_evidence_rows(t1, t2, t3, []))
+        return True
+    run("included_has_evidence_accepts", evidence_accepts)
+
+    def evidence_rejects_no_t2():
+        t1 = [_1bb_syn_t1("rs9000001", category="carrier", result_type="carrier_status",
+                          decision="included", **{"reason code": "-"})]
+        t3 = [_t3("rs9000001", "AR", "one copy: carrier", "two copies: invented",
+                  "genereviews:NBK900001")]
+        _has(check_1bb_included_has_evidence_rows(t1, [], t3, []), "has no T2 row", "evidence")
+        return True
+    run("included_has_evidence_rejects_no_t2", evidence_rejects_no_t2)
+
+    def evidence_rejects_no_t3():
+        t1 = [_1bb_syn_t1("rs9000001", category="carrier", result_type="carrier_status",
+                          decision="included", **{"reason code": "-"})]
+        t2 = [_t2("rs9000001", "A", "9001001=A/match/P/2", "9001001", "P", "2", "eligible")]
+        _has(check_1bb_included_has_evidence_rows(t1, t2, [], []), "has no T3 row", "evidence")
+        return True
+    run("included_has_evidence_rejects_no_t3", evidence_rejects_no_t3)
+
+    def evidence_rejects_no_t4():
+        t1 = [_1bb_syn_t1("rs9000001", category="trait", decision="included",
+                          **{"reason code": "-"})]
+        _has(check_1bb_included_has_evidence_rows(t1, [], [], []), "has no T4 row", "evidence")
+        return True
+    run("included_has_evidence_rejects_no_t4", evidence_rejects_no_t4)
+
+    def ids_accept():
+        t1 = [_1bb_syn_t1("rs9000001", **{"sources (typed ids)": "dbsnp:rs9000001"})]
+        t5 = [_t5("rs9000001", "-", "dbsnp:rs9000001")]
+        _require("ids positive fixture", not check_1bb_evidence_index_ids(t1, [], [], [], t5))
+        return True
+    run("evidence_ids_accepts", ids_accept)
+
+    def ids_reject_absent():
+        t1 = [_1bb_syn_t1("rs9000001", **{"sources (typed ids)": "dbsnp:rs9000001"})]
+        t5 = [_t5("rs9000001", "-", "dbsnp:rs9009999")]
+        _has(check_1bb_evidence_index_ids(t1, [], [], [], t5),
+             "is not in the T5 pack file index id cell", "ids")
+        return True
+    run("evidence_ids_rejects_absent", ids_reject_absent)
+
+    def ids_reject_malformed():
+        t1 = [_1bb_syn_t1("rs9000001", **{"sources (typed ids)": "notatypedid"})]
+        t5 = [_t5("rs9000001", "-", "dbsnp:rs9000001")]
+        _has(check_1bb_evidence_index_ids(t1, [], [], [], t5), "malformed typed id", "ids")
+        return True
+    run("evidence_ids_rejects_malformed", ids_reject_malformed)
+
+    def method_accepts_real():
+        _require("method positive fixture (the real document)",
+                 not check_1bb_method_sections_hash(read_doc()))
+        return True
+    run("method_sections_hash_accepts_real", method_accepts_real)
+
+    def method_rejects_changed():
+        text = _1bb_syn_doc(method=("## Method", "", "an invented rewritten method", ""))
+        _has(check_1bb_method_sections_hash(text), "method sections changed", "method")
+        return True
+    run("method_sections_hash_rejects_changed", method_rejects_changed)
 
 
 def run(check):
@@ -3013,6 +3273,7 @@ def run(check):
     _run_real(attempt)
     _run_1b_b_char(attempt)
     _run_1b_b(attempt)
+    _run_1b_b_syn(attempt)
 
 
 def main():
