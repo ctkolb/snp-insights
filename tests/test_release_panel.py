@@ -2886,6 +2886,108 @@ def _run_1b_b_char(attempt):
     attempt("R1B.char_method_sections_unchanged_since_1BA", method_sections_unchanged_since_1ba)
 
 
+def _run_1b_b(attempt):
+    """Ticket 1B-B data-completeness gates: FAILING while the tables are empty
+    (each names the missing pool rows), green once the rows are filled."""
+    def pool_rows_complete():
+        t1 = doc_tables(read_doc())["T1"]
+        ids = [r["rsID"] for r in t1]
+        missing = [rs for rs in POOL_RSIDS if rs not in ids]
+        extra = [rs for rs in ids if rs not in POOL_RSIDS]
+        dups = sorted({i for i in ids if ids.count(i) > 1})
+        _require("missing pool rows: " + ", ".join(missing), not missing)
+        _require("non-pool rows: " + ", ".join(sorted(extra)), not extra)
+        _require("duplicate rows: " + ", ".join(dups), not dups)
+        _require(f"expected one T1 row per pool rsID, got {len(ids)}", len(ids) == len(POOL_RSIDS))
+        return True
+    attempt("R1B.pool_rows_complete", pool_rows_complete)
+
+    def draft_non_autosomal_candidates_excluded():
+        t1 = {r["rsID"]: r for r in doc_tables(read_doc())["T1"]}
+        for rs in NON_AUTOSOMAL_POOL:
+            _require(f"missing row {rs}", rs in t1)
+            row = t1[rs]
+            _require(f"{rs} decision {row['decision']!r}, expected excluded",
+                     row["decision"] == "excluded")
+            _require(f"{rs} reason code {row['reason code']!r}, expected non-autosomal-out-of-scope",
+                     row["reason code"] == "non-autosomal-out-of-scope")
+        return True
+    attempt("R1B.draft_non_autosomal_candidates_excluded", draft_non_autosomal_candidates_excluded)
+
+    def included_count_within_goal():
+        t1 = _pool_t1(read_doc())
+        for group in CATEGORIES:
+            n = len([r for r in _live(t1, "included") if r["category"] == group])
+            _require(f"{group} has {n} included rows, bound is {GOAL_BOUND}", n <= GOAL_BOUND)
+        return True
+    attempt("R1B.included_count_within_goal", included_count_within_goal)
+
+    def reserves_per_group_bound():
+        t1 = _pool_t1(read_doc())
+        for group in CATEGORIES:
+            n = len([r for r in _live(t1, "reserve") if r["category"] == group])
+            _require(f"{group} has {n} reserve rows, bound is 0..{RESERVE_BOUND}", n <= RESERVE_BOUND)
+        return True
+    attempt("R1B.reserves_per_group_bound", reserves_per_group_bound)
+
+    def provenance_block_complete():
+        body = section_body(read_doc(), "Provenance block")
+        _require("Provenance block section missing", body is not None)
+        for tok in PACK_IDS:
+            _require(f"Provenance block does not name {tok}", tok in body)
+        _require("Provenance block has no 64-hex sha256",
+                 re.search(r"\b[0-9a-f]{64}\b", body) is not None)
+        _require("Provenance block has no ISO date",
+                 re.search(r"\b\d{4}-\d{2}-\d{2}\b", body) is not None)
+        _require("Provenance block still has PLACEHOLDER", "PLACEHOLDER" not in body)
+        return True
+    attempt("R1B.provenance_block_complete", provenance_block_complete)
+
+    def every_included_has_t2_t3_or_t4_row():
+        text = read_doc()
+        t1 = _pool_t1(text)
+        tables = doc_tables(text)
+        t2_rs = {r["rsID"] for r in tables["T2"]}
+        t3_rs = {r["rsID"] for r in tables["T3"]}
+        t4_rs = {r["rsID"] for r in tables["T4"]}
+        for r in _live(t1, "included", "reserve"):
+            rs, cat = r["rsID"], r["category"]
+            if cat == "carrier":
+                _require(f"{rs} health {r['decision']} has no T2 row", rs in t2_rs)
+                _require(f"{rs} health {r['decision']} has no T3 row", rs in t3_rs)
+            elif cat == "trait":
+                _require(f"{rs} trait {r['decision']} has no T4 row", rs in t4_rs)
+        return True
+    attempt("R1B.every_included_has_t2_t3_or_t4_row", every_included_has_t2_t3_or_t4_row)
+
+    def evidence_index_ids_resolvable():
+        text = read_doc()
+        _pool_t1(text)
+        tables = doc_tables(text)
+        pack_index = {r["rsID"]: set(split_ids(r["pack file index id"])) for r in tables["T5"]}
+        bad = []
+
+        def check(rs, ids):
+            for i in ids:
+                if not typed_id_ok(i):
+                    bad.append(f"{rs}: malformed typed id {i!r}")
+                elif i not in pack_index.get(rs, set()):
+                    bad.append(f"{rs}: {i} is not in the T5 pack file index id cell")
+
+        for r in tables["T1"]:
+            check(r["rsID"], split_ids(r["sources (typed ids)"]))
+        for r in tables["T2"]:
+            if r["resolution"] != "-":
+                check(r["rsID"], [r["resolution"]])
+        for r in tables["T3"]:
+            check(r["rsID"], split_ids(r["inheritance sources (typed ids)"]))
+        for r in tables["T4"]:
+            check(r["rsID"], [r["orientation source"], r["cohort source"]])
+        _require("unresolvable typed ids: " + "; ".join(bad), not bad)
+        return True
+    attempt("R1B.evidence_index_ids_resolvable", evidence_index_ids_resolvable)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -2910,6 +3012,7 @@ def run(check):
     _run_r50(attempt)
     _run_real(attempt)
     _run_1b_b_char(attempt)
+    _run_1b_b(attempt)
 
 
 def main():
