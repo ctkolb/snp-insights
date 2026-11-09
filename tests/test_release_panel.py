@@ -2488,6 +2488,7 @@ def _run_fix_round(attempt):
                 ("inverted can/cannot", good.replace("entry can be", "entry cannot be")),
                 ("spaced inversion", good.replace("entry can be", "entry can not be")),
                 ("second half inverted", good.replace("is not a\n   recommendation", "is a\n   recommendation")),
+                ("second half dropped", good.replace(", and its only honest wording is not a\n   recommendation", "")),
                 ("clause absent", good.replace("7. Report safety", "7. Report safety (see below)").replace(
                     "can be reported", "is reported")),
                 ("clause in another section", good.replace("## Criteria", "## Elsewhere")),
