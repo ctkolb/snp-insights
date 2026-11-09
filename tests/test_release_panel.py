@@ -678,6 +678,8 @@ def check_clinvar_table(t1_rows, t2_rows, t5_rows):
             errors.append(f"t2-without-t1: {rs}")
             continue
         errors += check_pair_row(row, base["result type"], base["effect allele (fwd, GRCh37)"])
+        if row["pair condition"] != base["label used in report"]:
+            errors.append(f"pair-condition-differs: {rs} T2 {row['pair condition']!r} != T1 {base['label used in report']!r}")
         items, _ = parse_considered(row["considered records"], row["pair allele (fwd GRCh37)"])
         if rs not in inv:
             errors.append(f"inventory-missing: {rs} has no T5 row")
@@ -738,6 +740,10 @@ def check_health_rows(t1_rows, t2_rows, t3_rows):
         if pair is None:
             errors.append(f"health-without-t2: {rs}")
             continue
+        if pair["pair condition"] != r["label used in report"]:
+            errors.append(f"health-pair-condition-differs: {rs} T2 {pair['pair condition']!r} != T1 {r['label used in report']!r}")
+        if pair["pair allele (fwd GRCh37)"] != r["effect allele (fwd, GRCh37)"]:
+            errors.append(f"health-pair-allele-differs: {rs} T2 {pair['pair allele (fwd GRCh37)']!r} != T1 {r['effect allele (fwd, GRCh37)']!r}")
         outcome, group, _, errs = evaluate_pair(pair, rt)
         if errs:
             errors.append(f"health-t2-invalid: {rs} {errs[0]}")
@@ -869,7 +875,7 @@ def evaluate_replication(rows, effect_allele, label, aliases, pack_ids):
         clusters.setdefault(find(rid), []).append(rid)
     gwas_groups = sorted(sorted(c) for c in clusters.values() if any(info[r]["kind"] == "gwas" for r in c))
     fn_groups = sorted(sorted(c) for c in clusters.values() if all(info[r]["kind"] == "functional" for r in c))
-    groups = gwas_groups + fn_groups[:FN_GROUP_CAP]
+    groups = gwas_groups + (fn_groups[:FN_GROUP_CAP] if gwas_groups else [])
     directions = {i["dir"] for i in info.values() if i["dir_ok"]}
     if {"up", "down"} <= directions:
         status = "conflicting-evidence"
@@ -1708,7 +1714,7 @@ def _run_clinvar(attempt):
     attempt("R1B.syn_clinvar_b_u_only", b_u_only)
 
     def empty_inventory():
-        t1 = [_t1(rsid="rs9000002", rt="carrier_status", cat="carrier", allele="A")]
+        t1 = [_t1(rsid="rs9000002", label="Example condition one", rt="carrier_status", cat="carrier", allele="A")]
         row = _claim("-", "excluded:no-allele-condition-match", rs="rs9000002")
         _clean(check_clinvar_table(t1, [row], [_t5("rs9000002", "-", "manifest:idx-1")]), "empty inventory")
         for rt in ("carrier_status", "risk_association"):
@@ -1785,7 +1791,7 @@ def _run_clinvar(attempt):
     attempt("R1B.clinvar_class_groups_truth_table", class_groups_truth_table)
 
     def considered_equals_inventory():
-        t1 = [_t1(rsid="rs9000002", rt="carrier_status", cat="carrier", allele="A")]
+        t1 = [_t1(rsid="rs9000002", label="Example condition one", rt="carrier_status", cat="carrier", allele="A")]
         row = _claim("9000051=A/match/P/2;9000052=C/other-allele/B/1", "eligible", "9000051", "P", "2", rs="rs9000002")
         _clean(check_clinvar_table(t1, [row], [_t5("rs9000002", "9000051;9000052", "manifest:idx-1")]), "equal")
         _has(check_clinvar_table(t1, [row], [_t5("rs9000002", "9000051;9000052;9000053", "manifest:idx-1")]),

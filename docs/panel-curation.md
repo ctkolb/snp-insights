@@ -46,8 +46,8 @@ Every criterion must be satisfied from a captured primary source.
 6. Evidence threshold. Health-related entries: a ClinVar pair that is eligible
    under the ClinVar pair rule, plus one independent clinical source. Trait
    entries: replicated under the Replication rule.
-7. Report safety: the entry cannot be reported without implying a diagnosis or
-   an absolute risk, and its only honest wording is not a recommendation.
+7. Report safety: the entry can be reported without implying a diagnosis or an
+   absolute risk, and its only honest wording is not a recommendation.
 8. Not ancestry inference: ancestry-informative traits are excluded unless the
    owner decides otherwise.
 9. Genericity: records contain public identifiers only (rsIDs, ClinVar ids,
@@ -113,8 +113,11 @@ entry exercises it. Such a row is recorded as excluded with reason code
 
 The clinical assertion for a health entry is evaluated per (allele, condition)
 pair: the allele is the entry's forward-strand GRCh37 effect allele and the
-condition is the curated label. The steps below run in order and are checked by
-the function that computes the pair outcome from the considered-records cell.
+condition is the curated label. In table T2 the pair allele equals the T1
+effect allele, and the T2 `pair condition` cell must equal the T1 `label used in
+report` exactly (the cell text after the table parser strips surrounding spaces;
+no case folding). The steps below run in order and are checked by the function
+that computes the pair outcome from the considered-records cell.
 
 ### Considered set
 
@@ -315,9 +318,10 @@ detail missing from the pack is never filled from memory.
 
 Independent groups are derived, never written: rows with the same PMID, the
 same cohort id, or a declared overlap in either direction form one cluster, and
-each cluster is one group. A functional paper counts as at most one group, needs
-a distinct cohort and verified orientation, and never supplies the p-value
-requirement.
+each cluster is one group. A functional paper counts as at most one group, only
+when at least one GWAS group is present (functional-only evidence is zero
+groups), needs a distinct cohort and verified orientation, and never supplies
+the p-value requirement.
 
 | status | condition |
 |---|---|
