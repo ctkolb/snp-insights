@@ -721,6 +721,273 @@ def _run_build(attempt):
     attempt("R2A.error_messages_do_not_echo_data", error_messages_do_not_echo_data)
 
 
+# Out-of-schema letters differ from the ones the earlier gates use (X, -, a).
+SCHEMA_ALLELES = frozenset("ACGTID")
+
+
+def _write_raw_lines(directory, header_lines, rows, name="raw.txt"):
+    """Write a synthetic five-column file with exactly the given comment lines."""
+    lines = list(header_lines) + ["rsid\tchromosome\tposition\tallele1\tallele2"]
+    lines.extend("\t".join(str(c) for c in row) for row in rows)
+    path = os.path.join(directory, name)
+    with open(path, "w") as fh:
+        fh.write("\n".join(lines) + "\n")
+    return path
+
+
+def _run_fix_round(attempt):
+    """Gates added in the 2A fix round: schema-valid uninterpretable calls (F1),
+    stated-but-unrecognized builds (F2) and alphabet mutation guards (T1)."""
+    import annotate
+    import ancestry
+
+    base_rows = [("rs900001", 1, 1000, "A", "G"), ("rs900002", 1, 2000, "G", "G")]
+    base_panel = _panel(_effect_variant(), _refalt_variant())
+    ind_d = _variant("rs900003", "7", 3000, None, None, effect="D", assay="indel")
+    # letters never used by the earlier junk-letter gates, plus multi-character and empty
+    junk_letters = ("Z", "N", "q", "AC", "", "ZZ9")
+
+    def validates(doc):
+        jsonschema = _jsonschema()
+        if jsonschema is None:
+            return None
+        errors = list(jsonschema.Draft202012Validator(_load(SCHEMA_PATH)).iter_errors(doc))
+        return errors
+
+    # --- R2A.F1_uninterpretable_junk_letters_omit_alleles -----------------------
+    def f1_uninterpretable_junk_letters_omit_alleles():
+        pairs = [("X", "X"), ("A", "X"), ("X", "A"), ("a", "a"), ("-", "-")]
+        pairs += [(j, j) for j in junk_letters] + [("A", j) for j in junk_letters] + [(j, "G") for j in junk_letters]
+        for a1, a2 in pairs:
+            f = _finding([("rs900001", 1, 1000, a1, a2)], _effect_variant())
+            _require(f"{a1!r}/{a2!r}: uninterpretable, got {_sig(f)}", _uninterpretable(f))
+            extra = sorted(set(f["call"]) - {"state", "zygosity", "strand"})
+            _require(f"{a1!r}/{a2!r}: call carries no allele fields, found {extra}", not extra)
+            _require(f"{a1!r}/{a2!r}: strand kept, got {f['call'].get('strand')!r}", f["call"].get("strand") == "forward")
+        return True
+    attempt("R2A.F1_uninterpretable_junk_letters_omit_alleles", f1_uninterpretable_junk_letters_omit_alleles)
+
+    # --- R2A.F1_uninterpretable_junk_document_validates -------------------------
+    def f1_uninterpretable_junk_document_validates():
+        if _jsonschema() is None:
+            _skip("R2A.F1_uninterpretable_junk_document_validates", "jsonschema not installed")
+            return True
+        for a1, a2 in (("X", "X"), ("A", "X"), ("a", "a"), ("AC", "AC"), ("", ""), ("Z", "N"), ("q", "G")):
+            doc = _findings([("rs900001", 1, 1000, a1, a2), ("rs900002", 1, 2000, "G", "G")], base_panel)
+            _require(f"{a1!r}/{a2!r}: finding is uninterpretable", _uninterpretable(doc["findings"][0]))
+            errors = validates(doc)
+            _require(f"{a1!r}/{a2!r}: document validates against schema 1.1.0, got "
+                     f"{[e.message for e in errors][:2]}", not errors)
+        return True
+    attempt("R2A.F1_uninterpretable_junk_document_validates", f1_uninterpretable_junk_document_validates)
+
+    # --- R2A.F1_junk_letters_not_echoed_in_document -----------------------------
+    def f1_junk_letters_not_echoed_in_document():
+        sentinel = "QZ7"
+        for a1, a2 in ((sentinel, sentinel), ("A", sentinel)):
+            doc = _findings([("rs900001", 1, 1000, a1, a2)], _panel(_effect_variant()))
+            _require(f"{a1}/{a2}: finding is uninterpretable", _uninterpretable(doc["findings"][0]))
+            _require(f"{a1}/{a2}: the raw letters appear nowhere in the document", sentinel not in json.dumps(doc))
+        return True
+    attempt("R2A.F1_junk_letters_not_echoed_in_document", f1_junk_letters_not_echoed_in_document)
+
+    # --- R2A.F1_y_in_female_junk_letters_omit_alleles ---------------------------
+    def f1_y_in_female_junk_letters_omit_alleles():
+        v = _variant("rsY1", "Y", 3000000, "T", "C")
+        for a1, a2 in (("Z", "Z"), ("T", "N"), ("AC", "T")):
+            with tempfile.TemporaryDirectory() as d:
+                raw = ancestry.parse_ancestry(_write_raw(d, [("rsY1", 24, 3000000, a1, a2)]))
+            f = annotate.annotate_variant(v, raw, {}, "female")
+            _require(f"{a1}/{a2}: Y call in an inferred female is uninterpretable, got {_sig(f)}", _uninterpretable(f))
+            extra = sorted(set(f["call"]) - {"state", "zygosity", "strand"})
+            _require(f"{a1}/{a2}: call carries no allele fields, found {extra}", not extra)
+        return True
+    attempt("R2A.F1_y_in_female_junk_letters_omit_alleles", f1_y_in_female_junk_letters_omit_alleles)
+
+    # --- R2A.F1_valid_letters_uninterpretable_keep_alleles (characterization) ---
+    def f1_valid_letters_uninterpretable_keep_alleles():
+        for a1, a2 in (("C", "C"), ("C", "T"), ("A", "C"), ("I", "D"), ("D", "D")):
+            f = _finding([("rs900001", 1, 1000, a1, a2)], _effect_variant())
+            _require(f"{a1}/{a2}: uninterpretable, got {_sig(f)}", _uninterpretable(f))
+            _require(f"{a1}/{a2}: alleles kept, got {f['call']}",
+                     (f["call"].get("allele1"), f["call"].get("allele2")) == (a1, a2))
+        f = _finding([("rs900003", 7, 3000, "A", "C")], ind_d)
+        _require(f"SNP letters on an indel keep their alleles, got {f['call']}",
+                 (f["call"].get("allele1"), f["call"].get("allele2")) == ("A", "C"))
+        v = _variant("rsY1", "Y", 3000000, "T", "C")
+        with tempfile.TemporaryDirectory() as d:
+            raw = ancestry.parse_ancestry(_write_raw(d, [("rsY1", 24, 3000000, "T", "T")]))
+        f = annotate.annotate_variant(v, raw, {}, "female")
+        _require(f"Y call in a female with valid letters keeps its alleles, got {f['call']}",
+                 (f["call"].get("allele1"), f["call"].get("allele2")) == ("T", "T"))
+        f = _finding([("rs900001", 1, 1000, "A", "G")], _effect_variant())
+        _require(f"a detected call keeps its alleles, got {f['call']}",
+                 f["state"] == "detected" and (f["call"]["allele1"], f["call"]["allele2"]) == ("A", "G"))
+        return True
+    attempt("R2A.F1_valid_letters_uninterpretable_keep_alleles", f1_valid_letters_uninterpretable_keep_alleles)
+
+    # --- R2A.F2_unrecognized_build_token_refused --------------------------------
+    unrecognized = ("hg19", "GRCh37", "grch38", "hg38", "b37", "37.2", "99.9", "37.", "GRChSENTINEL9")
+
+    def refused_run(header, token_note):
+        """annotate.main and build_findings on a header; returns nothing, raises _Gate on a miss."""
+        with tempfile.TemporaryDirectory() as d:
+            raw = _write_raw_lines(d, header, base_rows)
+            pp = _write_panel(d, base_panel)
+            out = os.path.join(d, "findings.json")
+            rc, so, se = _run_main([raw, pp, "-o", out, "--aliases", os.path.join(d, "none.json")])
+            _require(f"{token_note}: annotate.main returns 2, got {rc}", rc == 2)
+            _require(f"{token_note}: stderr is the fixed message, got {se!r}", se == BUILD_REFUSED_MESSAGE + "\n")
+            _require(f"{token_note}: stdout is empty", so == "")
+            _require(f"{token_note}: nothing is written", not os.path.exists(out))
+            err = None
+            try:
+                annotate.build_findings(raw, base_panel, {})
+            except Exception as exc:  # noqa: BLE001
+                err = exc
+            _require(f"{token_note}: build_findings raises BuildRefused, got {type(err).__name__}",
+                     type(err).__name__ == "BuildRefused")
+
+    def f2_unrecognized_build_token_refused():
+        for token in unrecognized:
+            refused_run(["#Data was collected using AncestryDNA array version: V2.0",
+                         f"#using human reference build {token} coordinates."], f"build {token}")
+        return True
+    attempt("R2A.F2_unrecognized_build_token_refused", f2_unrecognized_build_token_refused)
+
+    # --- R2A.F2_parser_surfaces_unrecognized_build ------------------------------
+    def f2_parser_surfaces_unrecognized_build():
+        with tempfile.TemporaryDirectory() as d:
+            for token in ("hg19", "GRCh37"):
+                raw = _write_raw_lines(d, [f"#using human reference build {token} coordinates."], base_rows)
+                got = ancestry.parse_ancestry(raw)["meta"]["genome_build"]
+                _require(f"build {token}: the parser reports a stated build, got {got!r}", got)
+                _require(f"build {token}: it is neither GRCh37 nor GRCh38, got {got!r}", got not in ("GRCh37", "GRCh38"))
+                _require(f"build {token}: the token is not carried into meta, got {got!r}", token not in str(got))
+        return True
+    attempt("R2A.F2_parser_surfaces_unrecognized_build", f2_parser_surfaces_unrecognized_build)
+
+    # --- R2A.F2_phrase_case_insensitive -----------------------------------------
+    def f2_phrase_case_insensitive():
+        for header in ("#Using HUMAN Reference BUILD hg19 coordinates", "#using human  reference\tbuild hg19"):
+            refused_run([header], f"header {header!r}")
+        for header in ("#using Human Reference Build 37.1 coordinates", "#USING HUMAN REFERENCE BUILD 37"):
+            doc = None
+            with tempfile.TemporaryDirectory() as d:
+                doc = annotate.build_findings(_write_raw_lines(d, [header], base_rows), base_panel, {})
+            prov = doc["provenance"]
+            _require(f"header {header!r}: input_build GRCh37, got {prov['input_build']!r}", prov["input_build"] == "GRCh37")
+            _require(f"header {header!r}: basis file_statement, got {prov['build_basis']!r}",
+                     prov["build_basis"] == "file_statement")
+        return True
+    attempt("R2A.F2_phrase_case_insensitive", f2_phrase_case_insensitive)
+
+    # --- R2A.F2_unrecognized_build_is_not_overridden ----------------------------
+    def f2_unrecognized_build_is_not_overridden():
+        for first, second in (("hg19", "37.1"), ("37.1", "hg19")):
+            refused_run([f"#using human reference build {first} coordinates.",
+                         f"#again, human reference build {second} coordinates."], f"builds {first} then {second}")
+        return True
+    attempt("R2A.F2_unrecognized_build_is_not_overridden", f2_unrecognized_build_is_not_overridden)
+
+    # --- R2A.F2_unrecognized_build_run_writes_no_files ---------------------------
+    def f2_unrecognized_build_run_writes_no_files():
+        from snp_insights import cli
+        with tempfile.TemporaryDirectory() as d:
+            raw = _write_raw_lines(d, ["#using human reference build hg19 coordinates."], base_rows)
+            pp = _write_panel(d, base_panel)
+            out_dir = os.path.join(d, "run-out")
+            err, out = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(out):
+                rc = cli.main(["run", raw, pp, "--out-dir", out_dir, "--template-only"])
+            _require(f"run returns non-zero, got {rc}", rc != 0)
+            present = [n for n in cli._OUTPUT_NAMES if os.path.lexists(os.path.join(out_dir, n))]
+            _require(f"none of the run's output names exists, found {present}", not present)
+            _require("the unrecognized token is not echoed", "hg19" not in err.getvalue() + out.getvalue())
+        return True
+    attempt("R2A.F2_unrecognized_build_run_writes_no_files", f2_unrecognized_build_run_writes_no_files)
+
+    # --- R2A.F2_recognized_and_absent_builds_unchanged (characterization) -------
+    def f2_recognized_and_absent_builds_unchanged():
+        for token in ("37", "37.1"):
+            with tempfile.TemporaryDirectory() as d:
+                raw = _write_raw_lines(d, [f"#using human reference build {token} coordinates."], base_rows)
+                doc = annotate.build_findings(raw, base_panel, {})
+            prov = doc["provenance"]
+            _require(f"build {token}: GRCh37 from a file statement, got {(prov['input_build'], prov['build_basis'])}",
+                     (prov["input_build"], prov["build_basis"]) == ("GRCh37", "file_statement"))
+        with tempfile.TemporaryDirectory() as d:
+            raw = _write_raw_lines(d, ["#using human reference build 38 coordinates."], base_rows)
+            _require("a stated build 38 still parses as GRCh38", ancestry.parse_ancestry(raw)["meta"]["genome_build"] == "GRCh38")
+            refused_run(["#using human reference build 38 coordinates."], "build 38")
+            raw = _write_raw_lines(d, ["#no build statement here"], base_rows, name="none.txt")
+            doc = annotate.build_findings(raw, base_panel, {})
+            prov = doc["provenance"]
+            _require(f"no statement: unknown / not_stated, got {(prov['input_build'], prov['build_basis'])}",
+                     (prov["input_build"], prov["build_basis"]) == ("unknown", "not_stated"))
+            _require("no statement: the parser reports none", ancestry.parse_ancestry(raw)["meta"]["genome_build"] is None)
+        return True
+    attempt("R2A.F2_recognized_and_absent_builds_unchanged", f2_recognized_and_absent_builds_unchanged)
+
+    # --- R2A.F2_comment_lines_with_word_build_are_not_statements ----------------
+    def f2_comment_lines_with_word_build_are_not_statements():
+        headers = ["#this manifest was build 99 of the probe set",
+                   "#rebuild hg19 pending, see notes",
+                   "#reference build hg19 is not what this line states",
+                   "#human reference build",
+                   "#build   GRCh99 appears only in prose"]
+        with tempfile.TemporaryDirectory() as d:
+            for header in headers:
+                raw = _write_raw_lines(d, [header], base_rows)
+                got = ancestry.parse_ancestry(raw)["meta"]["genome_build"]
+                _require(f"{header!r}: the parser reports no build, got {got!r}", got is None)
+                doc = annotate.build_findings(raw, base_panel, {})
+                prov = doc["provenance"]
+                _require(f"{header!r}: unknown / not_stated, got {(prov['input_build'], prov['build_basis'])}",
+                         (prov["input_build"], prov["build_basis"]) == ("unknown", "not_stated"))
+        return True
+    attempt("R2A.F2_comment_lines_with_word_build_are_not_statements", f2_comment_lines_with_word_build_are_not_statements)
+
+    # --- R2A.T1_effect_known_nonset_unknown_junk_is_uninterpretable --------------
+    def t1_effect_known_nonset_unknown_junk_is_uninterpretable():
+        # effect A, no reference/alternate: the declared set is {A}, so only the
+        # alphabet check can reject a junk letter next to the effect allele.
+        nothing = _variant("rs900001", "1", 1000, None, None, effect="A")
+        for junk in ("X", "Z", "N", "q", "AC", "", "9"):
+            for a1, a2 in (("A", junk), (junk, "A"), (junk, junk)):
+                f = _finding([("rs900001", 1, 1000, a1, a2)], nothing)
+                _require(f"effect A, no ref/alt, {a1!r}/{a2!r}: uninterpretable, not detected/het, got {_sig(f)}",
+                         _uninterpretable(f))
+        f = _finding([("rs900001", 1, 1000, "A", "G")], nothing)
+        _require(f"effect A, no ref/alt, A/G: still detected het, got {_sig(f)}",
+                 f["state"] == "detected" and f["call"]["zygosity"] == "het")
+        # only the reference is declared next to the effect allele: the alphabet still applies
+        only_ref = _variant("rs900001", "1", 1000, "G", None, effect="A")
+        for junk in ("X", "Z", "N", "q", "AC"):
+            f = _finding([("rs900001", 1, 1000, "A", junk)], only_ref)
+            _require(f"effect A, ref G, A/{junk!r}: uninterpretable, got {_sig(f)}", _uninterpretable(f))
+        return True
+    attempt("R2A.T1_effect_known_nonset_unknown_junk_is_uninterpretable",
+            t1_effect_known_nonset_unknown_junk_is_uninterpretable)
+
+    # --- R2A.T1_alphabet_is_exactly_the_assayability_letters ---------------------
+    def t1_alphabet_is_exactly_the_assayability_letters():
+        classify_effect = annotate.classify_effect
+        _require("the SNP alphabet is exactly A, C, G, T", set(annotate.ALPHABET["snp"]) == set("ACGT"))
+        _require("the indel alphabet is exactly I, D", set(annotate.ALPHABET["indel"]) == set("ID"))
+        for junk in ("X", "Z", "N", "q", "AC", ""):
+            got = classify_effect(["A", junk], "A", None, None, "snp")
+            _require(f"snp, A/{junk!r}, no ref/alt: (unknown, None), got {got}", got == ("unknown", None))
+            got = classify_effect([junk, junk], "A", "G", "A", "snp")
+            _require(f"snp, {junk!r}/{junk!r}, ref G alt A: (unknown, None), got {got}", got == ("unknown", None))
+            got = classify_effect(["D", junk], "D", None, None, "indel")
+            _require(f"indel, D/{junk!r}: (unknown, None), got {got}", got == ("unknown", None))
+        got = classify_effect(["A", "G"], "A", None, None, "snp")
+        _require(f"snp, A/G, no ref/alt: (het, True), got {got}", got == ("het", True))
+        return True
+    attempt("R2A.T1_alphabet_is_exactly_the_assayability_letters", t1_alphabet_is_exactly_the_assayability_letters)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -736,6 +1003,7 @@ def run(check):
     _run_characterization(attempt)
     _run_interpretation(attempt)
     _run_build(attempt)
+    _run_fix_round(attempt)
 
 
 def main():
