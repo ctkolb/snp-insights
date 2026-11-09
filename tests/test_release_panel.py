@@ -54,6 +54,8 @@ NON_AUTOSOMAL_NAMES = ("X", "Y", "PAR", "MT")
 CATEGORIES = ("carrier", "trait")
 RESULT_TYPES = ("trait", "carrier_status", "risk_association")
 VALID_PAIRS = (("trait", "trait"), ("carrier", "carrier_status"), ("carrier", "risk_association"))
+TARGETS_ALLOWED_KEYS = frozenset(("rsid", "gene", "condition", "category", "result_type",
+                                  "effect_allele", "assayability", "strand"))
 DECISIONS = ("included", "excluded", "reserve")
 REASON_CODES = (
     "conflicting-evidence", "single-study", "palindromic", "unclear-allele", "not-assayable",
@@ -490,6 +492,8 @@ def check_targets_shape(obj):
         if not isinstance(v, dict):
             errors.append(f"shape: variants[{i}] is not an object")
             continue
+        for key in sorted(set(v) - TARGETS_ALLOWED_KEYS):
+            errors.append(f"shape: variants[{i}] unknown key {key}")
         missing = [k for k in ("rsid", "category", "result_type", "effect_allele", "assayability") if k not in v]
         if missing:
             errors.append(f"shape: variants[{i}] lacks {missing}")

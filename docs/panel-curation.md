@@ -26,7 +26,11 @@ trait rows carry evidence rows (T4). Rows are joined by rsID. In the targets
 file, an included entry's `condition` equals that row's T1 `label used in
 report` and its `gene` equals that row's T1 `gene`, exactly (case sensitive,
 non-null; the T1 cell is the text left after the table parser strips
-surrounding spaces, the same rule as the T2 `pair condition`). A checker error
+surrounding spaces, the same rule as the T2 `pair condition`). An entry has
+exactly these keys: `rsid`, `gene`, `condition`, `category`, `result_type`,
+`effect_allele`, `assayability` and `strand`; the evidence tier is derived by
+the build and never written in the targets file, and placement fields come from
+the dbSNP map supplied at build time. A checker error
 in any table fails the suite, and a table that is absent, duplicated or
 malformed is an error, never an empty result.
 
@@ -64,6 +68,11 @@ Every criterion must be satisfied from a captured primary source.
     inheritance model, the meaning of one effect-allele copy and the meaning of
     two copies, each supported by at least one typed source that is not the
     ClinVar classification record itself (section Inheritance gate).
+
+Criteria 4, 7 and 8 are curator judgments that no checker derives: the T1
+`rationale` cell states the basis for each, the DATA review reassesses all three
+independently for every row, and an ancestry exception cites an owner decision
+id in the `limitations` cell.
 
 ## Source hierarchy
 
