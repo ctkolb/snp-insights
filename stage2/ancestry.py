@@ -12,8 +12,16 @@ Handles the conventions that break naive parsers:
 import re
 
 NUMERIC_CHROMOSOME = {"23": "X", "24": "Y", "25": "PAR", "26": "MT"}
-BUILD_RE = re.compile(r"build\s+([0-9]+(?:\.[0-9]+)?)")
+# A build statement is the phrase `human reference build <token>` in a comment
+# line; the phrase is case-insensitive, the token is the next run of non-space
+# characters and is matched exactly. Accepted spellings: 37, 37.1 (GRCh37) and
+# 38 (GRCh38). Any other token (hg19, GRCh37 written in words, 37.2, 37.) is a
+# stated-but-unrecognized build, reported as UNRECOGNIZED_BUILD so that annotate
+# refuses it; the token itself is never kept. Comment lines without the phrase
+# are not build statements.
+BUILD_RE = re.compile(r"human\s+reference\s+build\s+(\S+)", re.IGNORECASE)
 BUILD_MAP = {"37": "GRCh37", "37.1": "GRCh37", "38": "GRCh38"}
+UNRECOGNIZED_BUILD = "unrecognized"
 
 
 def normalize_chromosome(value):
@@ -44,7 +52,10 @@ def parse_ancestry(path):
                     meta["converter_version"] = line.split("converter version:", 1)[1].strip()
                 m = BUILD_RE.search(line)
                 if m:
-                    meta["genome_build"] = BUILD_MAP.get(m.group(1), "GRCh" + m.group(1))
+                    # an unrecognized statement is never overridden by a later recognized one
+                    stated = BUILD_MAP.get(m.group(1), UNRECOGNIZED_BUILD)
+                    if meta["genome_build"] != UNRECOGNIZED_BUILD:
+                        meta["genome_build"] = stated
                 continue
             parts = line.split("\t")
             if parts[0] == "rsid" or len(parts) < 5:

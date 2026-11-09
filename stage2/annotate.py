@@ -27,6 +27,8 @@ NO_CALL = "0"
 
 # Letters an assayability class can report; anything else cannot be interpreted.
 ALPHABET = {"snp": frozenset("ACGT"), "indel": frozenset("ID")}
+# Letters the findings schema allows in call.allele1/allele2.
+SCHEMA_ALLELES = frozenset("ACGTID")
 SUPPORTED_BUILD = "GRCh37"
 BUILD_REFUSED_MESSAGE = ("error: genome build refused: only GRCh37 is supported and the raw file's "
                          "stated build must match the panel build; no output was written")
@@ -104,6 +106,16 @@ def classify_effect(alleles, effect, ref, alt, assayability):
     if non_effect and all(a in non_effect for a in alleles):
         return "hom_ref", False
     return "unknown", None
+
+
+def uninterpretable_alleles(a1, a2):
+    """The call's allele fields for an uninterpretable call: both letters, or neither.
+
+    Raw letters outside the schema's allele enum are never echoed into the document.
+    """
+    if a1 in SCHEMA_ALLELES and a2 in SCHEMA_ALLELES:
+        return {"allele1": a1, "allele2": a2}
+    return {}
 
 
 def is_no_call(a1, a2):
@@ -223,7 +235,7 @@ def annotate_variant(variant, raw, merges=None, sex="unknown", panel_build=SUPPO
         if chrom == "Y" and sex == "female":
             # a Y call in an inferred female is contradictory
             state = "covered_uninterpretable"
-            call = {"state": "uninterpretable", "allele1": row["allele1"], "allele2": row["allele2"],
+            call = {"state": "uninterpretable", **uninterpretable_alleles(row["allele1"], row["allele2"]),
                     "zygosity": "unknown", "strand": strand}
         else:
             zygosity = adjust_zygosity(zygosity, chrom, sex)
@@ -235,7 +247,8 @@ def annotate_variant(variant, raw, merges=None, sex="unknown", panel_build=SUPPO
                 state = "covered_reference"
             else:
                 state = "covered_uninterpretable"  # measured, alleles match neither ref nor alt
-                call["state"] = "uninterpretable"
+                call = {"state": "uninterpretable", **uninterpretable_alleles(row["allele1"], row["allele2"]),
+                        "zygosity": zygosity, "strand": strand}
 
     sig = (variant.get("clinvar") or {}).get("significance")
     rc = rarity_class(variant.get("gnomad_af"))
