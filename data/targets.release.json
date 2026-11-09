@@ -1,7 +1,48 @@
 {
-  "_note": "EMPTY: no entries until ticket 1B-B; not a release panel",
+  "_note": "The curated release targets of ticket 1B-B (snp-REL-B-BUILD-r51); source-backed from the frozen evidence pack, not a clinical panel",
   "panel_version": "0.1.0",
   "genome_build": "GRCh37",
   "strand": "forward",
-  "variants": []
+  "variants": [
+    {
+      "rsid": "rs334",
+      "gene": "HBB",
+      "condition": "Sickle cell disease",
+      "category": "carrier",
+      "result_type": "carrier_status",
+      "effect_allele": "A",
+      "assayability": "snp",
+      "strand": "forward"
+    },
+    {
+      "rsid": "rs1800562",
+      "gene": "HFE",
+      "condition": "Hereditary hemochromatosis",
+      "category": "carrier",
+      "result_type": "carrier_status",
+      "effect_allele": "A",
+      "assayability": "snp",
+      "strand": "forward"
+    },
+    {
+      "rsid": "rs1799963",
+      "gene": "F2",
+      "condition": "Prothrombin thrombophilia",
+      "category": "carrier",
+      "result_type": "risk_association",
+      "effect_allele": "A",
+      "assayability": "snp",
+      "strand": "forward"
+    },
+    {
+      "rsid": "rs28929474",
+      "gene": "SERPINA1",
+      "condition": "Alpha-1 antitrypsin deficiency",
+      "category": "carrier",
+      "result_type": "carrier_status",
+      "effect_allele": "T",
+      "assayability": "snp",
+      "strand": "forward"
+    }
+  ]
 }

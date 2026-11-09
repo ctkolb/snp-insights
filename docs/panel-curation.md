@@ -1,6 +1,6 @@
 # Release panel curation
 
-Status: method-only
+Status: curated, 23 rows
 
 This document defines how markers are chosen for the release panel
 (`data/targets.release.json`) and how each decision is recorded so that it can be
@@ -397,6 +397,29 @@ error. The tables have no rows until the data ticket fills them.
 
 | rsID | gene | chrom (GRCh37) | label used in report | result type | category | effect allele (fwd, GRCh37) | direction/meaning | build/strand | assayability_status | assayability_source | sources (typed ids) | retrieved (UTC date) | rationale | limitations | decision | reason code |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| rs334 | HBB | 11 | Sickle cell disease | carrier_status | carrier | A | one copy: carrier of sickle cell trait; two copies: sickle cell disease | GRCh37/forward | unknown-provisional | - | dbsnp:rs334;clinvar:vcv:15333;genereviews:NBK1377;medgen:C0002895 | 2026-11-09 | strand: non-palindromic T>A; report-safety: carrier wording, no diagnosis; not ancestry-informative; the HbS record (15333) carries the sickle cell disease phenotype | array presence not verified; condition attributed from the ClinicalSignificance of the HbS record | included | - |
+| rs33930165 | HBB | 11 | Hemoglobin C disease | carrier_status | carrier | T | one copy: carrier of hemoglobin C trait; two copies: hemoglobin C disease | GRCh37/forward | unknown-provisional | - | dbsnp:rs33930165;clinvar:vcv:15126 | - | strand: non-palindromic C>A; report-safety: carrier wording; not ancestry-informative; the hemoglobin C record (15126, pathogenic) is eligible but no independent inheritance source for hemoglobin C disease is in the pack | array presence not verified; no GeneReviews or MedGen inheritance source for hemoglobin C disease in the pack | excluded | inheritance-unresolved |
+| rs113993960 | CFTR | 7 | Cystic fibrosis | carrier_status | carrier | D | one copy: carrier; two copies: cystic fibrosis | - | unknown-provisional | - | dbsnp:rs113993960;clinvar:vcv:7105 | - | strand: deletion; report-safety: carrier wording; not ancestry-informative; the CFTR deletion record (7105) cannot be mapped to the dbSNP placement (position/ref differ by the left-shift) | array presence not verified; the ClinVar placement is not left-anchored against the dbSNP placement | excluded | allele-not-mappable |
+| rs1800562 | HFE | 6 | Hereditary hemochromatosis | carrier_status | carrier | A | one copy: carrier of the C282Y allele; two copies: hereditary hemochromatosis | GRCh37/forward | unknown-provisional | - | dbsnp:rs1800562;clinvar:vcv:9;genereviews:NBK1440;medgen:C3469186 | 2026-11-09 | strand: non-palindromic G>A; report-safety: carrier wording, no diagnosis; not ancestry-informative; the C282Y record (9, pathogenic) names hereditary hemochromatosis | array presence not verified; the record classification is shared across several conditions but names the curated one | included | - |
+| rs1799945 | HFE | 6 | Hereditary hemochromatosis | carrier_status | carrier | G | one copy: carrier; two copies: hereditary hemochromatosis | GRCh37/forward | unknown-provisional | - | dbsnp:rs1799945;clinvar:vcv:10 | - | strand: non-palindromic C>G; report-safety: carrier wording; not ancestry-informative; the H63D record (10) is a conflicting-classifications aggregate and cannot be resolved by an expert-panel or practice-guideline record | array presence not verified; conflicting ClinVar classifications | excluded | conflicting-evidence |
+| rs6025 | F5 | 1 | Factor V Leiden thrombophilia | risk_association | carrier | T | one copy: increased association; two copies: further increased association | GRCh37/forward | unknown-provisional | - | dbsnp:rs6025;clinvar:vcv:642 | - | strand: non-palindromic T>C; report-safety: association wording without carrier; not ancestry-informative; the expert-panel record (642) is drug response, not a pathogenic or risk-factor group, so no supporting group exists | array presence not verified; the expert-panel record is drug-response and the other record is conflicting | excluded | ineligible-significance |
+| rs1799963 | F2 | 11 | Prothrombin thrombophilia | risk_association | carrier | A | one copy: increased association; two copies: further increased association | GRCh37/forward | unknown-provisional | - | dbsnp:rs1799963;clinvar:vcv:13310;genereviews:NBK1148 | 2026-11-09 | strand: non-palindromic G>A; report-safety: association wording without carrier; not ancestry-informative; the F2 record (13310, pathogenic) names prothrombin thrombophilia | array presence not verified; dominant reduced-penetrance association, never a diagnosis | included | - |
+| rs1050828 | G6PD | X | G6PD deficiency | carrier_status | carrier | - | not applicable | - | unknown-provisional | - | - | - | strand: n/a; report-safety: n/a; ancestry-informative: n/a; the dbSNP placement is chromosome X and the release panel is autosomal only (AUTO-1) | array presence not verified; sex-chromosome marker out of scope for this release | excluded | non-autosomal-out-of-scope |
+| rs28929474 | SERPINA1 | 14 | Alpha-1 antitrypsin deficiency | carrier_status | carrier | T | one copy: carrier of the Z allele; two copies: alpha-1 antitrypsin deficiency | GRCh37/forward | unknown-provisional | - | dbsnp:rs28929474;clinvar:vcv:17967;genereviews:NBK1519;medgen:C0221757 | 2026-11-09 | strand: non-palindromic C>A; report-safety: carrier wording, no diagnosis; not ancestry-informative; the Z record (17967, pathogenic) names alpha-1 antitrypsin deficiency | array presence not verified; the second record is a single submitter likely-pathogenic for the same condition | included | - |
+| rs12913832 | HERC2 | 15 | Eye color | trait | trait | - | not applicable | - | unknown-provisional | - | dbsnp:rs12913832 | - | strand: n/a; report-safety: association wording; ancestry-informative: eye color is a pigmentation trait strongly correlated with ancestry, excluded | array presence not verified; ancestry-informative trait | excluded | ancestry-informative |
+| rs1805007 | MC1R | 16 | Red hair | trait | trait | - | not applicable | - | unknown-provisional | - | dbsnp:rs1805007 | - | strand: n/a; report-safety: association wording; ancestry-informative: red hair is a pigmentation trait strongly correlated with ancestry, excluded | array presence not verified; ancestry-informative trait | excluded | ancestry-informative |
+| rs1805008 | MC1R | 16 | Red hair | trait | trait | - | not applicable | - | unknown-provisional | - | dbsnp:rs1805008 | - | strand: n/a; report-safety: association wording; ancestry-informative: red hair is a pigmentation trait strongly correlated with ancestry, excluded | array presence not verified; ancestry-informative trait | excluded | ancestry-informative |
+| rs17822931 | ABCC11 | 16 | Earwax type | trait | trait | - | not applicable | - | unknown-provisional | - | dbsnp:rs17822931 | - | strand: n/a; report-safety: association wording; not ancestry-informative; no GWAS association row in the pack reports the curated label, so there is no replicated evidence | array presence not verified; no replicated GWAS evidence for the curated label | excluded | no-independent-confirmation |
+| rs4988235 | MCM6 | 2 | Lactose intolerance | trait | trait | - | not applicable | - | unknown-provisional | - | dbsnp:rs4988235 | - | strand: n/a; report-safety: association wording; not ancestry-informative; no GWAS association row in the pack reports the curated label, so there is no replicated evidence | array presence not verified; no replicated GWAS evidence for the curated label | excluded | no-independent-confirmation |
+| rs671 | ALDH2 | 12 | Alcohol flush reaction | trait | trait | - | not applicable | - | unknown-provisional | - | dbsnp:rs671 | - | strand: n/a; report-safety: association wording; not ancestry-informative; the flushing rows are a single publication, so the evidence is not replicated | array presence not verified; single-study flushing evidence | excluded | single-study |
+| rs1229984 | ADH1B | 4 | Alcohol metabolism | trait | trait | - | not applicable | - | unknown-provisional | - | dbsnp:rs1229984 | - | strand: n/a; report-safety: association wording; not ancestry-informative; no GWAS association row in the pack reports the curated label, so there is no replicated evidence | array presence not verified; no replicated GWAS evidence for the curated label | excluded | no-independent-confirmation |
+| rs762551 | CYP1A2 | 15 | Caffeine metabolism | trait | trait | - | not applicable | - | unknown-provisional | - | dbsnp:rs762551 | - | strand: n/a; report-safety: association wording; not ancestry-informative; the single GWAS association row reports a lipid trait, not caffeine metabolism | array presence not verified; no replicated GWAS evidence for the curated label | excluded | no-independent-confirmation |
+| rs72921001 | OR2M7 | 11 | Cilantro taste perception | trait | trait | - | not applicable | - | unknown-provisional | - | dbsnp:rs72921001 | - | strand: n/a; report-safety: association wording; not ancestry-informative; the GWAS association page holds no rows for this rsID | array presence not verified; no GWAS evidence in the pack | excluded | no-independent-confirmation |
+| rs1426654 | SLC24A5 | 15 | Skin pigmentation | trait | trait | - | not applicable | - | unknown-provisional | - | dbsnp:rs1426654 | - | strand: n/a; report-safety: association wording; ancestry-informative: skin pigmentation is a pigmentation trait strongly correlated with ancestry, excluded | array presence not verified; ancestry-informative trait | excluded | ancestry-informative |
+| rs16891982 | SLC45A2 | 5 | Skin pigmentation | trait | trait | - | not applicable | - | unknown-provisional | - | dbsnp:rs16891982 | - | strand: n/a; report-safety: association wording; ancestry-informative: skin pigmentation is a pigmentation trait strongly correlated with ancestry, excluded | array presence not verified; ancestry-informative trait | excluded | ancestry-informative |
+| rs1800407 | OCA2 | 15 | Eye color | trait | trait | - | not applicable | - | unknown-provisional | - | dbsnp:rs1800407 | - | strand: n/a; report-safety: association wording; ancestry-informative: eye color is a pigmentation trait strongly correlated with ancestry, excluded | array presence not verified; ancestry-informative trait | excluded | ancestry-informative |
+| rs1042602 | TYR | 11 | Freckling | trait | trait | - | not applicable | - | unknown-provisional | - | dbsnp:rs1042602 | - | strand: n/a; report-safety: association wording; ancestry-informative: freckling is a pigmentation trait strongly correlated with ancestry, excluded | array presence not verified; ancestry-informative trait | excluded | ancestry-informative |
+| rs6152 | AR | X | Male pattern baldness | trait | trait | - | not applicable | - | unknown-provisional | - | - | - | strand: n/a; report-safety: n/a; ancestry-informative: n/a; the dbSNP placement is chromosome X and the release panel is autosomal only (AUTO-1) | array presence not verified; sex-chromosome marker out of scope for this release | excluded | non-autosomal-out-of-scope |
 
 The `decision` is `included`, `excluded` or `reserve`. The `build/strand` cell
 is `GRCh37/forward`, optionally followed by `;strand-ambiguous` on an excluded
@@ -408,11 +431,28 @@ One row per health-related rsID; trait rows do not appear.
 
 | rsID | pair allele (fwd GRCh37) | pair condition | matched record ids | matched significance | matched review status | stars | considered records | resolution | pair outcome |
 |---|---|---|---|---|---|---|---|---|---|
+| rs334 | A | Sickle cell disease | 15333 | P | criteria provided, multiple submitters, no conflicts | 2 | 15175=G/other-allele/B/1;15333=A/match/P/2 | - | eligible |
+| rs33930165 | T | Hemoglobin C disease | 15126 | P | criteria provided, multiple submitters, no conflicts | 2 | 15126=T/match/P/2;15243=G/other-allele/U/1;869230=A/other-allele/P/0 | - | eligible |
+| rs113993960 | D | Cystic fibrosis | - | - | - | - | 7105=?/unmapped/AP/0 | - | excluded:allele-not-mappable |
+| rs1800562 | A | Hereditary hemochromatosis | 9 | P | criteria provided, multiple submitters, no conflicts | 2 | 9=A/match/P/2 | - | eligible |
+| rs1799945 | G | Hereditary hemochromatosis | 10 | - | criteria provided, conflicting classifications | - | 10=G/match/CF/1 | - | excluded:conflicting-evidence |
+| rs6025 | T | Factor V Leiden thrombophilia | 642 | - | reviewed by expert panel | - | 642=T/match/AP/3;226007=C/other-allele/CF/1 | - | excluded:ineligible-significance |
+| rs1799963 | A | Prothrombin thrombophilia | 13310 | P | criteria provided, multiple submitters, no conflicts | 2 | 13310=A/match/P/2 | - | eligible |
+| rs1050828 | - | G6PD deficiency | - | - | - | - | - | - | excluded:no-allele-condition-match |
+| rs28929474 | T | Alpha-1 antitrypsin deficiency | 17967 | P | criteria provided, multiple submitters, no conflicts | 2 | 17967=T/match/P/2;1492979=G/other-allele/P/1 | - | eligible |
 
 ### T3 Inheritance table
 
 | rsID | model | one-copy meaning | two-copy meaning | inheritance sources (typed ids) |
 |---|---|---|---|---|
+| rs334 | AR | one copy: carrier of sickle cell trait | two copies: sickle cell disease | genereviews:NBK1377;medgen:C0002895 |
+| rs33930165 | UNRESOLVED | - | - | - |
+| rs113993960 | AR | one copy: carrier | two copies: cystic fibrosis | genereviews:NBK1250;medgen:C0010674 |
+| rs1800562 | AR | one copy: carrier | two copies: hereditary hemochromatosis | genereviews:NBK1440;medgen:C3469186 |
+| rs1799945 | AR | one copy: carrier | two copies: hereditary hemochromatosis | genereviews:NBK1440;medgen:C3469186 |
+| rs6025 | AD-IP | one copy: increased association | two copies: further increased association | genereviews:NBK1368 |
+| rs1799963 | AD-IP | one copy: increased association | two copies: further increased association | genereviews:NBK1148 |
+| rs28929474 | AR | one copy: carrier | two copies: alpha-1 antitrypsin deficiency | genereviews:NBK1519;medgen:C0221757 |
 
 ### T4 Trait evidence table
 
@@ -432,6 +472,29 @@ Copied by the curator from the frozen pack index; ids are public identifiers.
 
 | rsID | ClinVar VariationIDs in pack (all assemblies) | pack file index id |
 |---|---|---|
+| rs334 | 15175;15333 | dbsnp:rs334;clinvar:vcv:15175;clinvar:vcv:15333;genereviews:NBK1377;medgen:C0002895 |
+| rs33930165 | 15126;15243;869230 | dbsnp:rs33930165;clinvar:vcv:15126;clinvar:vcv:15243;clinvar:vcv:869230 |
+| rs113993960 | 7105 | dbsnp:rs113993960;clinvar:vcv:7105;genereviews:NBK1250;medgen:C0010674 |
+| rs1800562 | 9 | dbsnp:rs1800562;clinvar:vcv:9;genereviews:NBK1440;medgen:C3469186 |
+| rs1799945 | 10 | dbsnp:rs1799945;clinvar:vcv:10;genereviews:NBK1440;medgen:C3469186 |
+| rs6025 | 642;226007 | dbsnp:rs6025;clinvar:vcv:642;clinvar:vcv:226007;genereviews:NBK1368 |
+| rs1799963 | 13310 | dbsnp:rs1799963;clinvar:vcv:13310;genereviews:NBK1148 |
+| rs1050828 | - | - |
+| rs28929474 | 17967;1492979 | dbsnp:rs28929474;clinvar:vcv:17967;clinvar:vcv:1492979;genereviews:NBK1519;medgen:C0221757 |
+| rs12913832 | 4745 | dbsnp:rs12913832;clinvar:vcv:4745 |
+| rs1805007 | 14312 | dbsnp:rs1805007;clinvar:vcv:14312 |
+| rs1805008 | 14310 | dbsnp:rs1805008;clinvar:vcv:14310 |
+| rs17822931 | 3558 | dbsnp:rs17822931;clinvar:vcv:3558 |
+| rs4988235 | 7685 | dbsnp:rs4988235;clinvar:vcv:7685 |
+| rs671 | 18390 | dbsnp:rs671;clinvar:vcv:18390 |
+| rs1229984 | 18182 | dbsnp:rs1229984;clinvar:vcv:18182 |
+| rs762551 | 511079 | dbsnp:rs762551;clinvar:vcv:511079 |
+| rs72921001 | - | dbsnp:rs72921001 |
+| rs1426654 | 1487;263273 | dbsnp:rs1426654;clinvar:vcv:1487;clinvar:vcv:263273 |
+| rs16891982 | 4505;197829 | dbsnp:rs16891982;clinvar:vcv:4505;clinvar:vcv:197829 |
+| rs1800407 | 963 | dbsnp:rs1800407;clinvar:vcv:963 |
+| rs1042602 | 3778 | dbsnp:rs1042602;clinvar:vcv:3778 |
+| rs6152 | - | - |
 
 The `pack file index id` cell holds the typed ids that identify the pack files
 for the rsID; together they form the set of evidence ids the replication check
@@ -444,6 +507,11 @@ They satisfy every inclusion criterion and are never in the targets file, so a
 poor coverage outcome can be answered by swapping reserves in without learning
 which markers were missing.
 
+Reserves recorded for this release:
+
+- Health group: none. Every health-candidate row in the pool is either included or excluded above; no further row reaches every inclusion criterion.
+- Trait group: none. No pool trait row has replicated, orientation-verified evidence under the curated label, so none is a fully sourced reserve.
+
 ## Limitations
 
 This record documents public-database evidence only.
@@ -455,12 +523,14 @@ checker, so a human reviewer reads every `?` item. Independence of cohorts is
 conservative: when it cannot be shown from captured text, rows form one group.
 Nothing here is medical advice, and no result is a diagnosis.
 
+For this release the pool is the 23 DRAFT rsIDs of `data/targets.carrier.json` and `data/targets.traits.json`; no marker was added. The health rows keep carrier or association wording only, and no entry states a diagnosis or an absolute risk. Every trait row was excluded: the pack holds no replicated, orientation-verified association under the curated label, and the pigmentation traits are ancestry-informative. Whether the resulting panel is adequate is the owner's aggregate coverage judgment (counts only).
+
 ## Provenance block
 
 Facts for the whole panel are recorded once, after the tables are filled.
 Until then each value is a placeholder.
 
-- Evidence pack ids: PLACEHOLDER
-- Pack manifest sha256: PLACEHOLDER
-- Retrieval dates (UTC, ISO): PLACEHOLDER
-- Source release identifiers: PLACEHOLDER
+- Evidence pack ids: N0a (netpack-N0-review), N0b (netpack-N0b-review), N0c (netpack-N0c-review)
+- Pack manifest sha256: N0a 0f14e7ae0e18b3ccbaf8914c951033aa4d2742a0e394b5e2857ee99fed15e908; N0b 13e94d7a39f38b148e821cc4ed692bb4b75fcb90f5445ffe05d37f63d34069dd; N0c bc47ad43c6a2ad1b3622df65a17a93a0335455485fe951d8e3d75a88148c4b48
+- Retrieval dates (UTC, ISO): 2026-11-09
+- Source release identifiers: dbSNP GRCh37 placements, ClinVar variant_summary + VCV records, GWAS Catalog associations and study records, GeneReviews chapters and MedGen concepts, all captured 2026-11-09
