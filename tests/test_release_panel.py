@@ -320,6 +320,10 @@ def check_pairs(entries):
     return _result(errors, len(entries))
 
 
+def check_t1_pairs(t1_rows):
+    return _result([], len(t1_rows))
+
+
 # --- typed ids, provenance -----------------------------------------------------
 _TYPED_RES = {
     "dbsnp": r"rs\d+", "clinvar": r"(?:vcv:\d+|rcv:RCV\d+)", "gwas": r"GCST\d+", "pmid": r"\d+",
@@ -1065,6 +1069,9 @@ REPORT_SAFETY_ABSENT = ("cannot be reported", "can not be reported", "wording is
 FUNCTIONAL_RULE_PRESENT = ("only when at least one gwas group is present",)
 PAIR_CONDITION_RULE_PRESENT = (
     "the t2 `pair condition` cell must equal the t1 `label used in report` exactly",
+)
+EVIDENCE_NOT_IN_PACK_PRESENT = (
+    "the code `evidence-not-in-pack` applies only when the status is `no-counted-evidence`",
 )
 
 
@@ -2430,6 +2437,7 @@ def _run_real(attempt):
         ("R1B.real_clinvar_table_valid", lambda x, t, g: check_clinvar_table(t["T1"], t["T2"], t["T5"])),
         ("R1B.real_inheritance_table_valid", lambda x, t, g: check_inheritance_table(t["T1"], t["T3"])),
         ("R1B.real_assayability_valid", assay),
+        ("R1B.real_t1_pairs_valid", lambda x, t, g: check_t1_pairs(t["T1"])),
     ]
     for name, fn in real:
         _real(attempt, name, fn)
@@ -2562,7 +2570,8 @@ def _run_fix_round(attempt):
                            (".5", 0.5)):
             got = _parse_p(cell)
             _require(f"p {cell!r}: expected {(want, None)}, got {got}", got == (want, None))
-        for cell in ("0", "0.0", "1.0000001", "2", "1e1", "-0.5", "-1e-5", "NA", "<1e-8", "", "1e-5x", "e-5"):
+        for cell in ("0", "0.0", "1.0000001", "2", "1e1", "-0.5", "-1e-5", "NA", "<1e-8", "", "1e-5x", "e-5",
+                     "1e-400"):
             got = _parse_p(cell)
             _require(f"p {cell!r}: expected p-malformed, got {got}", got == (None, "p-malformed"))
         _require("a dash is p-missing", _parse_p("-") == (None, "p-missing"))
@@ -2586,6 +2595,34 @@ def _run_fix_round(attempt):
             _has(check_provenance(w["t1"]), "date-invalid", f"retrieved {bad!r}")
         return True
     attempt("R1B.syn_source_dates_calendar", source_dates_calendar)
+
+    # --- r45 fix round (D-44-1..D-44-4) -----------------------------------------
+    _syn(attempt, "t1_pairs", lambda w: check_t1_pairs(w["t1"]), [
+        ("excluded_bad_pair", _set_row("rs9000005", cat="trait", rt="carrier_status"), "pair-invalid"),
+        ("reserve_bad_pair", _set_row("rs9000004", cat="carrier", rt="trait"), "pair-invalid"),
+    ])
+
+    def t1_pairs_all_decisions():
+        for dec in DECISIONS:
+            code = "-" if dec != "excluded" else "single-study"
+            for cat, rt in VALID_PAIRS:
+                row = _t1(rsid="rs9000041", cat=cat, rt=rt, dec=dec, code=code)
+                _clean(check_t1_pairs([row]), f"{dec} {cat}/{rt}")
+            for cat, rt in (("trait", "carrier_status"), ("carrier", "trait")):
+                row = _t1(rsid="rs9000042", cat=cat, rt=rt, dec=dec, code=code)
+                _has(check_t1_pairs([row]), "pair-invalid: rs9000042", f"{dec} {cat}/{rt}")
+        return True
+    attempt("R1B.syn_t1_pairs_all_decisions", t1_pairs_all_decisions)
+
+    _syn(attempt, "t2_unique_rsid", lambda w: check_clinvar_table(w["t1"], w["t2"], w["t5"]), [
+        ("duplicate_t2_rsid", lambda w: w["t2"].append(dict(w["t2"][0])), "t2-duplicate-rsid"),
+    ])
+
+    def doc_evidence_not_in_pack_clause():
+        errors = check_doc_clause(read_doc(), "Replication", EVIDENCE_NOT_IN_PACK_PRESENT)
+        _require("; ".join(errors), not errors)
+        return True
+    attempt("R1B.doc_evidence_not_in_pack_clause", doc_evidence_not_in_pack_clause)
 
 
 def run(check):
