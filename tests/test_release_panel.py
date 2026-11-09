@@ -1361,7 +1361,7 @@ def _run_invariants(attempt):
     attempt("R1B.chrom_token_truth_table", chrom_token_truth_table)
 
     def autosomal_only_included_and_reserve():
-        for tok in NON_AUTOSOMAL_NAMES:
+        for tok in ("X", "Y", "PAR", "MT"):
             for dec in ("included", "reserve"):
                 res = check_chromosomes([_t1(chrom=tok, dec=dec)], [])
                 _has(res, "non-autosomal-kept", f"{tok}/{dec}")
@@ -1391,10 +1391,11 @@ def _run_invariants(attempt):
 
     # --- pair table (r31 2.5) ----------------------------------------------------------
     def pair_table_accepts_exactly_three():
-        values_c = list(CATEGORIES) + [None, "", "Carrier", "CARRIER", "other"]
-        values_r = list(RESULT_TYPES) + [None, "", "Trait", "carrier", "other"]
+        values_c = ["carrier", "trait", None, "", "Carrier", "CARRIER", "other"]
+        values_r = ["trait", "carrier_status", "risk_association", None, "", "Trait", "carrier", "other"]
         accepted = {(c, r) for c in values_c for r in values_r if pair_ok(c, r)}
-        _require(f"accepted pairs {sorted(accepted, key=str)}", accepted == set(VALID_PAIRS))
+        want = {("trait", "trait"), ("carrier", "carrier_status"), ("carrier", "risk_association")}
+        _require(f"accepted pairs {sorted(accepted, key=str)}", accepted == want)
         _require("expected exactly three accepted pairs", len(accepted) == 3)
         return True
     attempt("R1B.pair_table_accepts_exactly_three", pair_table_accepts_exactly_three)
@@ -1816,8 +1817,9 @@ def _run_inheritance(attempt):
     def gate_truth_table():
         want = {("AR", "carrier_status", "P"), ("AD-IP", "risk_association", "P"), ("AD-IP", "risk_association", "RF"),
                 ("SUSC", "risk_association", "P"), ("SUSC", "risk_association", "RF"), ("n/a", "trait", "-")}
-        got = {(m, r, g) for m in MODELS for r in RESULT_TYPES for g in list(GROUPS) + ["-"]
-               if inheritance_ok(m, r, g)}
+        models = ["AR", "AD-IP", "SUSC", "AD", "UNRESOLVED", "n/a"]
+        got = {(m, r, g) for m in models for r in ("trait", "carrier_status", "risk_association")
+               for g in ("P", "B", "U", "RF", "AP", "CF", "-") if inheritance_ok(m, r, g)}
         _require(f"passing cells {sorted(got)} != {sorted(want)}", got == want)
         return True
     attempt("R1B.inheritance_gate_truth_table", gate_truth_table)
