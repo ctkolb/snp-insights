@@ -22,7 +22,11 @@ reserves per group are recorded but never placed in the targets file.
 
 Every decision is a row in table T1. Health-related rows carry an additional
 ClinVar pair row (T2), an inheritance row (T3) and an inventory row (T5);
-trait rows carry evidence rows (T4). Rows are joined by rsID. A checker error
+trait rows carry evidence rows (T4). Rows are joined by rsID. In the targets
+file, an included entry's `condition` equals that row's T1 `label used in
+report` and its `gene` equals that row's T1 `gene`, exactly (case sensitive,
+non-null; the T1 cell is the text left after the table parser strips
+surrounding spaces, the same rule as the T2 `pair condition`). A checker error
 in any table fails the suite, and a table that is absent, duplicated or
 malformed is an error, never an empty result.
 

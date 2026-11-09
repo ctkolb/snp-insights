@@ -1046,7 +1046,7 @@ def check_wording_generic(text):
     errors = [f"wording: line {line} looks like {name}" for line, name in guard.scan_text_for_secrets(text)]
     if _EMAIL_RE.search(text):
         errors.append("wording: contains an email address")
-    plain, hashed = guard.load_denylist()
+    plain, hashed = guard.load_denylist(ROOT)
     errors += [f"wording: line {line} has an owner-specific term"
                for line, _ in guard.scan_text_for_denylist(text, plain, hashed)]
     return errors
@@ -1113,8 +1113,13 @@ def check_row_matches_entries(t1_rows, entries):
         e = by_id.get(r["rsID"])
         if e is None:
             continue
-        for cell, key in (("result type", "result_type"), ("category", "category"),
-                          ("effect allele (fwd, GRCh37)", "effect_allele")):
+        for cell, key in (
+                ("result type", "result_type"),
+                ("category", "category"),
+                ("effect allele (fwd, GRCh37)", "effect_allele"),
+                ("label used in report", "condition"),
+                ("gene", "gene"),
+        ):
             if r[cell] != e.get(key):
                 errors.append(f"row-field-differs: {r['rsID']} {cell} {r[cell]!r} != targets {e.get(key)!r}")
     return _result(errors, len(rows))
