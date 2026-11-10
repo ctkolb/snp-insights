@@ -3459,6 +3459,11 @@ def _run_r58(attempt):
         mutate(w)
         _has(_check_evidence(w), code, name)
         return True
+
+    def record_cited_but_not_in_t5(w):
+        record = "clinvar:rcv:RCV900000009"
+        w["evidence"]["entries"][0]["clinvar_record"] = record
+        w["t1"]["rs9000002"]["sources (typed ids)"] += ";" + record
     for defect, mutate, code in (
             ("missing_entry", lambda w: w["evidence"].update(entries=[]), "missing_entry"),
             ("extra_entry", lambda w: w["evidence"]["entries"].append(
@@ -3481,7 +3486,14 @@ def _run_r58(attempt):
                 review_status="reviewed by expert panel"), "status_mismatch"),
             ("unknown_key", lambda w: w["evidence"]["entries"][0].update(extra="x"), "unknown_key"),
             ("unknown_significance", lambda w: w["evidence"]["entries"][0].update(
-                significance="banana"), "unknown_significance")):
+                significance="banana"), "unknown_significance"),
+            ("wrong_record_type", lambda w: w["evidence"]["entries"][0].update(
+                clinvar_record="clinvar:vcv:9001001"), "record_type"),
+            ("top_level_unknown_key", lambda w: w["evidence"].update(extra="x"),
+             "top_level_unknown_key"),
+            ("duplicate_entry", lambda w: w["evidence"]["entries"].append(
+                dict(w["evidence"]["entries"][0])), "duplicate_entry"),
+            ("record_not_in_t5", record_cited_but_not_in_t5, "uncited_record")):
         attempt(f"R2C.syn_evidence_rejects_{defect}", lambda m=mutate, c=code, n=defect:
                 evidence_rejects(m, c, n))
 
@@ -3567,6 +3579,22 @@ def _run_r58(attempt):
                 and "--curated-evidence" in proc.stderr)
     attempt("R2C.release_build_without_evidence_refuses", release_build_without_evidence_refuses)
 
+    def release_build_mixed_targets_refuses():
+        d = tempfile.mkdtemp()
+        tp, op = os.path.join(d, "targets.json"), os.path.join(d, "out.json")
+        variants = [
+            {"rsid": "rs9000002", "gene": "G", "condition": "C", "category": "carrier",
+             "effect_allele": "A", "assayability": "snp"},
+            {"rsid": "rs9000003", "gene": "G", "condition": "Trait", "category": "trait",
+             "result_type": "trait", "effect_allele": "G", "assayability": "snp"},
+        ]
+        with open(tp, "w") as fh:
+            json.dump({"variants": variants}, fh)
+        proc = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "build_panel.py"),
+                               "--targets", tp, "-o", op], cwd=ROOT, capture_output=True, text=True)
+        return proc.returncode != 0 and not os.path.exists(op) and "--curated-evidence" in proc.stderr
+    attempt("R2C.release_build_mixed_targets_refuses", release_build_mixed_targets_refuses)
+
     def build_without_flag_unchanged():
         out = os.path.join(tempfile.mkdtemp(), "panel.check.json")
         cmd = [sys.executable, os.path.join(ROOT, "tools", "build_panel.py"),
@@ -3622,6 +3650,32 @@ def _run_r58(attempt):
         return True
     attempt("R2C.tier_matrix", tier_matrix)
 
+    def _release_trait_panel(result_type_present):
+        import build_panel
+        entry = {"rsid": "rs9000088", "gene": "G", "condition": "Trait condition x",
+                 "category": "trait", "effect_allele": "A", "assayability": "snp"}
+        if result_type_present:
+            entry["result_type"] = "trait"
+        cv = {"rs9000088": {"significance": "Pathogenic", "review_stars": 3,
+                            "review_status_text": "reviewed by expert panel",
+                            "source_version": "aggregate ClinVar test",
+                            "phenotype": "Trait condition x"}}
+        return build_panel.build({"variants": [entry]}, sources=[], clinvar=cv)["variants"][0]
+
+    def release_trait_clinvar_not_matched():
+        v = _release_trait_panel(True)
+        _require(f"release-format trait must stay unknown, got {v['association']!r}",
+                 v["association"] == "unknown")
+        return True
+    attempt("R2C.release_trait_clinvar_not_matched", release_trait_clinvar_not_matched)
+
+    def draft_trait_clinvar_matched_unchanged():
+        v = _release_trait_panel(False)
+        _require(f"DRAFT trait keeps today's matched ClinVar tier, got {v['association']!r}",
+                 v["association"] == "established")
+        return True
+    attempt("R2C.draft_trait_clinvar_matched_unchanged", draft_trait_clinvar_matched_unchanged)
+
     def dbsnp_small_keeps_all_alternates():
         import fetch_reference
         data = {"primary_snapshot_data": {"placements_with_allele": [
@@ -3651,6 +3705,18 @@ def _run_r58(attempt):
                 and got["rs9000001"]["alternate_allele"] == "C"
                 and got["rs9000002"].get("alternate_alleles") == ["A"])
     attempt("R2C.load_dbsnp_tsv_reads_alternate_alleles", load_dbsnp_tsv_reads_alternate_alleles)
+
+    def load_dbsnp_tsv_legacy_header():
+        import build_panel
+        p = os.path.join(tempfile.mkdtemp(), "dbsnp-legacy.tsv")
+        with open(p, "w") as fh:
+            fh.write("rsid\tchromosome\tposition\treference_allele\talternate_allele\n")
+            fh.write("rs9000003\t1\t300\tT\tG\n")
+        rec = build_panel.load_dbsnp(p, {"rs9000003"})["rs9000003"]
+        _require(f"legacy TSV must keep the singular alternate, got {rec.get('alternate_alleles')!r}",
+                 rec["alternate_allele"] == "G" and rec.get("alternate_alleles") == ["G"])
+        return True
+    attempt("R2C.load_dbsnp_tsv_legacy_header", load_dbsnp_tsv_legacy_header)
 
     def load_dbsnp_vcf_keeps_all_alts():
         import build_panel
