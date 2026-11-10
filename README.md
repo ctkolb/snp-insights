@@ -119,7 +119,10 @@ python -m snp_insights build-panel --targets data/targets.sample.json \
 Without `-o`, `build-panel` prints the panel JSON to stdout. Point `--clinvar` /
 `--gnomad` at real dumps (plain or `.gz`) to rebuild the snapshot, and add
 `--dbsnp-merge <RsMergeArch>` to record retired rsIDs so a file using an older
-rsID still matches. Annotation then needs no network.
+rsID still matches. A release-format targets file (one that declares
+`result_type`) additionally needs `--curated-evidence data/targets.release-evidence.json`,
+which gives each carrier entry its curated per-condition ClinVar record instead
+of the aggregate row. Annotation then needs no network.
 
 ### 2. Annotate a raw file (Stage 2, local)
 

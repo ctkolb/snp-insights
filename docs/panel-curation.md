@@ -534,3 +534,15 @@ Until then each value is a placeholder.
 - Pack manifest sha256: N0a 0f14e7ae0e18b3ccbaf8914c951033aa4d2742a0e394b5e2857ee99fed15e908; N0b 13e94d7a39f38b148e821cc4ed692bb4b75fcb90f5445ffe05d37f63d34069dd; N0c bc47ad43c6a2ad1b3622df65a17a93a0335455485fe951d8e3d75a88148c4b48; N0d 2a69bcfbbabb2b10da5882f2c914ca62528352783e1f7aaf6b6dcad75b1dbb77
 - Retrieval dates (UTC, ISO): 2026-11-09
 - Source release identifiers: dbSNP GRCh37 placements and full refsnp allele sets (N0d), ClinVar variant_summary + VCV/RCV records, GWAS Catalog associations and study records, GeneReviews chapters and MedGen concepts, all captured 2026-11-09
+
+## Curated evidence file
+
+`data/targets.release-evidence.json` mirrors, for each included carrier target,
+the attributing per-condition ClinVar record (RCV) already cited in that row's
+T1 sources and T5 index: the curated condition label, the RCV id, that RCV's
+classification text and review status exactly as captured, and its star count.
+The release build reads it with `--curated-evidence`, uses that record in place
+of the `variant_summary` aggregate for the entry's ClinVar block, and never
+marks a trait target's ClinVar evidence matched. A release-format targets file
+with a carrier entry refuses to build without the flag.
+
