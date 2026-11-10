@@ -81,14 +81,17 @@ def classify(alleles, ref, alt):
     return "unknown", None
 
 
-def classify_effect(alleles, effect, ref, alt, assayability):
+def classify_effect(alleles, effect, ref, alt, assayability, alternate_alleles=None):
     """Return (zygosity, is_variant) for an entry curated by its effect allele.
 
     is_variant is None when the call cannot be interpreted: a letter outside the
     assayability alphabet, a letter outside the declared allele set, or no
     effect allele and no declared non-effect allele to call it reference by.
-    Indels are biallelic (I/D), so their non-effect allele is the other letter;
-    for a SNP it must come from the declared reference/alternate alleles.
+    Indels are biallelic (I/D), so their non-effect allele is the other letter
+    and the sequence alternate list is ignored; for a SNP the declared set is
+    {ref} plus every alternate allele (the singular `alt` plus the complete
+    `alternate_alleles` list, so a present-but-empty list falls back to `alt`)
+    plus the effect allele.
     """
     alphabet = ALPHABET.get(assayability, ALPHABET["snp"])
     if effect not in alphabet or any(a not in alphabet for a in alleles):
@@ -97,7 +100,8 @@ def classify_effect(alleles, effect, ref, alt, assayability):
         declared = alphabet
         non_effect = alphabet - {effect}
     else:
-        declared = {a for a in (ref, alt) if a} | {effect}
+        extra = [alternate_alleles] if isinstance(alternate_alleles, str) else list(alternate_alleles or ())
+        declared = {a for a in (ref, alt) if a} | set(extra) | {effect}
         non_effect = declared - {effect}
         if non_effect and any(a not in declared for a in alleles):
             return "unknown", None
@@ -228,7 +232,8 @@ def annotate_variant(variant, raw, merges=None, sex="unknown", panel_build=SUPPO
             # (which is assembly-oriented and can be the common allele). Zygosity
             # is relative to the effect allele: hom_ref = no effect copies, and
             # only when every called allele is a declared non-effect allele.
-            zygosity, is_variant = classify_effect(alleles, effect, ref, alt, variant["assayability"])
+            zygosity, is_variant = classify_effect(alleles, effect, ref, alt, variant["assayability"],
+                                                   variant.get("alternate_alleles"))
         else:
             zygosity, is_variant = classify(alleles, ref, alt)
         coverage = {"state": "covered", "source": manifest_source}

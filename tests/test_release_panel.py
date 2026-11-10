@@ -3435,13 +3435,15 @@ def _check_evidence(w):
 
 def _assoc_for(sig, stars, result_type, category="carrier"):
     import build_panel
-    cv = {"significance": sig, "review_stars": stars, "review_status_text": "",
-          "source_version": "t", "phenotype": ""}
     entry = {"rsid": "rsX", "gene": "G", "condition": "C", "category": category,
              "effect_allele": "A", "assayability": "snp"}
     if result_type is not None:
         entry["result_type"] = result_type
-    return build_panel.build({"variants": [entry]}, sources=[], clinvar={"rsX": cv})["variants"][0]["association"]
+    curated = {"rsX": {"rsid": "rsX", "condition": "C",
+                       "clinvar_record": "clinvar:rcv:RCV900000001",
+                       "significance": sig, "review_status": "x", "review_stars": stars}}
+    return build_panel.build({"variants": [entry]}, sources=[], clinvar={},
+                              curated=curated)["variants"][0]["association"]
 
 
 def _run_r58(attempt):
@@ -3584,11 +3586,11 @@ def _run_r58(attempt):
     def tier_requires_disease_significance():
         for sig in ("drug response", "protective", "association", "other"):
             for stars in (3, 4):
-                if _assoc_for(sig, stars, "carrier_status") is not None:
+                if _assoc_for(sig, stars, "carrier_status") != "unknown":
                     return False
         if _assoc_for("Pathogenic", 3, "carrier_status") != "established":
             return False
-        if _assoc_for("risk factor", 3, "carrier_status") is not None:
+        if _assoc_for("risk factor", 3, "carrier_status") != "unknown":
             return False
         if _assoc_for("risk factor", 3, "risk_association") != "established":
             return False
@@ -3664,7 +3666,7 @@ def _run_r58(attempt):
     def panel_alternate_is_effect_when_alternate():
         import build_panel
         targets = {"variants": [{"rsid": "rs9000001", "gene": "G", "condition": "C",
-                                 "category": "carrier", "result_type": "carrier_status",
+                                 "category": "carrier",
                                  "effect_allele": "A", "assayability": "snp"}]}
         dbsnp = {"rs9000001": {"chromosome": "1", "position": 100, "reference_allele": "T",
                                "alternate_allele": "C", "alternate_alleles": ["C", "A", "G"]}}
@@ -3675,7 +3677,7 @@ def _run_r58(attempt):
     def panel_alternate_first_when_effect_is_reference():
         import build_panel
         targets = {"variants": [{"rsid": "rs9000001", "gene": "G", "condition": "C",
-                                 "category": "carrier", "result_type": "carrier_status",
+                                 "category": "carrier",
                                  "effect_allele": "T", "assayability": "snp"}]}
         dbsnp = {"rs9000001": {"chromosome": "1", "position": 100, "reference_allele": "T",
                                "alternate_allele": "C", "alternate_alleles": ["C", "A", "G"]}}

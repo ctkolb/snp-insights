@@ -187,7 +187,12 @@ def eutils(path, email):
 # --------------------------------------------------------------------------- #
 
 def fetch_dbsnp_small(rsids, email):
-    """Return {rsid: (chromosome, position, ref, alt)} and a ClinVar-ready list."""
+    """Return {rsid: (chromosome, position, ref, [alternates])}.
+
+    Every GRCh37 alternate allele is kept, in record order. The reference is
+    the SPDI deleted sequence; an alternate is an inserted sequence that
+    differs from it.
+    """
     out = {}
     for rsid in rsids:
         try:
@@ -200,16 +205,20 @@ def fetch_dbsnp_small(rsids, email):
             chrom = GRCH37_ACCESSIONS.get(pl.get("seq_id"))
             if not chrom:
                 continue
+            ref, pos, alts = None, None, []
             for a in pl.get("alleles") or []:
                 spdi = (a.get("allele") or {}).get("spdi") or {}
-                ref = spdi.get("deleted_sequence", "")
-                alt = spdi.get("inserted_sequence", "")
-                pos = spdi.get("position")
-                if pos is None or not ref or ref == alt:
-                    continue  # first allele is the reference (deleted == inserted)
-                out[rsid] = (chrom, int(pos) + 1, ref, alt or ".")
-                break
-            if rsid in out:
+                deleted = spdi.get("deleted_sequence", "")
+                inserted = spdi.get("inserted_sequence", "")
+                position = spdi.get("position")
+                if position is None or not deleted:
+                    continue
+                if ref is None:
+                    ref, pos = deleted, int(position) + 1
+                if inserted and inserted != deleted and inserted not in alts:
+                    alts.append(inserted)
+            if ref is not None and pos is not None and alts:
+                out[rsid] = (chrom, pos, ref, alts)
                 break
     return out
 
@@ -336,7 +345,9 @@ def fetch_clinvar_summary(entries, email, cache):
 def fetch_gnomad_small(coords, email):
     """Return {rsid: af} via the gnomAD GraphQL API, keyed on coordinates."""
     out = {}
-    for rsid, (chrom, pos, ref, alt) in coords.items():
+    for rsid, rec in coords.items():
+        chrom, pos, ref, alts = rec
+        alt = alts[0] if isinstance(alts, (list, tuple)) else alts
         if len(ref) != 1 or len(alt) != 1 or ref not in "ACGT" or alt not in "ACGT":
             continue
         variant_id = f"{chrom}-{pos}-{ref}-{alt}"
@@ -509,9 +520,12 @@ def head_size(url, email):
 
 def write_dbsnp_tsv(path, coords):
     with open(path, "w") as fh:
-        fh.write("rsid\tchromosome\tposition\treference_allele\talternate_allele\n")
-        for rsid, (chrom, pos, ref, alt) in sorted(coords.items()):
-            fh.write(f"{rsid}\t{chrom}\t{pos}\t{ref}\t{alt}\n")
+        fh.write("rsid\tchromosome\tposition\treference_allele\talternate_allele\talternate_alleles\n")
+        for rsid, rec in sorted(coords.items()):
+            chrom, pos, ref, alts = rec
+            if isinstance(alts, str):
+                alts = [alts] if alts else []
+            fh.write(f"{rsid}\t{chrom}\t{pos}\t{ref}\t{alts[0] if alts else '.'}\t{','.join(alts)}\n")
 
 
 def write_clinvar_tsv(path, clinvar):
@@ -536,7 +550,8 @@ def write_gnomad_vcf(path, coords, afs):
         fh.write("##fileformat=VCFv4.2\n")
         fh.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
         for rsid, af in sorted(afs.items()):
-            chrom, pos, ref, alt = coords[rsid]
+            chrom, pos, ref, alts = coords[rsid]
+            alt = alts[0] if isinstance(alts, (list, tuple)) else alts
             fh.write(f"{chrom}\t{pos}\t{rsid}\t{ref}\t{alt}\t.\tPASS\tAF={af}\n")
 
 

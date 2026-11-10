@@ -143,11 +143,23 @@ def select_clinvar(rows, condition, aliases):
     return best
 
 
-def clinvar_tier(significance, stars):
-    """ClinVar association tier from a significance string and star count."""
-    if "conflicting" in (significance or "").lower():
+def clinvar_tier(significance, stars, result_type=None):
+    """ClinVar association tier from a significance string and star count.
+
+    A tier is derived only from a disease significance (G-1 group P) or, for a
+    `risk_association` target (or a legacy caller with no `result_type`), from
+    the risk factor group RF. Any other significance gives no tier, so a
+    drug-response or protective record can never become "established"; a
+    conflicting term keeps today's "conflicting".
+    """
+    group = significance_group(significance)
+    if group == "CF":
         return "conflicting"
-    return CLINVAR_TIER.get(stars)
+    if group == "P":
+        return CLINVAR_TIER.get(stars)
+    if group == "RF" and result_type in (None, "risk_association"):
+        return CLINVAR_TIER.get(stars)
+    return None
 
 
 def gwas_tier(n):
@@ -157,16 +169,38 @@ def gwas_tier(n):
     return "replicated" if n >= 2 else "single_study"
 
 
-def derive_association(category, cv, gwas_n, cv_matched):
+def significance_group(term):
+    """The G-1 significance group: case-insensitive prefix match, first hit wins.
+
+    `P` pathogenic, likely pathogenic or a composite beginning with pathogenic;
+    `B` benign or likely benign; `U` uncertain significance; `RF` risk factor or
+    risk allele; `CF` an aggregate conflicting-classifications term; every other
+    term is `AP`.
+    """
+    t = (term or "").strip().lower()
+    if t.startswith("conflicting"):
+        return "CF"
+    if t.startswith("pathogenic") or t.startswith("likely pathogenic"):
+        return "P"
+    if t.startswith("benign") or t.startswith("likely benign"):
+        return "B"
+    if t.startswith("uncertain significance"):
+        return "U"
+    if t.startswith("risk factor") or t.startswith("risk allele"):
+        return "RF"
+    return "AP"
+
+
+def derive_association(category, cv, gwas_n, cv_matched, result_type=None):
     """Association tier per category (decision D-B).
 
     `cv` is the chosen ClinVar record (or None), `gwas_n` the matching GWAS
     study count (None counts as 0), and `cv_matched` whether the ClinVar
-    phenotype matches the curated condition. `category` of None is the legacy
-    rule; `carrier` ignores GWAS; `trait` prefers GWAS and only falls back to a
-    matched ClinVar record.
+    phenotype matches the curated condition. `result_type` scopes the ClinVar
+    tier rule (A-3). `category` of None is the legacy rule; `carrier` ignores
+    GWAS; `trait` prefers GWAS and only falls back to a matched ClinVar record.
     """
-    cv_tier = clinvar_tier(cv.get("significance"), cv.get("review_stars")) if cv else None
+    cv_tier = clinvar_tier(cv.get("significance"), cv.get("review_stars"), result_type) if cv else None
     n = gwas_n or 0
     if category == "carrier":
         return cv_tier or "unknown"
