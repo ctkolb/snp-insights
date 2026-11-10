@@ -988,6 +988,51 @@ def _run_fix_round(attempt):
     attempt("R2A.T1_alphabet_is_exactly_the_assayability_letters", t1_alphabet_is_exactly_the_assayability_letters)
 
 
+def _run_r58(attempt):
+    """Ticket 2C (snp-REL-B-BUILD-r58): the complete dbSNP alternate list.
+    ADD-ONLY. The list is read from the panel variant, never from memory."""
+    def multi_variant(**kw):
+        v = _variant("rs900001", "1", 1000, "T", "C", effect="A")
+        v.update(kw)
+        return v
+
+    def classify_effect_multi_allelic():
+        multi = multi_variant(alternate_alleles=["C", "A", "G"])
+        f = _finding([("rs900001", 1, 1000, "G", "G")], multi)
+        _require(f"G/G with the full alternate list is covered_reference, got {_sig(f)}",
+                 (f["state"], f["call"]["zygosity"]) == ("covered_reference", "hom_ref"))
+        f = _finding([("rs900001", 1, 1000, "A", "C")], multi)
+        _require(f"A/C with the full alternate list is detected, got {_sig(f)}",
+                 (f["state"], f["call"]["zygosity"]) == ("detected", "het"))
+        legacy = multi_variant()
+        f = _finding([("rs900001", 1, 1000, "G", "G")], legacy)
+        _require(f"G/G without the list stays uninterpretable, got {_sig(f)}", _uninterpretable(f))
+        partial = multi_variant(alternate_alleles=["C", "A"])
+        f = _finding([("rs900001", 1, 1000, "G", "G")], partial)
+        _require(f"G/G with a list that omits G stays uninterpretable, got {_sig(f)}", _uninterpretable(f))
+        return True
+    attempt("R2C.classify_effect_multi_allelic", classify_effect_multi_allelic)
+
+    def classify_effect_indel_ignores_list():
+        v = _variant("rs900003", "7", 3000, None, None, effect="D", assay="indel")
+        v["alternate_alleles"] = ["T", "TT"]
+        f = _finding([("rs900003", 7, 3000, "I", "I")], v)
+        _require(f"I/I is covered_reference for an indel, got {_sig(f)}",
+                 (f["state"], f["call"]["zygosity"]) == ("covered_reference", "hom_ref"))
+        g = _finding([("rs900003", 7, 3000, "D", "D")], v)
+        _require(f"D/D is detected, got {_sig(g)}", (g["state"], g["call"]["zygosity"]) == ("detected", "hom_alt"))
+        return True
+    attempt("R2C.classify_effect_indel_ignores_list", classify_effect_indel_ignores_list)
+
+    def classify_effect_present_empty_falls_back():
+        v = multi_variant(alternate_alleles=[])
+        f = _finding([("rs900001", 1, 1000, "C", "C")], v)
+        _require(f"C/C with a present-but-empty list falls back to the singular alt, got {_sig(f)}",
+                 (f["state"], f["call"]["zygosity"]) == ("covered_reference", "hom_ref"))
+        return True
+    attempt("R2C.syn_classify_effect_present_empty_falls_back", classify_effect_present_empty_falls_back)
+
+
 def _run_r58_char(attempt):
     """Ticket 2C C0: today's classify_effect on legacy panels (no alternate list)."""
     import annotate
@@ -1019,6 +1064,7 @@ def run(check):
         check(name, bool(result))
 
     _run_r58_char(attempt)
+    _run_r58(attempt)
 
     _run_characterization(attempt)
     _run_interpretation(attempt)

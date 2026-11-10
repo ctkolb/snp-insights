@@ -3308,6 +3308,382 @@ def _run_1b_b_r55(attempt):
     attempt("R1B.r55_health_rows_cite_attributing_rcv", real_health_rows_cite_attributing_rcv)
 
 
+# =============================================================================
+# Ticket 2C (snp-REL-B-BUILD-r58): curated evidence file, fail-closed release
+# build, disease-only tier rule, complete dbSNP alleles. ADD-ONLY.
+# =============================================================================
+EVIDENCE_ALLOWED_KEYS = frozenset(("rsid", "condition", "clinvar_record",
+                                   "significance", "review_status", "review_stars"))
+KNOWN_AP_TERMS = ("drug response", "protective", "association", "affects", "other", "not provided")
+STAR_TIER = {4: "established", 3: "established", 2: "replicated", 1: "single_study"}
+
+
+def known_significance_group(term):
+    """G-1 group for a recognised term; None for a term outside the vocabulary.
+
+    Unlike `significance_group`, an unknown term is not the default AP.
+    """
+    t = (term or "").strip().lower()
+    if t.startswith("conflicting"):
+        return "CF"
+    if t.startswith("pathogenic") or t.startswith("likely pathogenic"):
+        return "P"
+    if t.startswith("benign") or t.startswith("likely benign"):
+        return "B"
+    if t.startswith("uncertain significance"):
+        return "U"
+    if t.startswith("risk factor") or t.startswith("risk allele"):
+        return "RF"
+    if t in KNOWN_AP_TERMS:
+        return "AP"
+    return None
+
+
+def check_evidence_file(evidence, targets, t1, t2, t5):
+    """Check data/targets.release-evidence.json against the curation record.
+
+    t1/t2/t5 are {rsid: row} maps; targets is the parsed targets object. One
+    entry per included carrier target, no others (A-1).
+    """
+    import evidence as ev
+    errors = []
+    if not isinstance(evidence, dict):
+        return _result(["shape: evidence file is not an object"], 0)
+    if not isinstance(evidence.get("_note"), str):
+        errors.append("shape: _note missing")
+    if evidence.get("panel_version") != "0.1.0":
+        errors.append(f"shape: panel_version {evidence.get('panel_version')!r}")
+    entries = evidence.get("entries")
+    if not isinstance(entries, list):
+        return _result(errors + ["shape: entries is not a list"], 0)
+    carrier = {e.get("rsid"): e for e in targets.get("variants", []) if e.get("category") == "carrier"}
+    non_carrier = {e.get("rsid"): e for e in targets.get("variants", []) if e.get("category") != "carrier"}
+    by_rsid = {}
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            errors.append(f"shape: entries[{i}] is not an object")
+            continue
+        for key in sorted(set(entry) - EVIDENCE_ALLOWED_KEYS):
+            errors.append(f"unknown_key: entries[{i}] has {key}")
+        rs = entry.get("rsid")
+        if rs in by_rsid:
+            errors.append(f"duplicate_entry: {rs}")
+        by_rsid[rs] = entry
+    for rs in by_rsid:
+        if rs in carrier:
+            continue
+        errors.append(f"trait_entry: {rs} is not a carrier target" if rs in non_carrier
+                      else f"extra_entry: {rs} is not a target")
+    for rs in carrier:
+        if rs not in by_rsid:
+            errors.append(f"missing_entry: {rs} has no evidence entry")
+    for rs, entry in by_rsid.items():
+        row, pair = t1.get(rs), t2.get(rs)
+        if row is None:
+            continue
+        if entry.get("condition") != row["label used in report"]:
+            errors.append(f"wrong_condition: {rs} {entry.get('condition')!r} != "
+                          f"{row['label used in report']!r}")
+        rec = entry.get("clinvar_record")
+        inv = t5.get(rs)
+        srcs = set(split_ids(row["sources (typed ids)"]))
+        inv_ids = set(split_ids(inv["pack file index id"])) if inv else set()
+        if rec not in srcs or rec not in inv_ids:
+            errors.append(f"uncited_record: {rs} {rec!r} is not in the T1 sources and the T5 index")
+        if pair is None:
+            continue
+        if str(entry.get("review_stars")) != pair["stars"]:
+            errors.append(f"stars_mismatch: {rs} {entry.get('review_stars')!r} != T2 {pair['stars']!r}")
+        if entry.get("review_status") != pair["matched review status"]:
+            errors.append(f"status_mismatch: {rs} {entry.get('review_status')!r} != "
+                          f"T2 {pair['matched review status']!r}")
+        status_stars = ev.review_stars(entry.get("review_status"))
+        if status_stars != entry.get("review_stars"):
+            errors.append(f"stars_status_inconsistent: {rs} status -> {status_stars}, "
+                          f"entry {entry.get('review_stars')!r}")
+        group = known_significance_group(entry.get("significance"))
+        if group is None:
+            errors.append(f"unknown_significance: {rs} {entry.get('significance')!r}")
+        elif group != pair["matched significance"]:
+            errors.append(f"group_mismatch: {rs} {group} != T2 {pair['matched significance']!r}")
+    return _result(errors, len(by_rsid))
+
+
+def _evidence_world():
+    target = {"rsid": "rs9000002", "gene": "GENEB", "condition": "Example condition one",
+              "category": "carrier", "result_type": "carrier_status",
+              "effect_allele": "G", "assayability": "snp", "strand": "forward"}
+    targets = {"_note": "invented", "panel_version": "0.1.0", "genome_build": "GRCh37",
+               "strand": "forward", "variants": [target]}
+    t1 = {"rs9000002": {"rsID": "rs9000002", "label used in report": "Example condition one",
+                        "sources (typed ids)":
+                            "dbsnp:rs9000002;clinvar:vcv:9001001;clinvar:rcv:RCV900000001"}}
+    t2 = {"rs9000002": {"matched significance": "P", "stars": "2",
+                        "matched review status": "criteria provided, multiple submitters, no conflicts"}}
+    t5 = {"rs9000002": {"pack file index id":
+                        "dbsnp:rs9000002;clinvar:vcv:9001001;clinvar:rcv:RCV900000001"}}
+    evidence = {"_note": "invented", "panel_version": "0.1.0", "entries": [
+        {"rsid": "rs9000002", "condition": "Example condition one",
+         "clinvar_record": "clinvar:rcv:RCV900000001", "significance": "Pathogenic",
+         "review_status": "criteria provided, multiple submitters, no conflicts", "review_stars": 2}]}
+    return {"evidence": evidence, "targets": targets, "t1": t1, "t2": t2, "t5": t5}
+
+
+def _check_evidence(w):
+    return check_evidence_file(w["evidence"], w["targets"], w["t1"], w["t2"], w["t5"])
+
+
+def _assoc_for(sig, stars, result_type, category="carrier"):
+    import build_panel
+    cv = {"significance": sig, "review_stars": stars, "review_status_text": "",
+          "source_version": "t", "phenotype": ""}
+    entry = {"rsid": "rsX", "gene": "G", "condition": "C", "category": category,
+             "effect_allele": "A", "assayability": "snp"}
+    if result_type is not None:
+        entry["result_type"] = result_type
+    return build_panel.build({"variants": [entry]}, sources=[], clinvar={"rsX": cv})["variants"][0]["association"]
+
+
+def _run_r58(attempt):
+    def evidence_accepts():
+        res = _check_evidence(_evidence_world())
+        _clean(res, "evidence file positive fixture")
+        _require("an accepted file must count its entries", res.rows_checked == 1)
+        return True
+    attempt("R2C.syn_evidence_accepts", evidence_accepts)
+
+    def evidence_rejects(mutate, code, name):
+        w = _evidence_world()
+        mutate(w)
+        _has(_check_evidence(w), code, name)
+        return True
+    for defect, mutate, code in (
+            ("missing_entry", lambda w: w["evidence"].update(entries=[]), "missing_entry"),
+            ("extra_entry", lambda w: w["evidence"]["entries"].append(
+                dict(w["evidence"]["entries"][0], rsid="rs9000099")), "extra_entry"),
+            ("trait_entry", lambda w: (w["targets"]["variants"].append(
+                {"rsid": "rs9000001", "category": "trait", "result_type": "trait"}),
+                w["evidence"]["entries"].append(
+                    dict(w["evidence"]["entries"][0], rsid="rs9000001"))), "trait_entry"),
+            ("wrong_condition", lambda w: w["evidence"]["entries"][0].update(
+                condition="Unrelated condition"), "wrong_condition"),
+            ("uncited_record", lambda w: w["evidence"]["entries"][0].update(
+                clinvar_record="clinvar:rcv:RCV900000002"), "uncited_record"),
+            ("stars_mismatch", lambda w: w["evidence"]["entries"][0].update(
+                review_stars=3, review_status="reviewed by expert panel"), "stars_mismatch"),
+            ("group_mismatch", lambda w: w["evidence"]["entries"][0].update(
+                significance="Benign"), "group_mismatch"),
+            ("stars_status_inconsistent", lambda w: w["evidence"]["entries"][0].update(
+                review_stars=3), "stars_status_inconsistent"),
+            ("status_mismatch", lambda w: w["evidence"]["entries"][0].update(
+                review_status="reviewed by expert panel"), "status_mismatch"),
+            ("unknown_key", lambda w: w["evidence"]["entries"][0].update(extra="x"), "unknown_key"),
+            ("unknown_significance", lambda w: w["evidence"]["entries"][0].update(
+                significance="banana"), "unknown_significance")):
+        attempt(f"R2C.syn_evidence_rejects_{defect}", lambda m=mutate, c=code, n=defect:
+                evidence_rejects(m, c, n))
+
+    def evidence_file_matches_curation():
+        text = read_doc()
+        tables = doc_tables(text)
+        t1 = {r["rsID"]: r for r in tables["T1"]}
+        t2 = {r["rsID"]: r for r in tables["T2"]}
+        t5 = {r["rsID"]: r for r in tables["T5"]}
+        path = os.path.join(DATA, "targets.release-evidence.json")
+        _require(f"{path} missing", os.path.exists(path))
+        with open(path, encoding="utf-8") as fh:
+            evidence = json.load(fh)
+        res = check_evidence_file(evidence, read_targets(), t1, t2, t5)
+        print(f"  rows_checked={res.rows_checked} R2C.evidence_file_matches_curation")
+        _require("; ".join(res), not res)
+        _require("the evidence gate must check at least one entry", res.rows_checked > 0)
+        return True
+    attempt("R2C.evidence_file_matches_curation", evidence_file_matches_curation)
+
+    def build_uses_curated_evidence():
+        import build_panel
+        targets = {"variants": [{"rsid": "rs9000002", "gene": "GENEB", "condition": "Example condition one",
+                                 "category": "carrier", "result_type": "carrier_status",
+                                 "effect_allele": "G", "assayability": "snp"}]}
+        agg = {"rs9000002": {"significance": "drug response", "review_stars": 3,
+                             "review_status_text": "reviewed by expert panel",
+                             "source_version": "ClinVar test", "phenotype": "Warfarin response"}}
+        curated = {"rs9000002": {"rsid": "rs9000002", "condition": "Example condition one",
+                                 "clinvar_record": "clinvar:rcv:RCV900000001",
+                                 "significance": "Pathogenic",
+                                 "review_status": "criteria provided, multiple submitters, no conflicts",
+                                 "review_stars": 2}}
+        v = build_panel.build(targets, sources=[], clinvar=agg, curated=curated)["variants"][0]
+        return (v["clinvar"] == {"significance": "Pathogenic", "review_stars": 2,
+                                 "review_status_text": "criteria provided, multiple submitters, no conflicts",
+                                 "source_version": "curated clinvar:rcv:RCV900000001"}
+                and v["association"] == "replicated")
+    attempt("R2C.build_uses_curated_evidence", build_uses_curated_evidence)
+
+    def build_fails_carrier_without_entry():
+        import build_panel
+        targets = {"variants": [{"rsid": "rs9000002", "gene": "G", "condition": "C",
+                                 "category": "carrier", "result_type": "carrier_status",
+                                 "effect_allele": "A", "assayability": "snp"}]}
+        try:
+            build_panel.build(targets, sources=[], clinvar={}, curated={})
+        except ValueError as exc:
+            return "rs9000002" in str(exc)
+        except Exception:  # noqa: BLE001
+            return False
+        return False
+    attempt("R2C.build_fails_carrier_without_entry", build_fails_carrier_without_entry)
+
+    def build_fails_mismatched_entry():
+        import build_panel
+        targets = {"variants": [{"rsid": "rs9000002", "gene": "G", "condition": "C",
+                                 "category": "carrier", "result_type": "carrier_status",
+                                 "effect_allele": "A", "assayability": "snp"}]}
+        curated = {"rs9000002": {"rsid": "rs9000002", "condition": "A different condition",
+                                 "clinvar_record": "clinvar:rcv:RCV900000001",
+                                 "significance": "Pathogenic", "review_status": "x", "review_stars": 2}}
+        try:
+            build_panel.build(targets, sources=[], clinvar={}, curated=curated)
+        except ValueError as exc:
+            return "rs9000002" in str(exc)
+        except Exception:  # noqa: BLE001
+            return False
+        return False
+    attempt("R2C.build_fails_mismatched_entry", build_fails_mismatched_entry)
+
+    def release_build_without_evidence_refuses():
+        d = tempfile.mkdtemp()
+        tp = os.path.join(d, "targets.json")
+        op = os.path.join(d, "out.json")
+        with open(tp, "w") as fh:
+            json.dump({"variants": [{"rsid": "rs9000002", "gene": "G", "condition": "C",
+                                     "category": "carrier", "result_type": "carrier_status",
+                                     "effect_allele": "A", "assayability": "snp"}]}, fh)
+        proc = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "build_panel.py"),
+                               "--targets", tp, "-o", op], cwd=ROOT, capture_output=True, text=True)
+        return (proc.returncode != 0 and not os.path.exists(op)
+                and "--curated-evidence" in proc.stderr)
+    attempt("R2C.release_build_without_evidence_refuses", release_build_without_evidence_refuses)
+
+    def build_without_flag_unchanged():
+        out = os.path.join(tempfile.mkdtemp(), "panel.check.json")
+        cmd = [sys.executable, os.path.join(ROOT, "tools", "build_panel.py"),
+               "--targets", os.path.join(DATA, "targets.sample.json"),
+               "--clinvar", os.path.join(ROOT, "fixtures", "sources", "clinvar.sample.tsv"),
+               "--gnomad", os.path.join(ROOT, "fixtures", "sources", "gnomad.sample.vcf"),
+               "-o", out]
+        proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+        if proc.returncode != 0:
+            return False
+        with open(out) as fh:
+            got = fh.read()
+        with open(os.path.join(DATA, "panel.sample.json")) as fh:
+            return got == fh.read()
+    attempt("R2C.build_without_flag_unchanged", build_without_flag_unchanged)
+
+    def tier_requires_disease_significance():
+        for sig in ("drug response", "protective", "association", "other"):
+            for stars in (3, 4):
+                if _assoc_for(sig, stars, "carrier_status") is not None:
+                    return False
+        if _assoc_for("Pathogenic", 3, "carrier_status") != "established":
+            return False
+        if _assoc_for("risk factor", 3, "carrier_status") is not None:
+            return False
+        if _assoc_for("risk factor", 3, "risk_association") != "established":
+            return False
+        if _assoc_for("risk factor", 3, None) != "established":
+            return False
+        return True
+    attempt("R2C.tier_requires_disease_significance", tier_requires_disease_significance)
+
+    def tier_matrix():
+        groups = {"P": "Pathogenic", "B": "Benign", "U": "Uncertain significance",
+                  "RF": "risk factor", "AP": "drug response",
+                  "CF": "Conflicting classifications of pathogenicity"}
+        count = 0
+        for g, term in groups.items():
+            for rt in (None, "carrier_status", "risk_association", "trait"):
+                for stars in range(5):
+                    got = _assoc_for(term, stars, rt)
+                    if g == "CF":
+                        want = "conflicting"
+                    elif g == "P":
+                        want = STAR_TIER.get(stars) or "unknown"
+                    elif g == "RF" and rt in (None, "risk_association"):
+                        want = STAR_TIER.get(stars) or "unknown"
+                    else:
+                        want = "unknown"
+                    _require(f"tier matrix {g}/{rt}/stars={stars}: got {got}, want {want}", got == want)
+                    count += 1
+        _require(f"tier matrix ran {count} cells, expected 120", count == 120)
+        return True
+    attempt("R2C.tier_matrix", tier_matrix)
+
+    def dbsnp_small_keeps_all_alternates():
+        import fetch_reference
+        data = {"primary_snapshot_data": {"placements_with_allele": [
+            {"seq_id": "NC_000001.10", "alleles": [
+                {"allele": {"spdi": {"deleted_sequence": "T", "inserted_sequence": "C", "position": 100}}},
+                {"allele": {"spdi": {"deleted_sequence": "T", "inserted_sequence": "A", "position": 100}}},
+                {"allele": {"spdi": {"deleted_sequence": "T", "inserted_sequence": "G", "position": 100}}},
+                {"allele": {"spdi": {"deleted_sequence": "T", "inserted_sequence": "T", "position": 100}}}]}]}}
+        orig = fetch_reference.http_get_json
+        fetch_reference.http_get_json = lambda url, email=None, timeout=60: data
+        try:
+            got = fetch_reference.fetch_dbsnp_small(["rs9000001"], None)
+        finally:
+            fetch_reference.http_get_json = orig
+        return got.get("rs9000001") == ("1", 101, "T", ["C", "A", "G"])
+    attempt("R2C.dbsnp_small_keeps_all_alternates", dbsnp_small_keeps_all_alternates)
+
+    def load_dbsnp_tsv_reads_alternate_alleles():
+        import build_panel
+        p = os.path.join(tempfile.mkdtemp(), "dbsnp.tsv")
+        with open(p, "w") as fh:
+            fh.write("rsid\tchromosome\tposition\treference_allele\talternate_allele\talternate_alleles\n")
+            fh.write("rs9000001\t1\t100\tT\tC\tC,A,G\n")
+            fh.write("rs9000002\t1\t200\tG\tA\t\n")
+        got = build_panel.load_dbsnp(p, {"rs9000001", "rs9000002"})
+        return (got["rs9000001"].get("alternate_alleles") == ["C", "A", "G"]
+                and got["rs9000001"]["alternate_allele"] == "C"
+                and got["rs9000002"].get("alternate_alleles") == ["A"])
+    attempt("R2C.load_dbsnp_tsv_reads_alternate_alleles", load_dbsnp_tsv_reads_alternate_alleles)
+
+    def load_dbsnp_vcf_keeps_all_alts():
+        import build_panel
+        p = os.path.join(tempfile.mkdtemp(), "dbsnp.vcf")
+        with open(p, "w") as fh:
+            fh.write("##fileformat=VCFv4.2\n")
+            fh.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
+            fh.write("1\t100\trs9000001\tT\tC,A,G\t.\tPASS\t.\n")
+        rec = build_panel.load_dbsnp(p, {"rs9000001"})["rs9000001"]
+        return rec.get("alternate_alleles") == ["C", "A", "G"] and rec["alternate_allele"] == "C"
+    attempt("R2C.load_dbsnp_vcf_keeps_all_alts", load_dbsnp_vcf_keeps_all_alts)
+
+    def panel_alternate_is_effect_when_alternate():
+        import build_panel
+        targets = {"variants": [{"rsid": "rs9000001", "gene": "G", "condition": "C",
+                                 "category": "carrier", "result_type": "carrier_status",
+                                 "effect_allele": "A", "assayability": "snp"}]}
+        dbsnp = {"rs9000001": {"chromosome": "1", "position": 100, "reference_allele": "T",
+                               "alternate_allele": "C", "alternate_alleles": ["C", "A", "G"]}}
+        v = build_panel.build(targets, sources=[], dbsnp=dbsnp)["variants"][0]
+        return v.get("alternate_allele") == "A" and v.get("alternate_alleles") == ["C", "A", "G"]
+    attempt("R2C.panel_alternate_is_effect_when_alternate", panel_alternate_is_effect_when_alternate)
+
+    def panel_alternate_first_when_effect_is_reference():
+        import build_panel
+        targets = {"variants": [{"rsid": "rs9000001", "gene": "G", "condition": "C",
+                                 "category": "carrier", "result_type": "carrier_status",
+                                 "effect_allele": "T", "assayability": "snp"}]}
+        dbsnp = {"rs9000001": {"chromosome": "1", "position": 100, "reference_allele": "T",
+                               "alternate_allele": "C", "alternate_alleles": ["C", "A", "G"]}}
+        v = build_panel.build(targets, sources=[], dbsnp=dbsnp)["variants"][0]
+        return v.get("alternate_allele") == "C"
+    attempt("R2C.panel_alternate_first_when_effect_is_reference", panel_alternate_first_when_effect_is_reference)
+
+
 def _run_r58_char(attempt):
     """Ticket 2C C0: pin behavior this work must not change."""
     def panel_sample_reproduces():
@@ -3357,6 +3733,7 @@ def run(check):
         check(name, bool(result))
 
     _run_r58_char(attempt)
+    _run_r58(attempt)
 
     _run_characterization(attempt)
     _run_invariants(attempt)

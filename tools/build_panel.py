@@ -313,7 +313,7 @@ def assoc_from_gwas(n):
     return evidence.gwas_tier(n)
 
 
-def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, snpedia=None, merges=None, aliases=None):
+def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, snpedia=None, merges=None, aliases=None, curated=None):
     clinvar = clinvar or {}
     gnomad = gnomad or {}
     gwas = gwas or {}
@@ -391,6 +391,7 @@ def main(argv=None):
     ap.add_argument("--gwas", help="GWAS Catalog associations TSV; drives trait association tier")
     ap.add_argument("--snpedia", help="rsid<TAB>magnitude, or JSON; optional")
     ap.add_argument("--dbsnp-merge", help="dbSNP RsMergeArch file (old->new rsID map)")
+    ap.add_argument("--curated-evidence", help="curated ClinVar evidence file for release targets")
     ap.add_argument("--cache", help="directory from fetch_reference.py; fills unset source paths")
     ap.add_argument("--merge-direction", choices=["high-to-low", "low-to-high"], default="high-to-low")
     ap.add_argument("--dbsnp-release", default="b156")
@@ -404,6 +405,11 @@ def main(argv=None):
 
     with open(args.targets) as fh:
         targets = json.load(fh)
+
+    curated = None
+    if args.curated_evidence:
+        with open(args.curated_evidence) as fh:
+            curated = {e["rsid"]: e for e in json.load(fh).get("entries", [])}
 
     if args.cache:
         def resolve(explicit, *names):
@@ -448,7 +454,7 @@ def main(argv=None):
 
     try:
         panel = build(targets, sources, clinvar=clinvar, gnomad=gnomad, dbsnp=dbsnp,
-                      gwas=gwas, snpedia=snpedia, merges=merges, aliases=aliases)
+                      gwas=gwas, snpedia=snpedia, merges=merges, aliases=aliases, curated=curated)
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 1
