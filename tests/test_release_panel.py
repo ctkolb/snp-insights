@@ -45,7 +45,7 @@ PINNED_HASHES = {
     "targets.carrier.json": "e9e7453a440ce51609b350b62a2f321c12374286355178edd3a52b47698c4f10",
     "targets.traits.json": "aabf84bfc412144214fc8f4f09eac8983a4ebaec0095c9cd2c9b16f6735fa6ce",
     "targets.sample.json": "0f1ae6151508f8bafeb3c64986d5f59c4cd0704f4ee6a859d795fe97047a93ad",
-    "condition_aliases.json": "0960d4fa60a9f66c8927b0180226ca3551368afcaef7f0233105b3e68b91b1fb",
+    "condition_aliases.json": "8335a74dfae716acd420e525e03289b8fb1c339ba87088b645605850ac32e7f2",
 }
 
 # --- rule constants (single source of truth for the checkers) ----------------
@@ -3248,6 +3248,65 @@ def _run_1b_b_syn(attempt):
     run("method_sections_hash_rejects_changed", method_rejects_changed)
 
 
+def _run_1b_b_r55(attempt):
+    """Ticket r55 (D-54-1..4): the attributing-RCV stars rule and the alias-file
+    synonyms. The considered-records grammar is VCV-scoped and carries no
+    RCV-stars column, so the checker cannot see RCV-level stars independently;
+    the T2 `stars` cell is checked against the stars recorded for the attributing
+    item (the only place the checker can see them)."""
+
+    def t2_stars_must_not_exceed_attributing_record():
+        cell = "9001001=A/match/P/2"
+        good = _claim(cell, "eligible", "9001001", "P", "2")
+        _clean(check_pair_row(good, "carrier_status", "A"), "stars equal the attributing record")
+        over = _claim(cell, "eligible", "9001001", "P", "3")
+        _has(check_pair_row(over, "carrier_status", "A"), "row-stars",
+             "T2 stars exceed the attributing record")
+        return True
+    attempt("R1B.syn_1bb_r55_t2_stars_must_not_exceed_attributing_record",
+            t2_stars_must_not_exceed_attributing_record)
+
+    def attributing_record_below_two_stars():
+        _expect("9001001=A/match/P/1", "carrier_status", "excluded:insufficient-review-status", "P", 1)
+        _expect("9001001=A/match/P/0", "carrier_status", "excluded:insufficient-review-status", "P", 0)
+        _expect("9001001=A/match/P/2", "carrier_status", "eligible", "P", 2)
+        return True
+    attempt("R1B.syn_1bb_r55_attributing_record_below_two_stars",
+            attributing_record_below_two_stars)
+
+    def alias_matcher_new_synonyms():
+        import evidence
+        aliases = evidence.load_aliases(ALIASES_PATH)
+        for text, label in (("Hb SS disease", "sickle cell disease"),
+                            ("Hemochromatosis type 1", "hereditary hemochromatosis"),
+                            ("Thrombophilia due to thrombin defect", "prothrombin thrombophilia")):
+            _require(f"{text!r} must match {label!r}",
+                     evidence.condition_matches(text, label, aliases))
+        for text in ("Congenital prothrombin deficiency", "prothrombin deficiency",
+                     "factor ii deficiency"):
+            _require(f"{text!r} must not match 'prothrombin thrombophilia'",
+                     not evidence.condition_matches(text, "prothrombin thrombophilia", aliases))
+        return True
+    attempt("R1B.syn_1bb_r55_alias_matcher_synonyms", alias_matcher_new_synonyms)
+
+    def real_health_rows_cite_attributing_rcv():
+        text = read_doc()
+        by = {r["rsID"]: r for r in doc_tables(text)["T1"]}
+        want = {"rs334": "clinvar:rcv:RCV000016574",
+                "rs1800562": "clinvar:rcv:RCV000000019",
+                "rs1799963": "clinvar:rcv:RCV005419865"}
+        absent = ("clinvar:rcv:RCV000205022", "clinvar:rcv:RCV000308358")
+        for rs, rid in want.items():
+            ids = split_ids(by[rs]["sources (typed ids)"])
+            _require(f"{rs} must cite {rid}, has {ids}", rid in ids)
+        for rs in ("rs1799963", "rs1800562"):
+            ids = split_ids(by[rs]["sources (typed ids)"])
+            _require(f"{rs} must not cite a wrong-attribution RCV, has {ids}",
+                     not any(a in ids for a in absent))
+        return True
+    attempt("R1B.r55_health_rows_cite_attributing_rcv", real_health_rows_cite_attributing_rcv)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -3274,6 +3333,7 @@ def run(check):
     _run_1b_b_char(attempt)
     _run_1b_b(attempt)
     _run_1b_b_syn(attempt)
+    _run_1b_b_r55(attempt)
 
 
 def main():

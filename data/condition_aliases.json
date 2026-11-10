@@ -3,7 +3,8 @@
   "hereditary hemochromatosis": [
     "hemochromatosis",
     "haemochromatosis",
-    "hereditary haemochromatosis"
+    "hereditary haemochromatosis",
+    "hemochromatosis type 1"
   ],
   "factor v leiden thrombophilia": [
     "factor v leiden",
@@ -35,7 +36,8 @@
     "sickle cell anemia",
     "sickle cell anaemia",
     "hemoglobin s disease",
-    "haemoglobin s disease"
+    "haemoglobin s disease",
+    "hb ss disease"
   ],
   "hemoglobin c disease": [
     "hemoglobin c",
@@ -43,9 +45,8 @@
   ],
   "prothrombin thrombophilia": [
     "prothrombin g20210a",
-    "prothrombin deficiency",
     "thrombophilia due to prothrombin",
-    "factor ii deficiency"
+    "thrombophilia due to thrombin defect"
   ],
   "g6pd deficiency": [
     "glucose-6-phosphate dehydrogenase deficiency",
