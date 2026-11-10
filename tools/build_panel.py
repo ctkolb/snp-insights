@@ -331,6 +331,7 @@ def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, sn
     has_curated = curated is not None
     curated = curated or {}
     target_list = targets["variants"]
+    release_format = any("result_type" in t for t in target_list)
     for t in target_list:
         category = t.get("category")
         if category is not None and category not in ("carrier", "trait"):
@@ -338,7 +339,7 @@ def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, sn
             raise ValueError(f"invalid category {category!r} for {label}")
     # A-2: a release-format file (an entry declares result_type) with a carrier
     # entry refuses to build without the curated evidence file. Data-free message.
-    if not has_curated and any("result_type" in t for t in target_list) \
+    if not has_curated and release_format \
             and any(t.get("category") == "carrier" for t in target_list):
         raise ValueError("release-format targets with a carrier entry require --curated-evidence")
     if has_curated:
@@ -387,7 +388,8 @@ def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, sn
             cv_matched = True
         else:
             cv = clinvar.get(rsid) if rsid else None
-            cv_matched = bool(cv and cv.get("phenotype") and t.get("condition")
+            cv_matched = bool(cv and not (release_format and t.get("category") == "trait")
+                              and cv.get("phenotype") and t.get("condition")
                               and evidence.condition_matches(cv.get("phenotype"), t.get("condition"), aliases))
         v["gnomad_af"] = gnomad.get(rsid, {}).get("af") if rsid else None
         v["clinvar"] = (

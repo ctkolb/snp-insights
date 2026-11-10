@@ -3349,6 +3349,8 @@ def check_evidence_file(evidence, targets, t1, t2, t5):
     errors = []
     if not isinstance(evidence, dict):
         return _result(["shape: evidence file is not an object"], 0)
+    for key in sorted(set(evidence) - {"_note", "panel_version", "entries"}):
+        errors.append(f"top_level_unknown_key: {key}")
     if not isinstance(evidence.get("_note"), str):
         errors.append("shape: _note missing")
     if evidence.get("panel_version") != "0.1.0":
@@ -3366,6 +3368,9 @@ def check_evidence_file(evidence, targets, t1, t2, t5):
         for key in sorted(set(entry) - EVIDENCE_ALLOWED_KEYS):
             errors.append(f"unknown_key: entries[{i}] has {key}")
         rs = entry.get("rsid")
+        record = entry.get("clinvar_record")
+        if not isinstance(record, str) or not re.fullmatch(r"clinvar:rcv:RCV\d+", record):
+            errors.append(f"record_type: {rs} must identify an RCV")
         if rs in by_rsid:
             errors.append(f"duplicate_entry: {rs}")
         by_rsid[rs] = entry
