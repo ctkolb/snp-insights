@@ -3793,6 +3793,69 @@ def _run_r58_char(attempt):
     attempt("R2C.char_conflicting_tier_unchanged", conflicting_tier_unchanged)
 
 
+def _run_r61(attempt):
+    """Ticket 2D: a release-format build plus an annotation carries the curated
+    result_type and effect_allele from data/targets.release.json into findings."""
+
+    def release_path_findings_carry_target_fields():
+        targets_path = os.path.join(DATA, "targets.release.json")
+        evidence_path = os.path.join(DATA, "targets.release-evidence.json")
+        with open(targets_path, encoding="utf-8") as fh:
+            targets = json.load(fh)
+        want = {v["rsid"]: (v["result_type"], v["effect_allele"]) for v in targets["variants"]}
+        coords = {
+            "rs1800562": ("6", 26093141, "G", "A"),
+            "rs1799963": ("11", 46761055, "G", "A"),
+            "rs6025": ("1", 169519049, "C", "T"),
+        }
+        d = tempfile.mkdtemp()
+        cache = os.path.join(d, "cache")
+        os.makedirs(cache)
+        with open(os.path.join(cache, "dbsnp.tsv"), "w", encoding="utf-8") as fh:
+            fh.write("rsid\tchromosome\tposition\treference_allele\talternate_allele\talternate_alleles\n")
+            for rsid, (chrom, pos, ref, alt) in coords.items():
+                fh.write(f"{rsid}\t{chrom}\t{pos}\t{ref}\t{alt}\t{alt}\n")
+        panel_path = os.path.join(d, "panel.json")
+        build = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "tools", "build_panel.py"),
+             "--targets", targets_path, "--curated-evidence", evidence_path,
+             "--cache", cache, "-o", panel_path],
+            cwd=ROOT, capture_output=True, text=True)
+        _require(f"release build exits 0, stderr={build.stderr!r}", build.returncode == 0)
+        with open(panel_path, encoding="utf-8") as fh:
+            panel = json.load(fh)
+        for v in panel["variants"]:
+            _require(f"panel variant {v['rsid']} carries its result_type pass-through",
+                     v.get("result_type") == want[v["rsid"]][0])
+        raw_path = os.path.join(d, "raw.txt")
+        lines = ["#synthetic raw data for tests",
+                 "#Data was collected using AncestryDNA array version: V2.0",
+                 "#using human reference build 37.1 coordinates.",
+                 "rsid\tchromosome\tposition\tallele1\tallele2"]
+        for rsid, (chrom, pos, ref, alt) in coords.items():
+            lines.append(f"{rsid}\t{chrom}\t{pos}\t{alt}\t{ref}")
+        with open(raw_path, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+        out_path = os.path.join(d, "findings.json")
+        ann = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "stage2", "annotate.py"),
+             raw_path, panel_path, "-o", out_path, "--aliases", os.path.join(d, "none.json")],
+            cwd=ROOT, capture_output=True, text=True)
+        _require(f"annotate exits 0, stderr={ann.stderr!r}", ann.returncode == 0)
+        with open(out_path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+        _require(f"release findings are 1.2.0, got {doc['schema_version']!r}",
+                 doc["schema_version"] == "1.2.0")
+        by = {f["rsid"]: f for f in doc["findings"]}
+        for rsid, (rt, ea) in want.items():
+            _require(f"{rsid} finding carries result_type {rt!r}, got {by[rsid].get('result_type')!r}",
+                     by[rsid].get("result_type") == rt)
+            _require(f"{rsid} finding carries effect_allele {ea!r}, got {by[rsid].get('effect_allele')!r}",
+                     by[rsid].get("effect_allele") == ea)
+        return True
+    attempt("R2D.release_path_findings_carry_target_fields", release_path_findings_carry_target_fields)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -3823,6 +3886,7 @@ def run(check):
     _run_1b_b(attempt)
     _run_1b_b_syn(attempt)
     _run_1b_b_r55(attempt)
+    _run_r61(attempt)
 
 
 def main():

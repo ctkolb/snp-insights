@@ -1095,6 +1095,196 @@ def _run_r61_char(attempt):
     attempt("R2D.legacy_panel_findings_unchanged", legacy_panel_findings_unchanged)
 
 
+def _release_panel():
+    """A panel in release format: at least one variant carries result_type.
+
+    Both variants carry cls and effect_allele; the two result_type values differ
+    so a per-variant copy is distinguishable from a constant.
+    """
+    carrier = _variant("rs900001", "1", 1000, "G", "A", effect="A")
+    carrier["category"] = "carrier"
+    carrier["result_type"] = "carrier_status"
+    trait = _variant("rs900002", "1", 2000, "G", "A")
+    trait["category"] = "trait"
+    trait["result_type"] = "trait"
+    trait["effect_allele"] = "A"
+    return _panel(carrier, trait)
+
+
+def _run_r61(attempt):
+    """Ticket 2D: findings carry result_type / effect_allele / cls in release
+    format only, and the schema accepts 1.2.0. FAILING on the base commit."""
+    def finding_carries_result_type():
+        doc = _findings([("rs900001", 1, 1000, "A", "G"), ("rs900002", 1, 2000, "A", "A")],
+                        _release_panel())
+        by = {f["rsid"]: f for f in doc["findings"]}
+        _require(f"carrier finding carries result_type carrier_status, got {by['rs900001'].get('result_type')!r}",
+                 by["rs900001"].get("result_type") == "carrier_status")
+        _require(f"trait finding carries result_type trait, got {by['rs900002'].get('result_type')!r}",
+                 by["rs900002"].get("result_type") == "trait")
+        # a release-format panel variant that omits result_type stays absent (no default)
+        only = _variant("rs900001", "1", 1000, "G", "A", effect="A")
+        only["category"] = "trait"
+        marker = _variant("rs900002", "1", 2000, "G", "A")
+        marker["result_type"] = "trait"
+        doc2 = _findings([("rs900001", 1, 1000, "A", "G"), ("rs900002", 1, 2000, "A", "A")],
+                         _panel(only, marker))
+        f0 = doc2["findings"][0]
+        _require("a panel variant without result_type yields a finding without the key",
+                 "result_type" not in f0)
+        return True
+    attempt("R2D.finding_carries_result_type", finding_carries_result_type)
+
+    def finding_carries_effect_allele():
+        doc = _findings([("rs900001", 1, 1000, "A", "G"), ("rs900002", 1, 2000, "A", "A")],
+                        _release_panel())
+        by = {f["rsid"]: f for f in doc["findings"]}
+        _require(f"carrier finding carries effect_allele A, got {by['rs900001'].get('effect_allele')!r}",
+                 by["rs900001"].get("effect_allele") == "A")
+        _require(f"trait finding carries effect_allele A, got {by['rs900002'].get('effect_allele')!r}",
+                 by["rs900002"].get("effect_allele") == "A")
+        # a release-format variant without effect_allele stays absent
+        noeffect = _variant("rs900001", "1", 1000, "G", "A")
+        noeffect["result_type"] = "carrier_status"
+        marker = _variant("rs900002", "1", 2000, "G", "A")
+        marker["result_type"] = "trait"
+        doc2 = _findings([("rs900001", 1, 1000, "A", "G")], _panel(noeffect, marker))
+        _require("a panel variant without effect_allele yields a finding without the key",
+                 "effect_allele" not in doc2["findings"][0])
+        # legacy panel (no result_type anywhere): effect_allele is not copied
+        legacy = _findings([("rs900001", 1, 1000, "A", "G")], _panel(_effect_variant()))
+        _require("a legacy panel finding carries no effect_allele",
+                 "effect_allele" not in legacy["findings"][0])
+        return True
+    attempt("R2D.finding_carries_effect_allele", finding_carries_effect_allele)
+
+    def finding_carries_cls_when_present():
+        doc = _findings([("rs900001", 1, 1000, "A", "G")], _release_panel())
+        _require(f"release finding carries cls risk, got {doc['findings'][0].get('cls')!r}",
+                 doc["findings"][0].get("cls") == "risk")
+        nocl = _variant("rs900001", "1", 1000, "G", "A", effect="A")
+        nocl.pop("cls", None)
+        nocl["result_type"] = "carrier_status"
+        marker = _variant("rs900002", "1", 2000, "G", "A")
+        marker["result_type"] = "trait"
+        doc2 = _findings([("rs900001", 1, 1000, "A", "G")], _panel(nocl, marker))
+        _require("a panel variant without cls yields a finding without the key",
+                 "cls" not in doc2["findings"][0])
+        legacy = _findings([("rs900001", 1, 1000, "A", "G")], _panel(_effect_variant()))
+        _require("a legacy panel finding carries no cls", "cls" not in legacy["findings"][0])
+        return True
+    attempt("R2D.finding_carries_cls_when_present", finding_carries_cls_when_present)
+
+    def schema_version_rule():
+        legacy = _findings([("rs900001", 1, 1000, "A", "G")], _panel(_effect_variant()))
+        _require(f"a legacy panel emits 1.1.0, got {legacy['schema_version']!r}",
+                 legacy["schema_version"] == "1.1.0")
+        rel = _findings([("rs900001", 1, 1000, "A", "G")], _release_panel())
+        _require(f"a release panel emits 1.2.0, got {rel['schema_version']!r}",
+                 rel["schema_version"] == "1.2.0")
+        marker = _variant("rs900002", "1", 2000, "G", "A")
+        marker["result_type"] = "trait"
+        mixed = _findings([("rs900001", 1, 1000, "A", "G")], _panel(_effect_variant(), marker))
+        _require(f"one result_type anywhere makes the document 1.2.0, got {mixed['schema_version']!r}",
+                 mixed["schema_version"] == "1.2.0")
+        return True
+    attempt("R2D.schema_version_rule", schema_version_rule)
+
+    def no_category_key_still_absent():
+        def no_key(obj):
+            if isinstance(obj, dict):
+                return "category" not in obj and all(no_key(v) for v in obj.values())
+            if isinstance(obj, list):
+                return all(no_key(v) for v in obj)
+            return True
+        rel = _findings([("rs900001", 1, 1000, "A", "G"), ("rs900002", 1, 2000, "A", "A")],
+                        _release_panel())
+        _require("release findings carry no category key anywhere", no_key(rel))
+        legacy = _findings([("rs900001", 1, 1000, "A", "G")], _panel(_effect_variant()))
+        _require("legacy findings carry no category key anywhere", no_key(legacy))
+        return True
+    attempt("R2D.no_category_key_still_absent", no_category_key_still_absent)
+
+    def schema_accepts_new_fields():
+        import jsonschema
+        validator = jsonschema.Draft202012Validator(_load(SCHEMA_PATH))
+        doc = _findings([("rs900001", 1, 1000, "A", "G"), ("rs900002", 1, 2000, "A", "A")],
+                        _release_panel())
+        _require(f"the generated document is 1.2.0, got {doc['schema_version']!r}",
+                 doc["schema_version"] == "1.2.0")
+        _require("the finding carries result_type", doc["findings"][0].get("result_type") == "carrier_status")
+        _require("the finding carries effect_allele", doc["findings"][0].get("effect_allele") == "A")
+        _require("the finding carries cls", doc["findings"][0].get("cls") == "risk")
+        errors = list(validator.iter_errors(doc))
+        _require(f"a valid 1.2.0 document validates, got {[e.message for e in errors][:2]}", not errors)
+        return True
+    if _jsonschema() is None:
+        _skip("R2D.schema_accepts_new_fields", "jsonschema not installed")
+    else:
+        attempt("R2D.schema_accepts_new_fields", schema_accepts_new_fields)
+
+    def schema_rejects_unknown_result_type():
+        import copy
+        import jsonschema
+        validator = jsonschema.Draft202012Validator(_load(SCHEMA_PATH))
+        good = _findings([("rs900001", 1, 1000, "A", "G")], _release_panel())
+        good["schema_version"] = "1.2.0"
+        good["findings"][0]["result_type"] = "carrier_status"
+        good["findings"][0]["effect_allele"] = "A"
+        good["findings"][0]["cls"] = "risk"
+        errors = list(validator.iter_errors(good))
+        _require(f"positive control: a 1.2.0 document with known fields validates, got "
+                 f"{[e.message for e in errors][:2]}", not errors)
+        bad = copy.deepcopy(good)
+        bad["findings"][0]["result_type"] = "carrier"
+        _require("an out-of-vocabulary result_type is rejected", bool(list(validator.iter_errors(bad))))
+        return True
+    if _jsonschema() is None:
+        _skip("R2D.schema_rejects_unknown_result_type", "jsonschema not installed")
+    else:
+        attempt("R2D.schema_rejects_unknown_result_type", schema_rejects_unknown_result_type)
+
+    def findings_validate_all_fixtures():
+        import jsonschema
+        validator = jsonschema.Draft202012Validator(_load(SCHEMA_PATH))
+        found = []
+        for name in sorted(os.listdir(FIX)):
+            if not name.endswith(".json"):
+                continue
+            try:
+                obj = _load(os.path.join(FIX, name))
+            except (OSError, ValueError):
+                continue
+            if isinstance(obj, dict) and "schema_version" in obj and "findings" in obj:
+                found.append((name, obj))
+        _require("at least one findings fixture is present", found)
+        for name, obj in found:
+            errors = list(validator.iter_errors(obj))
+            _require(f"findings fixture {name} validates, got {[e.message for e in errors][:2]}", not errors)
+        legacy = _findings([("rs900001", 1, 1000, "A", "G")], _panel(_effect_variant()))
+        rel = _findings([("rs900001", 1, 1000, "A", "G")], _release_panel())
+        _require("a generated legacy document validates", not list(validator.iter_errors(legacy)))
+        _require(f"a generated release document is 1.2.0, got {rel['schema_version']!r}",
+                 rel["schema_version"] == "1.2.0")
+        _require("a generated release document validates", not list(validator.iter_errors(rel)))
+        return True
+    if _jsonschema() is None:
+        _skip("R2D.findings_validate_all_fixtures", "jsonschema not installed")
+    else:
+        attempt("R2D.findings_validate_all_fixtures", findings_validate_all_fixtures)
+
+    def report_validator_unaffected():
+        import validate_report
+        good = validate_report.check(os.path.join(FIX, "findings.sample.json"),
+                                     _load(os.path.join(FIX, "report.sample.json")))
+        _require(f"the sample report still validates, got {good}", not good[0])
+        bad = validate_report.check(os.path.join(FIX, "findings.sample.json"),
+                                    _load(os.path.join(FIX, "report.bad.json")))
+        _require("the bad report is still rejected", bool(bad[0]))
+        return True
+    attempt("R2D.report_validator_unaffected", report_validator_unaffected)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -1111,6 +1301,7 @@ def run(check):
     _run_r58(attempt)
 
     _run_r61_char(attempt)
+    _run_r61(attempt)
 
     _run_characterization(attempt)
     _run_interpretation(attempt)
