@@ -1051,6 +1051,50 @@ def _run_r58_char(attempt):
     attempt("R2C.char_classify_effect_legacy_declared_set", classify_effect_legacy_declared_set)
 
 
+# Ticket 2D C0 (add-only): golden canonical hashes of today's legacy findings
+# output. generated_at is dropped (it is wall-clock); everything else is pinned,
+# so any change to legacy output (a new field, a version bump, an altered value)
+# changes the hash and fails the characterization gate.
+R61_LEGACY_FIXTURE_HASH = "e86cddca2c9fdaa9a3f4474d0c4f41a432090e21e161cebc9089ba2e2e578200"
+R61_LEGACY_INLINE_HASH = "8f30f3abc644383be9631091fee365ca8a36bed500840df9284d70251589d78d"
+
+
+def _r61_canonical_hash(doc):
+    import hashlib
+    d = json.loads(json.dumps(doc))
+    d["provenance"].pop("generated_at", None)
+    return hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()
+
+
+def _run_r61_char(attempt):
+    """Ticket 2D C0 (ADD-ONLY). CHARACTERIZATION: legacy panels (no result_type
+    anywhere) must produce findings byte-identical to today's output. Passes on
+    the base commit and must keep passing unmodified after the 2D change."""
+    def legacy_panel_findings_unchanged():
+        import annotate
+        cases = []
+        fixture_panel = _load(os.path.join(ROOT, "data", "panel.sample.json"))
+        aliases = annotate.load_aliases(os.path.join(ROOT, "data", "condition_aliases.json"))
+        cases.append(("fixture panel",
+                      annotate.build_findings(os.path.join(FIX, "raw.sample.txt"), fixture_panel, aliases),
+                      R61_LEGACY_FIXTURE_HASH))
+        # an inline legacy panel carries cls and effect_allele but no result_type:
+        # none of the three 2D fields may leak into the legacy finding.
+        inline_panel = _panel(_effect_variant(), _refalt_variant())
+        inline_rows = [("rs900001", 1, 1000, "A", "G"), ("rs900002", 1, 2000, "A", "A")]
+        cases.append(("inline legacy panel", _findings(inline_rows, inline_panel), R61_LEGACY_INLINE_HASH))
+        for label, doc, want in cases:
+            got = _r61_canonical_hash(doc)
+            _require(f"{label}: legacy findings hash changed, got {got}, want {want}", got == want)
+            _require(f"{label}: schema_version is 1.1.0, got {doc['schema_version']!r}",
+                     doc["schema_version"] == "1.1.0")
+            for f in doc["findings"]:
+                for key in ("result_type", "effect_allele", "cls"):
+                    _require(f"{label}: legacy finding {f['finding_id']} must not carry {key}", key not in f)
+        return True
+    attempt("R2D.legacy_panel_findings_unchanged", legacy_panel_findings_unchanged)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -1065,6 +1109,8 @@ def run(check):
 
     _run_r58_char(attempt)
     _run_r58(attempt)
+
+    _run_r61_char(attempt)
 
     _run_characterization(attempt)
     _run_interpretation(attempt)
