@@ -2849,7 +2849,7 @@ NON_AUTOSOMAL_POOL = ("rs1050828", "rs6152")
 GOAL_BOUND = 6
 RESERVE_BOUND = 3
 METHOD_HASH_1BA = "5d975e62ab8e4888594651735196b3d06208d2e57671289f902b621abdb4e1df"
-PACK_IDS = ("N0a", "N0b", "N0c")
+PACK_IDS = ("N0a", "N0b", "N0c", "N0d")
 
 
 def _method_sections_text(text):
