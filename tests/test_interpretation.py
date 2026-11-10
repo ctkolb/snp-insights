@@ -988,6 +988,24 @@ def _run_fix_round(attempt):
     attempt("R2A.T1_alphabet_is_exactly_the_assayability_letters", t1_alphabet_is_exactly_the_assayability_letters)
 
 
+def _run_r58_char(attempt):
+    """Ticket 2C C0: today's classify_effect on legacy panels (no alternate list)."""
+    import annotate
+
+    def classify_effect_legacy_declared_set():
+        cases = [
+            ((["A", "G"], "A", "G", "A", "snp"), ("het", True)),
+            ((["G", "G"], "A", "G", "A", "snp"), ("hom_ref", False)),
+            ((["A", "A"], "A", "G", "A", "snp"), ("hom_alt", True)),
+            ((["A", "C"], "A", "G", "A", "snp"), ("unknown", None)),
+            ((["C", "C"], "A", "G", "A", "snp"), ("unknown", None)),
+            ((["D", "D"], "D", None, None, "indel"), ("hom_alt", True)),
+            ((["I", "I"], "D", None, None, "indel"), ("hom_ref", False)),
+        ]
+        return all(annotate.classify_effect(*args) == want for args, want in cases)
+    attempt("R2C.char_classify_effect_legacy_declared_set", classify_effect_legacy_declared_set)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -999,6 +1017,8 @@ def run(check):
         if not result:
             print(f"  detail {name}: gate returned false")
         check(name, bool(result))
+
+    _run_r58_char(attempt)
 
     _run_characterization(attempt)
     _run_interpretation(attempt)

@@ -26,6 +26,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -3307,6 +3308,42 @@ def _run_1b_b_r55(attempt):
     attempt("R1B.r55_health_rows_cite_attributing_rcv", real_health_rows_cite_attributing_rcv)
 
 
+def _run_r58_char(attempt):
+    """Ticket 2C C0: pin behavior this work must not change."""
+    def panel_sample_reproduces():
+        out = os.path.join(tempfile.mkdtemp(), "panel.check.json")
+        cmd = [sys.executable, os.path.join(ROOT, "tools", "build_panel.py"),
+               "--targets", os.path.join(DATA, "targets.sample.json"),
+               "--clinvar", os.path.join(ROOT, "fixtures", "sources", "clinvar.sample.tsv"),
+               "--gnomad", os.path.join(ROOT, "fixtures", "sources", "gnomad.sample.vcf"),
+               "-o", out]
+        proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+        if proc.returncode != 0:
+            return False
+        with open(out) as fh:
+            got = fh.read()
+        with open(os.path.join(DATA, "panel.sample.json")) as fh:
+            want = fh.read()
+        return got == want
+    attempt("R2C.char_panel_sample_reproduces", panel_sample_reproduces)
+
+    def legacy_associations_unchanged():
+        with open(os.path.join(DATA, "panel.sample.json")) as fh:
+            panel = json.load(fh)
+        got = {v["rsid"]: v["association"] for v in panel["variants"] if v.get("rsid")}
+        want = {"rs4988235": "established", "rs6025": "established", "rs429358": "none",
+                "rs80357906": "established", "rs1800562": "established", "rs1799945": "conflicting",
+                "rs1333049": "single_study", "rs121918897": "single_study", "rs113993960": "established"}
+        return got == want
+    attempt("R2C.char_legacy_associations_unchanged", legacy_associations_unchanged)
+
+    def conflicting_tier_unchanged():
+        import evidence
+        return (evidence.clinvar_tier("Conflicting interpretations of pathogenicity", 1) == "conflicting"
+                and evidence.clinvar_tier("Conflicting classifications of pathogenicity", 3) == "conflicting")
+    attempt("R2C.char_conflicting_tier_unchanged", conflicting_tier_unchanged)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -3318,6 +3355,8 @@ def run(check):
         if not result:
             print(f"  detail {name}: gate returned false")
         check(name, bool(result))
+
+    _run_r58_char(attempt)
 
     _run_characterization(attempt)
     _run_invariants(attempt)
