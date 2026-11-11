@@ -246,6 +246,10 @@ def _run_pipeline_body(raw, panel, out_dir, force, forwarded, after):
                 print("  " + p, file=sys.stderr)
             return 1
 
+    if _within_root(out_dir):
+        print("snp-insights run: WARNING: the output directory is inside the "
+              "repository checkout", file=sys.stderr)
+
     try:
         os.makedirs(out_dir, exist_ok=True)
     except OSError as exc:

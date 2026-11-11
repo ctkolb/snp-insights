@@ -190,6 +190,9 @@ python -m snp_insights run fixtures/raw.sample.txt data/panel.sample.json \
 - The online privacy gate is untouched: `run ... --endpoint openrouter` without
   `--accept-privacy-risk` exits with code 2 and makes no HTTP call.
 
+For running the pipeline on your own file and keeping the output private, follow
+the owner checkpoint procedure: [docs/owner-checkpoint.md](docs/owner-checkpoint.md).
+
 ### Validate and render an existing IR (optional)
 
 ```bash
