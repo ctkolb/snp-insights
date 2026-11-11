@@ -937,6 +937,113 @@ def run(check):
     attempt("R3A.checkpoint_doc_names_release_panel",
             r3a_checkpoint_doc_names_release_panel)
 
+    # --- R3A: owner-checkpoint document accuracy (r71) -------------------
+    RELEASE_RAW = os.path.join(FIX, "raw.release.synthetic.txt")
+    RELEASE_PANEL_ABS = os.path.join(ROOT, RELEASE_PANEL)
+
+    def _doc_flat():
+        return " ".join(_doc_text().lower().split())
+
+    def _release_raw_hash():
+        import hashlib
+        with open(RELEASE_RAW, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+
+    def _synthetic_release_run(out_dir):
+        env = dict(os.environ)
+        env["PYTHONPATH"] = ROOT + os.pathsep + env.get("PYTHONPATH", "")
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        return subprocess.run(
+            [sys.executable, "-B", "-m", "snp_insights", "run", RELEASE_RAW,
+             RELEASE_PANEL_ABS, "--out-dir", out_dir, "--template-only"],
+            cwd=out_dir, capture_output=True, text=True, env=env)
+
+    def r3a_checkpoint_doc_hash_statement():
+        flat = _doc_flat()
+        if ("always contains the raw-file sha-256 in `provenance.input_hash`"
+                not in flat):
+            return False
+        if "`--keep-input-hash` does not remove it from this file" not in flat:
+            return False
+        if "--no-hash" not in _doc_text():
+            return False
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "out")
+            proc = _synthetic_release_run(out)
+            if proc.returncode != 0:
+                return False
+            with open(os.path.join(out, "findings.json"), encoding="utf-8") as fh:
+                findings = fh.read()
+        return _release_raw_hash() in findings
+    attempt("R3A.checkpoint_doc_hash_statement", r3a_checkpoint_doc_hash_statement)
+
+    def r3a_checkpoint_doc_output_file_descriptions():
+        flat = _doc_flat()
+        raw_hash = _release_raw_hash()
+        raw_path = os.path.realpath(RELEASE_RAW)
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "out")
+            proc = _synthetic_release_run(out)
+            if proc.returncode != 0:
+                return False
+            texts = {}
+            for name in OUTPUTS:
+                with open(os.path.join(out, name), encoding="utf-8") as fh:
+                    texts[name] = fh.read()
+        if raw_hash not in texts["findings.json"]:
+            return False
+        if raw_hash not in texts["report.md"]:
+            return False
+        if raw_hash not in texts["report.run.json"]:
+            return False
+        if raw_hash in texts["report.ir.json"]:
+            return False
+        if '"allele1"' not in texts["findings.json"]:
+            return False
+        for name in ("report.md", "report.ir.json", "report.run.json"):
+            if '"allele1"' in texts[name]:
+                return False
+        for name in OUTPUTS:
+            if raw_path in texts[name] or RELEASE_RAW in texts[name]:
+                return False
+        required = (
+            "always contains the raw-file sha-256 in `provenance.input_hash`",
+            "does not remove it from this file",
+            "`report.md` also includes the input hash",
+            "`report.run.json` records it",
+            "`report.ir.json` contains the findings-file hash",
+            "all four files contain private health-relevant data",
+        )
+        return all(phrase in flat for phrase in required)
+    attempt("R3A.checkpoint_doc_output_file_descriptions",
+            r3a_checkpoint_doc_output_file_descriptions)
+
+    def r3a_checkpoint_doc_adequacy_no_trait_cutoff():
+        flat = _doc_flat()
+        if "measured trait entries" in flat:
+            return False
+        if "aggregate judgment" not in flat or "counts only" not in flat:
+            return False
+        return "trait-count cutoff cannot distinguish" in flat
+    attempt("R3A.checkpoint_doc_adequacy_no_trait_cutoff",
+            r3a_checkpoint_doc_adequacy_no_trait_cutoff)
+
+    def r3a_checkpoint_doc_no_sharing_one_line():
+        flat = _doc_flat()
+        if "one line and nothing more" not in flat:
+            return False
+        if "do not share the reproduction" not in flat:
+            return False
+        if "not private data" not in flat or "never required" not in flat:
+            return False
+        for bad in ("plus the complete report",
+                    "share only that synthetic reproduction"):
+            if bad in flat:
+                return False
+        return True
+    attempt("R3A.checkpoint_doc_no_sharing_one_line",
+            r3a_checkpoint_doc_no_sharing_one_line)
+
 
 def main():
     passed, failed = [], []
