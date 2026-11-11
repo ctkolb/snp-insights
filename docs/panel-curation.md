@@ -546,3 +546,28 @@ of the `variant_summary` aggregate for the entry's ClinVar block, and never
 marks a trait target's ClinVar evidence matched. A release-format targets file
 with a carrier entry refuses to build without the flag.
 
+## Release panel build
+
+The v0.1.0 release panel is the reproducible build of the curated targets
+`data/targets.release.json` against the frozen public-evidence pack of step N1,
+committed byte-for-byte as `data/targets.release-panel.json`. The file is a built
+artifact, not a hand-edited curation record; its `targets.*`-style name is a
+documented limitation (it shares the curated-targets naming pattern only).
+
+- Evidence pack: N1 (public-reference request list approved 2026-11-11; the pack stays outside the repository)
+- Pack manifest sha256: 63a702401febcb722ef9795e0a27ab2dc26ad3aaedf04c3e9f9dba721865cab0
+- Capture time (UTC, ISO): 2026-11-11T19:57:14Z
+- Built from the clean export of commit: 81c53e9a8418da764fbe27957cbf29da2f4a7224
+- Build command (run from that export, no network; `<N1>` is the pack root):
+
+```
+python3.12 -B tools/build_panel.py --targets data/targets.release.json \
+  --curated-evidence data/targets.release-evidence.json --cache <N1>/run/cache \
+  --retrieved-at 2026-11-11T19:57:14Z --dbsnp-release variation-api-2026-11-11 \
+  --clinvar-release variant_summary-2026-11-11 --gnomad-release graphql-2026-11-11 \
+  --gwas-release opentargets-2026-11-11 -o panel.release-panel.labeled.json
+```
+
+- Determinism: two independent builds from the same frozen cache were byte-identical (`cmp`).
+- Panel file sha256: 36b597d137e5f8f7431bbb289f5a1eac68ec161f380781db08bb45b0e6581024
+

@@ -67,6 +67,26 @@ def rarity_class(af):
     return "ultra_rare"
 
 
+def release_rarity_class(variant, af):
+    """Rarity for a release-format variant, from the effect allele's frequency.
+
+    gnomad_af when the effect allele is the panel alternate allele; 1 - gnomad_af
+    when it is the reference allele (a documented approximation when other rare
+    alternates exist); "unknown" otherwise (another alternate, an indel I/D, or
+    no frequency at all). Legacy variants use `rarity_class` on the raw value.
+    """
+    effect = variant.get("effect_allele")
+    if af is None or not effect:
+        return "unknown"
+    if variant.get("assayability") == "indel" or effect in ("I", "D"):
+        return "unknown"
+    if effect == variant.get("alternate_allele"):
+        return rarity_class(af)
+    if effect == variant.get("reference_allele"):
+        return rarity_class(1 - af)
+    return "unknown"
+
+
 def classify(alleles, ref, alt):
     """Return (zygosity, is_variant). is_variant is None when uninterpretable."""
     if ref is None or alt is None:
@@ -257,7 +277,14 @@ def annotate_variant(variant, raw, merges=None, sex="unknown", panel_build=SUPPO
                         "zygosity": zygosity, "strand": strand}
 
     sig = (variant.get("clinvar") or {}).get("significance")
-    rc = rarity_class(variant.get("gnomad_af"))
+    af = variant.get("gnomad_af")
+    # Release format (ticket 2E): a variant that carries result_type derives its
+    # rarity from the effect allele's frequency; legacy variants keep today's
+    # rarity (rarity_class of the raw gnomad_af).
+    if "result_type" in variant:
+        rc = release_rarity_class(variant, af)
+    else:
+        rc = rarity_class(af)
     ppv = None
     if (state == "detected" and call.get("zygosity") in ("het", "hom_alt")
             and sig in ("Pathogenic", "Likely pathogenic") and rc in ("rare", "ultra_rare")):

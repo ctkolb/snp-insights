@@ -3943,6 +3943,7 @@ def _fixture_path(name):
 
 
 def _annotate_fixture(name, panel):
+    sys.path.insert(0, os.path.join(ROOT, "stage2"))
     import annotate
     return annotate.build_findings(_fixture_path(name), panel, {})
 
