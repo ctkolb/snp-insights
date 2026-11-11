@@ -51,8 +51,11 @@ less "$PRIV/out-<commit>/report.md"
 
 `run` writes four files into `--out-dir` (created if needed):
 
-- `findings.json` — the structured findings; contains the raw-file hash unless
-  the run is given `--keep-input-hash`-style options, and health-relevant data.
+- `findings.json` — structured findings and health-relevant data. It always
+  contains the raw-file SHA-256 in `provenance.input_hash`; `--keep-input-hash`
+  does not remove it from this file. In template-only/local runs, `report.md`
+  also includes the input hash, and `report.run.json` records it.
+  `report.ir.json` contains the findings-file hash.
 - `report.md` — the human-readable report.
 - `report.ir.json` — the report's intermediate representation.
 - `report.run.json` — the run audit record.
@@ -70,14 +73,18 @@ Send the orchestrator one line and nothing more: the commit id, the phrase
 No report text, rsIDs, genotypes, hashes, states, or counts. Do not share the
 raw file, `findings.json`, any `report.*` file, run logs, or a coverage list.
 If you suspect a defect, reproduce it with a synthetic file of the same shape
-and share only that synthetic reproduction.
+for your own diagnosis. Do not share the reproduction; report only the
+one-line outcome above. A reproduction built only from invented data is not
+private data; you may offer it if you choose, but it is never required and
+never derived from the real run.
 
 ## Aggregate adequacy rule
 
 Whether the panel is adequate is the owner's aggregate judgment from counts only.
-The suggested local definition of poor coverage is fewer than three
-measured trait entries or fewer than three measured health entries; you decide.
-No per-marker coverage is ever placed in a report to an orchestrator.
+This release has no trait entries, so a trait-count cutoff cannot distinguish
+coverage in v0.1.0. Consider the aggregate measured health-entry count and other
+locally observed aggregate coverage totals, then choose the outcome yourself.
+Do not share per-marker coverage.
 
 ## Current release facts
 
