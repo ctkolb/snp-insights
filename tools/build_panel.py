@@ -345,7 +345,7 @@ def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, sn
             label = t.get("rsid") or t.get("gene")
             raise ValueError(f"invalid category {category!r} for {label}")
         result_type = t.get("result_type")
-        if result_type is not None:
+        if "result_type" in t:
             label = t.get("rsid") or t.get("gene")
             if result_type not in RESULT_TYPES:
                 raise ValueError(f"invalid result_type {result_type!r} for {label}")
