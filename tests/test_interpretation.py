@@ -1356,6 +1356,49 @@ def _run_r65_char(attempt):
     attempt("R2E.char_legacy_rarity_unchanged", legacy_rarity_unchanged)
 
 
+def _run_r65(attempt):
+    """Ticket 2E: for a release-format variant (one carrying result_type), rarity
+    is computed from the EFFECT allele's frequency. FAILING on the base commit."""
+    def _release(**kw):
+        v = _variant("rs900001", "1", 1000, "G", "A", effect="A")
+        v["category"] = "carrier"
+        v["result_type"] = "carrier_status"
+        v.update(kw)
+        return v
+
+    def _rc(variant, call=("A", "G")):
+        f = _finding([("rs900001", 1, 1000, call[0], call[1])], variant)
+        return f["confidence"]["array_reliability"]["rarity_class"]
+
+    def rarity_effect_allele():
+        # effect allele is the reference allele: rarity from 1 - gnomad_af
+        v = _release(effect_allele="G", gnomad_af=0.983)
+        _require(f"effect=reference rarity, got {_rc(v)!r}", _rc(v) == "low_frequency")
+        # effect allele is the panel alternate allele: rarity from gnomad_af
+        v = _release(effect_allele="A", gnomad_af=0.001)
+        _require(f"effect=alternate rarity, got {_rc(v)!r}", _rc(v) == "rare")
+        # effect allele is another alternate allele: unknown
+        v = _release(effect_allele="T", alternate_alleles=["A", "T"], gnomad_af=0.02)
+        _require(f"effect=other-alternate rarity, got {_rc(v)!r}", _rc(v) == "unknown")
+        # an indel effect allele is unknown
+        iv = _variant("rs900001", "1", 1000, "G", "A", effect="D", assay="indel")
+        iv["category"] = "carrier"
+        iv["result_type"] = "carrier_status"
+        iv["gnomad_af"] = 0.02
+        f = _finding([("rs900001", 1, 1000, "I", "D")], iv)
+        _require("indel effect rarity is unknown",
+                 f["confidence"]["array_reliability"]["rarity_class"] == "unknown")
+        # missing frequency: unknown
+        v = _release(effect_allele="A", gnomad_af=None)
+        _require("missing frequency rarity is unknown", _rc(v) == "unknown")
+        # legacy variant (no result_type) keeps gnomad_af as given
+        lv = _variant("rs900001", "1", 1000, "G", "A", effect="G")
+        lv["gnomad_af"] = 0.983
+        _require("legacy effect=reference unchanged", _rc(lv) == "common")
+        return True
+    attempt("R2E.rarity_effect_allele", rarity_effect_allele)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -1375,6 +1418,7 @@ def run(check):
     _run_r61(attempt)
     _run_r63(attempt)
     _run_r65_char(attempt)
+    _run_r65(attempt)
 
     _run_characterization(attempt)
     _run_interpretation(attempt)

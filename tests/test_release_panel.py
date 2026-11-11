@@ -3902,6 +3902,306 @@ def _run_r64(attempt):
     attempt("R63.validation_with_explicit_association", validation_with_explicit_association)
 
 
+# =============================================================================
+# R2E: the committed release panel file and the synthetic end-to-end pipeline
+# (ticket 2E, R-1 amendment: the built panel is data/targets.release-panel.json).
+# =============================================================================
+RELEASE_PANEL_REL = "data/targets.release-panel.json"
+RELEASE_PANEL_PATH = os.path.join(ROOT, *RELEASE_PANEL_REL.split("/"))
+EXCLUDED_CHROMOSOMES = frozenset(NON_AUTOSOMAL_NAMES)
+PANEL_SOURCE_DEFAULTS = {
+    "dbSNP": "b156", "ClinVar": "2026-09", "gnomAD": "v4.0", "GWAS Catalog": "2026-10",
+}
+DEFAULT_RETRIEVED_AT = "2026-10-01T00:00:00Z"
+R2E_FIXTURES = ("raw.release.synthetic.txt", "raw.release.synthetic.states.txt")
+# The plan's state table: per fixture rsID, (state, call zygosity).
+R2E_EXPECTED = {
+    "raw.release.synthetic.txt": {
+        "rs1800562": ("detected", "het"),
+        "rs1799963": ("detected", "hom_alt"),
+        "rs6025": ("covered_reference", "hom_ref"),
+    },
+    "raw.release.synthetic.states.txt": {
+        "rs1800562": ("covered_nocall", "unknown"),
+        "rs1799963": ("covered_uninterpretable", "unknown"),
+        "rs6025": ("not_covered", None),
+    },
+}
+
+
+def read_panel():
+    _require(f"{RELEASE_PANEL_REL} missing", os.path.exists(RELEASE_PANEL_PATH))
+    with open(RELEASE_PANEL_PATH, encoding="utf-8") as fh:
+        try:
+            return json.load(fh)
+        except ValueError as exc:
+            raise AssertionError(f"{RELEASE_PANEL_REL} is not valid JSON: {exc}")
+
+
+def _fixture_path(name):
+    return os.path.join(ROOT, "fixtures", name)
+
+
+def _annotate_fixture(name, panel):
+    import annotate
+    return annotate.build_findings(_fixture_path(name), panel, {})
+
+
+def _release_e2e(name, panel):
+    """annotate -> deterministic template IR -> validate_report; returns
+    (findings doc, report IR, errors, findings path)."""
+    import validate_report
+    sys.path.insert(0, os.path.join(ROOT, "stage3"))
+    import run as stage3_run
+    doc = _annotate_fixture(name, panel)
+    directory = tempfile.mkdtemp(prefix="r2e-e2e-")
+    findings_path = os.path.join(directory, "findings.json")
+    with open(findings_path, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+    report = stage3_run.template_ir(doc, stage3_run.sha256_file(findings_path))
+    errors, _ = validate_report.check(findings_path, report, findings=doc)
+    return doc, report, errors, findings_path
+
+
+def _run_r65(attempt):
+    def panel_matches_targets():
+        panel, targets = read_panel(), read_targets()
+        pv = panel.get("variants", [])
+        tv = targets.get("variants", [])
+        _require("panel is not in release format", all("result_type" in v for v in pv))
+        _require("panel/targets rsID sets differ",
+                 {v["rsid"] for v in pv} == {t["rsid"] for t in tv})
+        by_t = {t["rsid"]: t for t in tv}
+        for v in pv:
+            rs = v["rsid"]
+            for key in ("chromosome", "position", "reference_allele", "alternate_allele",
+                        "effect_allele", "category", "result_type", "gene", "condition"):
+                _require(f"{rs} missing {key}", v.get(key) not in (None, ""))
+            _require(f"{rs} association is {v.get('association')!r}",
+                     v.get("association") not in (None, "", "unknown"))
+            _require(f"{rs} effect_allele differs from targets",
+                     v["effect_allele"] == by_t[rs]["effect_allele"])
+            _require(f"{rs} chromosome differs from targets",
+                     str(v["chromosome"]) == str(by_t[rs].get("chromosome", v["chromosome"]))
+                     or "chromosome" not in by_t[rs])
+            _require(f"{rs} result_type differs from targets",
+                     v["result_type"] == by_t[rs]["result_type"])
+        return True
+    attempt("R2E.panel_matches_targets", panel_matches_targets)
+
+    def panel_sources_not_defaults():
+        panel = read_panel()
+        sources = {s["source"]: s for s in panel.get("sources", [])}
+        _require("panel sources incomplete: " + repr(sorted(sources)),
+                 set(PANEL_SOURCE_DEFAULTS) <= set(sources))
+        for name, default in PANEL_SOURCE_DEFAULTS.items():
+            s = sources[name]
+            _require(f"{name} release is the tool default {default!r}", s["release"] != default)
+            _require(f"{name} retrieved_at is the tool default {DEFAULT_RETRIEVED_AT!r}",
+                     s["retrieved_at"] != DEFAULT_RETRIEVED_AT)
+            _require(f"{name} retrieved_at not an ISO-8601 UTC stamp: {s['retrieved_at']!r}",
+                     re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", s["retrieved_at"]) is not None)
+        _require("gnomAD label does not name the GraphQL dataset",
+                 "graphql" in sources["gnomAD"]["release"].lower())
+        return True
+    attempt("R2E.panel_sources_not_defaults", panel_sources_not_defaults)
+
+    def panel_build_grch37():
+        panel = read_panel()
+        _require(f"panel genome_build {panel.get('genome_build')!r}",
+                 panel.get("genome_build") == "GRCh37")
+        _require(f"panel strand {panel.get('strand')!r}", panel.get("strand") == "forward")
+        return True
+    attempt("R2E.panel_build_grch37", panel_build_grch37)
+
+    def panel_has_no_excluded_chromosome():
+        panel = read_panel()
+        entries = panel.get("variants", [])
+        res = check_chromosomes([], entries)  # reuse the AUTO-1 checker (self-tested)
+        _require("panel chromosome check: " + "; ".join(res), not res)
+        direct = [v["rsid"] for v in entries
+                  if str(v.get("chromosome")) not in AUTOSOMES
+                  or str(v.get("chromosome")) in EXCLUDED_CHROMOSOMES]
+        _require("excluded chromosome in panel: " + repr(direct), not direct)
+        return True
+    attempt("R2E.panel_has_no_excluded_chromosome", panel_has_no_excluded_chromosome)
+
+    def panel_pairs_valid():
+        panel = read_panel()
+        targets = {t["rsid"]: t for t in read_targets().get("variants", [])}
+        entries = panel.get("variants", [])
+        res = check_pairs(entries)  # reuse the category x result-type truth table
+        _require("panel pair check: " + "; ".join(res), not res)
+        for v in entries:
+            t = targets.get(v["rsid"])
+            _require(f"{v['rsid']} not in targets", t is not None)
+            _require(f"{v['rsid']} pair differs from targets entry",
+                     (t["category"], t["result_type"]) == (v["category"], v["result_type"]))
+        return True
+    attempt("R2E.panel_pairs_valid", panel_pairs_valid)
+
+    def panel_file_equals_n1_hash():
+        _require(f"{RELEASE_PANEL_REL} missing", os.path.exists(RELEASE_PANEL_PATH))
+        body = section_body(read_doc(), "Release panel build")
+        _require("`## Release panel build` section missing", body is not None)
+        m = re.search(r"panel file sha256[:\s]+`?([0-9a-f]{64})`?", body, re.I)
+        _require("the section does not record the panel file sha256", m is not None)
+        want = m.group(1)
+        got = _sha256_file(RELEASE_PANEL_PATH)
+        _require(f"recorded panel sha256 {want} != file sha256 {got}", want == got)
+        return True
+    attempt("R2E.panel_file_equals_n1_hash", panel_file_equals_n1_hash)
+
+    def synthetic_covers_every_state():
+        panel = read_panel()
+        seen = set()
+        for name in R2E_FIXTURES:
+            for f in _annotate_fixture(name, panel)["findings"]:
+                seen.add((f["state"], f["call"].get("zygosity")))
+        required = {("detected", "het"), ("detected", "hom_alt"), ("covered_reference", "hom_ref"),
+                    ("covered_nocall", "unknown"), ("not_covered", None),
+                    ("covered_uninterpretable", "unknown")}
+        _require("fixtures miss states: " + repr(sorted(required - seen)), not required - seen)
+        return True
+    attempt("R2E.synthetic_covers_every_state", synthetic_covers_every_state)
+
+    def e2e_template_validates():
+        panel = read_panel()
+        for name in R2E_FIXTURES:
+            _, _, errors, _ = _release_e2e(name, panel)
+            _require(f"{name}: template IR fails validation: {errors}", not errors)
+        return True
+    attempt("R2E.e2e_template_validates", e2e_template_validates)
+
+    def e2e_states_match_expected_table():
+        panel = read_panel()
+        for name, expected in R2E_EXPECTED.items():
+            by = {f["rsid"]: f for f in _annotate_fixture(name, panel)["findings"]}
+            for rs, (state, zygosity) in expected.items():
+                f = by.get(rs)
+                _require(f"{name}: {rs} absent from findings", f is not None)
+                _require(f"{name}: {rs} state {f['state']!r} != {state!r}", f["state"] == state)
+                _require(f"{name}: {rs} zygosity {f['call'].get('zygosity')!r} != {zygosity!r}",
+                         f["call"].get("zygosity") == zygosity)
+        return True
+    attempt("R2E.e2e_states_match_expected_table", e2e_states_match_expected_table)
+
+    def e2e_effect_het_hom_ref_nocall_notcovered_uninterpretable():
+        panel = read_panel()
+        seen = {}
+        for name in R2E_FIXTURES:
+            for f in _annotate_fixture(name, panel)["findings"]:
+                seen.setdefault(f["state"], set()).add(f["call"].get("zygosity"))
+        _require("no effect het", "het" in seen.get("detected", set()))
+        _require("no effect hom", "hom_alt" in seen.get("detected", set()))
+        _require("no reference hom", "hom_ref" in seen.get("covered_reference", set()))
+        _require("no no-call", "covered_nocall" in seen)
+        _require("no not-covered", "not_covered" in seen)
+        _require("no uninterpretable", "covered_uninterpretable" in seen)
+        return True
+    attempt("R2E.e2e_effect_het_hom_ref_nocall_notcovered_uninterpretable",
+            e2e_effect_het_hom_ref_nocall_notcovered_uninterpretable)
+
+    def e2e_missing_coverage_never_absent_wording():
+        import validate_report
+        panel = read_panel()
+        # the lint must be live: absent/negativity wording is refused for a
+        # not-measured state (control), and no rendered claim trips it.
+        control = {"rsid": "rs6025", "finding_id": "f_control", "state": "not_covered"}
+        _require("the coverage lint is not live",
+                 bool(validate_report.semantic_violations("rs6025 is absent.", [control])))
+        for name in R2E_FIXTURES:
+            doc, report, _, _ = _release_e2e(name, panel)
+            by = {f["finding_id"]: f for f in doc["findings"]}
+            for sec in report["sections"]:
+                for cl in sec["claims"]:
+                    cited = [by[c["finding_id"]] for c in cl["citations"] if c["finding_id"] in by]
+                    bad = validate_report.semantic_violations(cl["text"], cited)
+                    _require(f"{name}/{cl['claim_id']}: {bad}", not bad)
+        return True
+    attempt("R2E.e2e_missing_coverage_never_absent_wording", e2e_missing_coverage_never_absent_wording)
+
+    def e2e_citations_resolve():
+        import validate_report
+        panel = read_panel()
+        for name in R2E_FIXTURES:
+            doc, report, _, _ = _release_e2e(name, panel)
+            by = {f["finding_id"]: f for f in doc["findings"]}
+            for sec in report["sections"]:
+                for cl in sec["claims"]:
+                    _require(f"{name}/{cl['claim_id']} has no citation", bool(cl["citations"]))
+                    for cit in cl["citations"]:
+                        fid = cit["finding_id"]
+                        _require(f"{name}/{cl['claim_id']} cites unknown {fid}", fid in by)
+                        try:
+                            validate_report.resolve(by[fid], cit["field_path"])
+                        except KeyError:
+                            _require(f"{name}/{cl['claim_id']} field_path {cit['field_path']!r} unresolved",
+                                     False)
+        return True
+    attempt("R2E.e2e_citations_resolve", e2e_citations_resolve)
+
+    def e2e_no_real_data_markers():
+        panel = read_panel()
+        release = {v["rsid"] for v in panel["variants"]}
+        used = set()
+        for name in R2E_FIXTURES:
+            path = _fixture_path(name)
+            _require(f"{name} missing", os.path.exists(path))
+            with open(path, encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+            _require(f"{name}: header is not marked synthetic",
+                     any("synthetic" in ln.lower() for ln in lines))
+            rows = [ln.split("\t") for ln in lines
+                    if ln and not ln.startswith("#") and ln.split("\t")[0] != "rsid"]
+            _require(f"{name}: expected a small invented file, got {len(rows)} data rows", len(rows) <= 8)
+            for cells in rows:
+                _require(f"{name}: row is not five columns: {cells!r}", len(cells) == 5)
+                used.add(cells[0])
+        _require("fixture rows name non-panel rsIDs: " + repr(sorted(used - release)),
+                 used <= release)
+        _require("fixtures do not exercise every release rsID: " + repr(sorted(release - used)),
+                 release <= used)
+        return True
+    attempt("R2E.e2e_no_real_data_markers", e2e_no_real_data_markers)
+
+    def e2e_run_template_only_cli():
+        panel_path = RELEASE_PANEL_PATH
+        _require(f"{RELEASE_PANEL_REL} missing", os.path.exists(panel_path))
+        name = R2E_FIXTURES[0]
+        out = tempfile.mkdtemp(prefix="r2e-cli-")
+        proc = subprocess.run(
+            [sys.executable, "-m", "snp_insights", "run", _fixture_path(name), panel_path,
+             "--out-dir", out, "--template-only"],
+            cwd=ROOT, capture_output=True, text=True)
+        _require(f"cli exit {proc.returncode}; stderr={proc.stderr!r}", proc.returncode == 0)
+        for fn in ("findings.json", "report.md", "report.ir.json", "report.run.json"):
+            path = os.path.join(out, fn)
+            _require(f"cli did not write {fn}", os.path.exists(path))
+            mode = os.stat(path).st_mode & 0o777
+            _require(f"{fn} mode {oct(mode)}, expected 0o600", mode == 0o600)
+        dmode = os.stat(out).st_mode & 0o777
+        _require(f"out dir mode {oct(dmode)}, expected 0o700", dmode == 0o700)
+        with open(os.path.join(out, "report.run.json"), encoding="utf-8") as fh:
+            audit = json.load(fh)
+        _require(f"audit used_fallback {audit.get('used_fallback')!r}", audit.get("used_fallback") is True)
+        _require(f"audit endpoint {audit.get('endpoint')!r}", audit.get("endpoint") == "ollama")
+        return True
+    attempt("R2E.e2e_run_template_only_cli", e2e_run_template_only_cli)
+
+    def e2e_no_hemizygous_or_homoplasmic_zygosity():
+        panel = read_panel()
+        bad = []
+        for name in R2E_FIXTURES:
+            for f in _annotate_fixture(name, panel)["findings"]:
+                if f["call"].get("zygosity") in ("hemizygous", "homoplasmic"):
+                    bad.append((name, f["rsid"]))
+        _require("haploid zygosity present: " + repr(bad), not bad)
+        return True
+    attempt("R2E.e2e_no_hemizygous_or_homoplasmic_zygosity",
+            e2e_no_hemizygous_or_homoplasmic_zygosity)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -3934,6 +4234,7 @@ def run(check):
     _run_1b_b_r55(attempt)
     _run_r61(attempt)
     _run_r64(attempt)
+    _run_r65(attempt)
 
 
 def main():
