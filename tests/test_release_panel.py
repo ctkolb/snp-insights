@@ -3439,16 +3439,13 @@ def _check_evidence(w):
 
 
 def _assoc_for(sig, stars, result_type, category="carrier"):
-    import build_panel
-    entry = {"rsid": "rsX", "gene": "G", "condition": "C", "category": category,
-             "effect_allele": "A", "assayability": "snp"}
-    if result_type is not None:
-        entry["result_type"] = result_type
-    curated = {"rsX": {"rsid": "rsX", "condition": "C",
-                       "clinvar_record": "clinvar:rcv:RCV900000001",
-                       "significance": sig, "review_status": "x", "review_stars": stars}}
-    return build_panel.build({"variants": [entry]}, sources=[], clinvar={},
-                              curated=curated)["variants"][0]["association"]
+    # Ticket 2D: build_panel now rejects the off-table (carrier, trait) pair that
+    # this tier matrix exercises, so derive through evidence.derive_association
+    # directly. The tier depends only on result_type; every matrix assertion is
+    # unchanged.
+    import evidence
+    cv = {"significance": sig, "review_stars": stars}
+    return evidence.derive_association(category, cv, None, True, result_type)
 
 
 def _run_r58(attempt):

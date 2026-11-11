@@ -194,7 +194,8 @@ def locate(variant, raw, merges=None, panel_build=SUPPORTED_BUILD):
             other_chromosome + ["panel locus (rsID+position) not present in file manifest"])
 
 
-def annotate_variant(variant, raw, merges=None, sex="unknown", panel_build=SUPPORTED_BUILD):
+def annotate_variant(variant, raw, merges=None, sex="unknown", panel_build=SUPPORTED_BUILD,
+                     release_format=False):
     chrom, pos = variant["chromosome"], variant["position"]
     ref, alt = variant["reference_allele"], variant["alternate_allele"]
     row, covered, level, basis = locate(variant, raw, merges, panel_build)
@@ -276,7 +277,7 @@ def annotate_variant(variant, raw, merges=None, sex="unknown", panel_build=SUPPO
     if ppv:
         caveat_keys.append("rare_ppv")
 
-    return {
+    finding = {
         "finding_id": finding_id(variant["rsid"], variant["gene"], chrom, pos),
         "rsid": variant["rsid"],
         "probe_id": None,
@@ -301,6 +302,15 @@ def annotate_variant(variant, raw, merges=None, sex="unknown", panel_build=SUPPO
         "references": references_for(variant["rsid"], variant["gene"], variant["condition"],
                                      chrom, pos, ref, alt, variant["assayability"]),
     }
+    # Release format (ticket 2D): copy the curated report fields the panel
+    # variant carries. Absent in the panel -> absent in the finding (no null, no
+    # default); legacy panels carry none of them, so their output is unchanged.
+    if release_format:
+        for key in ("result_type", "effect_allele", "cls"):
+            value = variant.get(key)
+            if value:
+                finding[key] = value
+    return finding
 
 
 def normalize_condition(condition, aliases):
@@ -380,7 +390,12 @@ def build_findings(raw_path, panel, aliases=None):
     for r in raw["rows"].values():
         raw["by_canon"].setdefault(merges.get(r["rsid"], r["rsid"]), r)
     sex = infer_sex(raw)
-    findings = [annotate_variant(v, raw, merges, sex, panel_build) for v in panel["variants"]]
+    # Ticket 2D: a panel is in release format when any variant carries
+    # result_type. Release documents are schema_version 1.2.0 and copy the
+    # curated report fields; legacy panels stay 1.1.0 and byte-identical.
+    release_format = any("result_type" in v for v in panel["variants"])
+    findings = [annotate_variant(v, raw, merges, sex, panel_build, release_format)
+                for v in panel["variants"]]
     provenance = {
         "input_hash": sha256_file(raw_path),
         "array_version": raw["meta"].get("array_version") or "unknown",
@@ -396,7 +411,7 @@ def build_findings(raw_path, panel, aliases=None):
         "annotation_snapshots": panel.get("sources", []),
     }
     return {
-        "schema_version": "1.1.0",
+        "schema_version": "1.2.0" if release_format else "1.1.0",
         "provenance": provenance,
         "findings": findings,
         "contradictions": compute_contradictions(findings, aliases),

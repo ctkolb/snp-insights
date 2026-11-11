@@ -40,6 +40,13 @@ from collections import defaultdict
 import evidence
 
 
+# Ticket 2D: the result_type vocabulary and the only allowed (category,
+# result_type) pairs (INV-06). Shared with tests/test_release_panel.py's checkers.
+RESULT_TYPES = ("trait", "carrier_status", "risk_association")
+VALID_RESULT_PAIRS = (("trait", "trait"), ("carrier", "carrier_status"),
+                      ("carrier", "risk_association"))
+
+
 def open_any(path):
     # utf-8-sig strips a leading byte-order mark so the first header name is
     # never corrupted; it is a no-op for files without a BOM.
@@ -337,6 +344,14 @@ def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, sn
         if category is not None and category not in ("carrier", "trait"):
             label = t.get("rsid") or t.get("gene")
             raise ValueError(f"invalid category {category!r} for {label}")
+        result_type = t.get("result_type")
+        if result_type is not None:
+            label = t.get("rsid") or t.get("gene")
+            if result_type not in RESULT_TYPES:
+                raise ValueError(f"invalid result_type {result_type!r} for {label}")
+            if (category, result_type) not in VALID_RESULT_PAIRS:
+                raise ValueError(
+                    f"invalid (category, result_type) pair ({category!r}, {result_type!r}) for {label}")
     # A-2: a release-format file (an entry declares result_type) with a carrier
     # entry refuses to build without the curated evidence file. Data-free message.
     if not has_curated and release_format \

@@ -652,8 +652,8 @@ def _run_build(attempt):
         schema = _load(SCHEMA_PATH)
         props = schema["$defs"]["provenance"]["properties"]
         _require("provenance declares input_build and build_basis", "input_build" in props and "build_basis" in props)
-        _require("the version enum is exactly 1.0.0 and 1.1.0",
-                 schema["properties"]["schema_version"] == {"enum": ["1.0.0", "1.1.0"]})
+        _require("the version enum is exactly 1.0.0, 1.1.0 and 1.2.0",
+                 schema["properties"]["schema_version"] == {"enum": ["1.0.0", "1.1.0", "1.2.0"]})
         conds = [c for c in schema.get("allOf", []) if "1.1.0" in json.dumps(c.get("if", {}))]
         _require("one conditional keys on 1.1.0", len(conds) == 1)
         then = json.dumps(conds[0].get("then", {}))

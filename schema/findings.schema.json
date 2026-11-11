@@ -7,14 +7,14 @@
   "additionalProperties": false,
   "required": ["schema_version", "provenance", "findings", "contradictions"],
   "properties": {
-    "schema_version": { "enum": ["1.0.0", "1.1.0"] },
+    "schema_version": { "enum": ["1.0.0", "1.1.0", "1.2.0"] },
     "provenance": { "$ref": "#/$defs/provenance" },
     "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
     "contradictions": { "type": "array", "items": { "$ref": "#/$defs/contradiction" } }
   },
   "allOf": [
     {
-      "if": { "properties": { "schema_version": { "const": "1.1.0" } }, "required": ["schema_version"] },
+      "if": { "properties": { "schema_version": { "enum": ["1.1.0", "1.2.0"] } }, "required": ["schema_version"] },
       "then": {
         "properties": {
           "provenance": { "required": ["input_build", "build_basis"] }
@@ -158,6 +158,9 @@
         "position": { "type": "integer", "minimum": 1 },
         "gene": { "type": ["string", "null"] },
         "condition": { "type": ["string", "null"] },
+        "result_type": { "enum": ["trait", "carrier_status", "risk_association"] },
+        "effect_allele": { "type": "string", "minLength": 1 },
+        "cls": { "type": "string" },
         "assayability": {
           "description": "snp/indel are measurable by this array; not_assayable marks loci (repeat expansions, copy-number variants) no SNP array can call regardless of coverage.",
           "enum": ["snp", "indel", "not_assayable"]
