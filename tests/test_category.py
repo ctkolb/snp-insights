@@ -434,6 +434,21 @@ def run(check):
         return True
     attempt("R2D.invalid_pair_build_fails", r2d_invalid_pair_build_fails)
 
+    def r2d_null_result_type_build_fails():
+        # D-63-1: a present result_type is validated by key presence, so an
+        # explicit null is rejected rather than treated as absent.
+        try:
+            _build([_target("rsBAD", category="trait", result_type=None)])
+        except ValueError as exc:
+            if "rsBAD" not in str(exc):
+                return False
+        except Exception:  # noqa: BLE001
+            return False
+        else:
+            return False
+        return True
+    attempt("R2D.null_result_type_build_fails", r2d_null_result_type_build_fails)
+
 
 def main():
     passed, failed = [], []

@@ -1285,6 +1285,54 @@ def _run_r61(attempt):
     attempt("R2D.report_validator_unaffected", report_validator_unaffected)
 
 
+def _run_r63(attempt):
+    """Ticket 2D fix round: schema boundaries and release-field copy rules."""
+    def schema_contract_boundaries():
+        import copy
+        import jsonschema
+        validator = jsonschema.Draft202012Validator(_load(SCHEMA_PATH))
+        good = _findings([("rs900001", 1, 1000, "G", "A")], _release_panel())
+        for rt in ("trait", "carrier_status", "risk_association"):
+            d = copy.deepcopy(good)
+            d["findings"][0]["result_type"] = rt
+            _require(f"valid result_type {rt}", validator.is_valid(d))
+        for field, invalid in (("effect_allele", ""), ("effect_allele", None),
+                               ("effect_allele", 1), ("effect_allele", []),
+                               ("cls", None), ("cls", 1), ("cls", []), ("cls", {}),
+                               ("result_type", None), ("result_type", 1)):
+            d = copy.deepcopy(good)
+            d["findings"][0][field] = invalid
+            _require(f"invalid field {field} rejected", not validator.is_valid(d))
+        for field in ("input_build", "build_basis"):
+            d = copy.deepcopy(good)
+            d["provenance"].pop(field)
+            _require(f"1.2.0 requires {field}", not validator.is_valid(d))
+        return True
+    if _jsonschema() is None:
+        _skip("R63.schema_contract_boundaries", "jsonschema not installed")
+    else:
+        attempt("R63.schema_contract_boundaries", schema_contract_boundaries)
+
+    def copy_distinct_classes():
+        p = _release_panel()
+        p["variants"][0]["cls"] = "class one"
+        p["variants"][1]["cls"] = "class two"
+        d = _findings([("rs900001", 1, 1000, "G", "A")], p)
+        return [f["cls"] for f in d["findings"]] == ["class one", "class two"]
+    attempt("R63.copy_distinct_classes", copy_distinct_classes)
+
+    def presence_and_truthy_fields():
+        for value in (None, "", False, 0, [], {}):
+            v = _variant("rs900001", "1", 1000, "G", "A")
+            v.update(result_type=value, effect_allele=None, cls="")
+            d = _findings([("rs900001", 1, 1000, "G", "A")], _panel(v))
+            _require("present marker selects 1.2.0", d["schema_version"] == "1.2.0")
+            _require("falsy fields absent", all(k not in d["findings"][0]
+                     for k in ("result_type", "effect_allele", "cls")))
+        return True
+    attempt("R63.presence_and_truthy_fields", presence_and_truthy_fields)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -1302,6 +1350,7 @@ def run(check):
 
     _run_r61_char(attempt)
     _run_r61(attempt)
+    _run_r63(attempt)
 
     _run_characterization(attempt)
     _run_interpretation(attempt)

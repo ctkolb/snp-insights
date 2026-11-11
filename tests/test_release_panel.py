@@ -3853,6 +3853,55 @@ def _run_r61(attempt):
     attempt("R2D.release_path_findings_carry_target_fields", release_path_findings_carry_target_fields)
 
 
+def _run_r64(attempt):
+    """Ticket 2D fix round: build validation by key presence and tier integration."""
+    curated = {"rs9000002": {"rsid": "rs9000002", "condition": "Example condition one",
+                             "clinvar_record": "clinvar:rcv:RCV900000001",
+                             "significance": "risk factor",
+                             "review_status": "criteria provided, multiple submitters, no conflicts",
+                             "review_stars": 3}}
+
+    def null_result_type_curated_carrier_rejected():
+        import build_panel
+        target = {"rsid": "rs9000002", "gene": "GENEB", "condition": "Example condition one",
+                  "category": "carrier", "result_type": None, "effect_allele": "G",
+                  "assayability": "snp"}
+        try:
+            build_panel.build({"variants": [target]}, sources=[], curated=curated)
+        except ValueError as exc:
+            return "rs9000002" in str(exc)
+        except Exception:  # noqa: BLE001
+            return False
+        return False
+    attempt("R63.null_result_type_curated_carrier_rejected", null_result_type_curated_carrier_rejected)
+
+    def build_result_type_reaches_tier():
+        import build_panel
+        for rt, want in (("carrier_status", "unknown"), ("risk_association", "established")):
+            target = {"rsid": "rs9000002", "gene": "GENEB", "condition": "Example condition one",
+                      "category": "carrier", "result_type": rt, "effect_allele": "G",
+                      "assayability": "snp"}
+            got = build_panel.build({"variants": [target]}, sources=[], curated=curated)["variants"][0]
+            _require(f"build tier for {rt} is {want}", got["association"] == want)
+        return True
+    attempt("R63.build_result_type_reaches_tier", build_result_type_reaches_tier)
+
+    def validation_with_explicit_association():
+        import build_panel
+        for rt in ("unknown_type", "carrier_status"):
+            target = {"rsid": "rs9000002", "gene": "GENEB", "condition": "Example condition one",
+                      "category": "trait", "result_type": rt, "association": "established",
+                      "assayability": "snp"}
+            try:
+                build_panel.build({"variants": [target]}, sources=[])
+            except ValueError as exc:
+                _require("invalid target named", "rs9000002" in str(exc))
+            else:
+                return False
+        return True
+    attempt("R63.validation_with_explicit_association", validation_with_explicit_association)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -3884,6 +3933,7 @@ def run(check):
     _run_1b_b_syn(attempt)
     _run_1b_b_r55(attempt)
     _run_r61(attempt)
+    _run_r64(attempt)
 
 
 def main():
