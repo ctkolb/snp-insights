@@ -4203,6 +4203,123 @@ def _run_r65(attempt):
             e2e_no_hemizygous_or_homoplasmic_zygosity)
 
 
+# =============================================================================
+# R67: independent N1 oracle for the release panel (ticket r68, D-67-1) and the
+# generated-report safety rule (D-67-3). The panel digest is pinned here as a
+# literal, never read from the changeable document; every placement field is
+# compared against literal values from the reviewed N1 dbSNP capture, and the
+# curated ClinVar blocks and source labels are literals from the committed panel.
+# =============================================================================
+REVIEWED_PANEL_SHA256 = "36b597d137e5f8f7431bbb289f5a1eac68ec161f380781db08bb45b0e6581024"
+N1_DBSNP_ORACLE = {
+    "rs1800562": {"chromosome": "6", "position": 26093141,
+                  "reference_allele": "G", "alternate_alleles": ["A", "T"]},
+    "rs1799963": {"chromosome": "11", "position": 46761055,
+                  "reference_allele": "G", "alternate_alleles": ["A"]},
+    "rs6025": {"chromosome": "1", "position": 169519049,
+               "reference_allele": "T", "alternate_alleles": ["C", "A", "G"]},
+}
+R67_PANEL_CURATED = {
+    "rs1800562": {
+        "effect_allele": "A", "category": "carrier", "result_type": "carrier_status",
+        "clinvar": {"significance": "Pathogenic", "review_stars": 2,
+                    "review_status_text": "criteria provided, multiple submitters, no conflicts",
+                    "source_version": "curated clinvar:rcv:RCV000000019"}},
+    "rs1799963": {
+        "effect_allele": "A", "category": "carrier", "result_type": "risk_association",
+        "clinvar": {"significance": "Pathogenic", "review_stars": 2,
+                    "review_status_text": "criteria provided, multiple submitters, no conflicts",
+                    "source_version": "curated clinvar:rcv:RCV005419865"}},
+    "rs6025": {
+        "effect_allele": "T", "category": "carrier", "result_type": "risk_association",
+        "clinvar": {"significance": "Pathogenic/Pathogenic, low penetrance", "review_stars": 2,
+                    "review_status_text": "criteria provided, multiple submitters, no conflicts",
+                    "source_version": "curated clinvar:rcv:RCV000454249"}},
+}
+R67_PANEL_SOURCES = {
+    "dbSNP": {"release": "variation-api-2026-11-11", "retrieved_at": "2026-11-11T19:57:14Z"},
+    "ClinVar": {"release": "variant_summary-2026-11-11", "retrieved_at": "2026-11-11T19:57:14Z"},
+    "gnomAD": {"release": "graphql-2026-11-11", "retrieved_at": "2026-11-11T19:57:14Z"},
+    "GWAS Catalog": {"release": "opentargets-2026-11-11", "retrieved_at": "2026-11-11T19:57:14Z"},
+}
+
+
+def _run_r67_identity(attempt):
+    """D-67-1: pin the reviewed panel digest independently of the document and
+    check every reviewed field against a literal N1 oracle."""
+    def panel_equals_reviewed_n1_artifact():
+        expected = REVIEWED_PANEL_SHA256
+        _require("release panel differs from the owner-reviewed N1 artifact",
+                 _sha256_file(RELEASE_PANEL_PATH) == expected)
+        return True
+    attempt("R67.panel_equals_reviewed_n1_artifact", panel_equals_reviewed_n1_artifact)
+
+    def panel_fields_match_n1_oracle():
+        panel = read_panel()
+        by = {v["rsid"]: v for v in panel.get("variants", [])}
+        _require("panel entries differ from the reviewed N1 set: " + repr(sorted(by)),
+                 set(by) == set(N1_DBSNP_ORACLE))
+        for rs, oracle in N1_DBSNP_ORACLE.items():
+            v = by[rs]
+            _require(f"{rs} chromosome {v.get('chromosome')!r} != N1 {oracle['chromosome']!r}",
+                     str(v.get("chromosome")) == oracle["chromosome"])
+            _require(f"{rs} position {v.get('position')!r} != N1 {oracle['position']!r}",
+                     v.get("position") == oracle["position"])
+            _require(f"{rs} reference {v.get('reference_allele')!r} != N1 {oracle['reference_allele']!r}",
+                     v.get("reference_allele") == oracle["reference_allele"])
+            _require(f"{rs} alternate list {v.get('alternate_alleles')!r} != N1 {oracle['alternate_alleles']!r}",
+                     v.get("alternate_alleles") == oracle["alternate_alleles"])
+        return True
+    attempt("R67.panel_fields_match_n1_oracle", panel_fields_match_n1_oracle)
+
+    def panel_curated_fields_match():
+        panel = read_panel()
+        by = {v["rsid"]: v for v in panel.get("variants", [])}
+        for rs, want in R67_PANEL_CURATED.items():
+            v = by[rs]
+            for key in ("effect_allele", "category", "result_type"):
+                _require(f"{rs} {key} {v.get(key)!r} != curated {want[key]!r}",
+                         v.get(key) == want[key])
+            _require(f"{rs} ClinVar block {v.get('clinvar')!r} != {want['clinvar']!r}",
+                     v.get("clinvar") == want["clinvar"])
+        return True
+    attempt("R67.panel_curated_fields_match", panel_curated_fields_match)
+
+    def panel_source_labels_match():
+        panel = read_panel()
+        sources = {s.get("source"): s for s in panel.get("sources", [])}
+        _require("panel sources differ from reviewed set: " + repr(sorted(sources)),
+                 set(sources) == set(R67_PANEL_SOURCES))
+        for name, want in R67_PANEL_SOURCES.items():
+            s = sources[name]
+            _require(f"{name} release {s.get('release')!r} != {want['release']!r}",
+                     s.get("release") == want["release"])
+            _require(f"{name} retrieved_at {s.get('retrieved_at')!r} != {want['retrieved_at']!r}",
+                     s.get("retrieved_at") == want["retrieved_at"])
+        return True
+    attempt("R67.panel_source_labels_match", panel_source_labels_match)
+
+
+def _run_r67_report_safety(attempt):
+    """D-67-3: the generated template report never calls a risk_association
+    claim a carrier result (contract r31 2.2 / docs/panel-curation.md)."""
+    def risk_association_report_never_says_carrier():
+        for name in R2E_FIXTURES:
+            doc, report, errors, _ = _release_e2e(name, read_panel())
+            _require(f"{name}: invalid template IR", not errors)
+            by = {f["finding_id"]: f for f in doc["findings"]}
+            for section in report["sections"]:
+                for claim in section["claims"]:
+                    cited = [by[c["finding_id"]] for c in claim["citations"]
+                             if c["finding_id"] in by]
+                    if any(f.get("result_type") == "risk_association" for f in cited):
+                        _require(f"{name}: carrier wording on a risk association",
+                                 re.search(r"\bcarrier\b", claim["text"], re.I) is None)
+        return True
+    attempt("R67.risk_association_report_never_says_carrier",
+            risk_association_report_never_says_carrier)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -4236,6 +4353,8 @@ def run(check):
     _run_r61(attempt)
     _run_r64(attempt)
     _run_r65(attempt)
+    _run_r67_identity(attempt)
+    _run_r67_report_safety(attempt)
 
 
 def main():

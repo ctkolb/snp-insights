@@ -1399,6 +1399,37 @@ def _run_r65(attempt):
     attempt("R2E.rarity_effect_allele", rarity_effect_allele)
 
 
+def _run_r67_rarity(attempt):
+    """D-67-2: the full effect-allele rarity branch matrix. Every frequency class
+    for both a reference and an alternate effect allele, missing reference AF,
+    insertion and deletion, and another low-AF alternate. Passes on the correct
+    implementation; a constant class or a wrong branch fails it."""
+    def rarity_branch_matrix():
+        def check_rc(effect, af, want, ref="G", alt="A", assay="snp", extra=None):
+            v = _variant("rs900001", "1", 1000, ref, alt, effect=effect, assay=assay)
+            v.update(category="carrier", result_type="carrier_status", gnomad_af=af)
+            if extra is not None:
+                v["alternate_alleles"] = extra
+            alleles = ("I", "D") if assay == "indel" else (effect, ref)
+            f = _finding([("rs900001", 1, 1000, *alleles)], v)
+            got = f["confidence"]["array_reliability"]["rarity_class"]
+            _require(f"effect={effect}, af={af}, assay={assay}: {got} != {want}", got == want)
+        for effect, values in (
+            ("A", ((0.2, "common"), (0.02, "low_frequency"), (0.001, "rare"),
+                   (0.00001, "ultra_rare"), (None, "unknown"))),
+            ("G", ((0.8, "common"), (0.983, "low_frequency"), (0.999, "rare"),
+                   (0.99999, "ultra_rare"), (None, "unknown"))),
+        ):
+            for af, want in values:
+                check_rc(effect, af, want)
+        for af in (0.001, 0.02, None):
+            check_rc("T", af, "unknown", extra=["A", "T"])
+        for effect in ("I", "D"):
+            check_rc(effect, 0.02, "unknown", ref="I", alt="D", assay="indel")
+        return True
+    attempt("R67.release_rarity_branch_matrix", rarity_branch_matrix)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -1419,6 +1450,7 @@ def run(check):
     _run_r63(attempt)
     _run_r65_char(attempt)
     _run_r65(attempt)
+    _run_r67_rarity(attempt)
 
     _run_characterization(attempt)
     _run_interpretation(attempt)
