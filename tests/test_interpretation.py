@@ -1333,6 +1333,29 @@ def _run_r63(attempt):
     attempt("R63.presence_and_truthy_fields", presence_and_truthy_fields)
 
 
+def _run_r65_char(attempt):
+    """Ticket 2E C0 (ADD-ONLY). CHARACTERIZATION: legacy panels (no result_type
+    anywhere) keep today's rarity exactly - rarity_class(gnomad_af) as given,
+    even when the curated effect allele is the reference allele. Passes on the
+    base commit and must keep passing unmodified after the 2E rarity change."""
+    def legacy_rarity_unchanged():
+        import annotate
+        for af, want in ((None, "unknown"), (0.06, "common"), (0.02, "low_frequency"),
+                         (0.001, "rare"), (0.00001, "ultra_rare")):
+            _require(f"rarity_class({af!r}) changed, got {annotate.rarity_class(af)!r}",
+                     annotate.rarity_class(af) == want)
+        # effect allele is the reference allele, high frequency: legacy still uses
+        # gnomad_af as given (common), never 1 - gnomad_af (which would be rare).
+        v = _variant("rs900001", "1", 1000, "G", "A", effect="G")
+        v["gnomad_af"] = 0.983
+        f = _finding([("rs900001", 1, 1000, "G", "A")], v)
+        rc = f["confidence"]["array_reliability"]["rarity_class"]
+        _require(f"legacy effect-is-reference rarity changed, got {rc!r}", rc == "common")
+        _require("legacy panel must not be release format", "result_type" not in v)
+        return True
+    attempt("R2E.char_legacy_rarity_unchanged", legacy_rarity_unchanged)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -1351,6 +1374,7 @@ def run(check):
     _run_r61_char(attempt)
     _run_r61(attempt)
     _run_r63(attempt)
+    _run_r65_char(attempt)
 
     _run_characterization(attempt)
     _run_interpretation(attempt)
