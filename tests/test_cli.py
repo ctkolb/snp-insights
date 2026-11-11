@@ -26,6 +26,8 @@ DATA = os.path.join(ROOT, "data")
 FIX = os.path.join(ROOT, "fixtures")
 RAW = os.path.join(FIX, "raw.sample.txt")
 PANEL = os.path.join(DATA, "panel.sample.json")
+DOC = os.path.join(ROOT, "docs", "owner-checkpoint.md")
+RELEASE_PANEL = "data/targets.release-panel.json"
 SUBCOMMANDS = ("fetch", "build-panel", "check-raw", "annotate", "narrate", "run")
 OUTPUTS = ("findings.json", "report.md", "report.ir.json", "report.run.json")
 
@@ -98,6 +100,57 @@ def _get_umask():
 
 def _output_paths(d):
     return {name: os.path.join(d, name) for name in OUTPUTS}
+
+
+class _ParseStop(Exception):
+    """Raised after the real parser has validated a doc command's argv."""
+
+
+def _parse_only(module, argv):
+    """Run a sub-tool's real argparse parser without executing its body."""
+    import argparse
+    orig = argparse.ArgumentParser.parse_args
+    captured = {}
+
+    def fake(self, args=None, namespace=None):
+        captured["ns"] = orig(self, args, namespace)
+        raise _ParseStop()
+
+    argparse.ArgumentParser.parse_args = fake
+    try:
+        module.main(argv)
+    except _ParseStop:
+        return captured.get("ns")
+    finally:
+        argparse.ArgumentParser.parse_args = orig
+    return None
+
+
+def _doc_text():
+    with open(DOC, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def _doc_commands():
+    """Every `python -m snp_insights ...` command line in the checkpoint doc."""
+    commands = []
+    for line in _doc_text().splitlines():
+        stripped = line.strip()
+        for prefix in ("python3 -m snp_insights ", "python -m snp_insights "):
+            if stripped.startswith(prefix):
+                commands.append(stripped[len(prefix):])
+                break
+    return commands
+
+
+def _run_capture(raw, panel, out_dir, extra=()):
+    """Invoke `run` with the annotate/narrate tools stubbed out."""
+    ma, oa = _patch_main("annotate", ret=0)
+    mn, on = _patch_main("run", ret=0)
+    try:
+        return _invoke(["run", raw, panel, "--out-dir", out_dir] + list(extra))
+    finally:
+        ma.main, mn.main = oa, on
 
 
 def run(check):
@@ -772,6 +825,117 @@ def run(check):
                 and not allele.search(redacted.getvalue())
                 and bool(allele.search(shown.getvalue())))
     attempt("R3A.check_raw_redacts_by_default", r3a_check_raw_redacts_by_default)
+
+    # --- R3A: the inside-repo --out-dir warning -------------------------
+    def r3a_warn_out_dir_inside_repo():
+        cli = _cli()
+        d = tempfile.mkdtemp()
+        out = os.path.join(d, "out")
+        saved = cli._within_root
+        cli._within_root = lambda p: True
+        try:
+            code, _, err = _run_capture(RAW, PANEL, out, ["--template-only"])
+        finally:
+            cli._within_root = saved
+        return code == 0 and "inside the repository" in err.lower()
+    attempt("R3A.warn_out_dir_inside_repo", r3a_warn_out_dir_inside_repo)
+
+    def r3a_no_warn_out_dir_outside_repo():
+        d = tempfile.mkdtemp()
+        out = os.path.join(d, "out")
+        code, _, err = _run_capture(RAW, PANEL, out, ["--template-only"])
+        return code == 0 and "inside the repository" not in err.lower()
+    attempt("R3A.no_warn_out_dir_outside_repo", r3a_no_warn_out_dir_outside_repo)
+
+    def r3a_warn_symlinked_path_into_repo():
+        cli = _cli()
+        d = tempfile.mkdtemp()
+        link = os.path.join(d, "link-into-repo")
+        os.symlink(os.path.realpath(cli._ROOT), link)
+        code, _, err = _run_capture(RAW, PANEL, link, ["--template-only"])
+        return code == 0 and "inside the repository" in err.lower()
+    attempt("R3A.warn_symlinked_path_into_repo", r3a_warn_symlinked_path_into_repo)
+
+    def r3a_warning_does_not_echo_file_content():
+        cli = _cli()
+        d = tempfile.mkdtemp()
+        raw = os.path.join(d, "PRIVRAWSENTINEL.txt")
+        out = os.path.join(d, "out")
+        saved = cli._within_root
+        cli._within_root = lambda p: True
+        try:
+            code, _, err = _run_capture(raw, PANEL, out, ["--template-only"])
+        finally:
+            cli._within_root = saved
+        return (code == 0 and "inside the repository" in err.lower()
+                and "PRIVRAWSENTINEL" not in err)
+    attempt("R3A.warning_does_not_echo_file_content",
+            r3a_warning_does_not_echo_file_content)
+
+    # --- R3A: the owner-checkpoint document -----------------------------
+    def r3a_checkpoint_doc_commands_parse():
+        import shlex
+        cli = _cli()
+        commands = _doc_commands()
+        if not commands:
+            return False
+        run_line = None
+        for cmd in commands:
+            try:
+                argv = shlex.split(cmd)
+            except ValueError:
+                return False
+            if not argv:
+                return False
+            sub = argv[0]
+            if sub == "run":
+                run_line = cmd
+                try:
+                    cli._parse_run(argv[1:])
+                except cli._UsageError:
+                    return False
+            elif sub in cli._SUBCOMMAND_MODULES:
+                try:
+                    module = cli._tool_module(cli._SUBCOMMAND_MODULES[sub])
+                    ns = _parse_only(module, argv[1:])
+                except SystemExit:
+                    return False
+                if ns is None:
+                    return False
+            else:
+                return False
+        if run_line is None:
+            return False
+        return "--template-only" in run_line and "--out-dir" in run_line
+    attempt("R3A.checkpoint_doc_commands_parse", r3a_checkpoint_doc_commands_parse)
+
+    def r3a_checkpoint_doc_has_no_real_paths():
+        import guard
+        text = _doc_text()
+        for _name, rx in guard.SECRET_PATTERNS:
+            if rx.search(text):
+                return False
+        return "/Users/" not in text and "/home/" not in text
+    attempt("R3A.checkpoint_doc_has_no_real_paths",
+            r3a_checkpoint_doc_has_no_real_paths)
+
+    def r3a_checkpoint_doc_states_no_sharing_rule():
+        low = _doc_text().lower()
+        return ("no-sharing rule" in low and "no report text" in low
+                and "rsids" in low and "hashes" in low)
+    attempt("R3A.checkpoint_doc_states_no_sharing_rule",
+            r3a_checkpoint_doc_states_no_sharing_rule)
+
+    def r3a_checkpoint_doc_states_aggregate_adequacy_rule():
+        low = _doc_text().lower()
+        return "aggregate judgment" in low and "counts only" in low
+    attempt("R3A.checkpoint_doc_states_aggregate_adequacy_rule",
+            r3a_checkpoint_doc_states_aggregate_adequacy_rule)
+
+    def r3a_checkpoint_doc_names_release_panel():
+        return RELEASE_PANEL in _doc_text()
+    attempt("R3A.checkpoint_doc_names_release_panel",
+            r3a_checkpoint_doc_names_release_panel)
 
 
 def main():
