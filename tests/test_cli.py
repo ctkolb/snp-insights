@@ -725,6 +725,54 @@ def run(check):
         return True
     attempt("S4.no_data_in_package", s4_no_data_in_package)
 
+    # --- R3A characterization: current run/check-raw behavior --------------
+    def r3a_run_still_refuses_overwrite():
+        d = tempfile.mkdtemp()
+        with _no_network():
+            first, _, _ = _invoke(["run", RAW, PANEL, "--out-dir", d,
+                                   "--template-only"])
+        paths = _output_paths(d)
+        before = {n: _read_bytes(p) for n, p in paths.items()}
+        with _no_network():
+            second, _, err = _invoke(["run", RAW, PANEL, "--out-dir", d,
+                                      "--template-only"])
+        after = {n: _read_bytes(p) for n, p in paths.items()}
+        return (first == 0 and second == 1 and before == after
+                and "overwrite" in err.lower())
+    attempt("R3A.run_still_refuses_overwrite", r3a_run_still_refuses_overwrite)
+
+    def r3a_run_modes_0600_0700():
+        orig = os.umask(0o022)
+        try:
+            d = tempfile.mkdtemp()
+            out = os.path.join(d, "created")
+            with _no_network():
+                code, _, _ = _invoke(["run", RAW, PANEL, "--out-dir", out,
+                                      "--template-only"])
+            if code != 0 or (os.stat(out).st_mode & 0o777) != 0o700:
+                return False
+            return all((os.stat(os.path.join(out, n)).st_mode & 0o777) == 0o600
+                       for n in OUTPUTS)
+        finally:
+            os.umask(orig)
+    attempt("R3A.run_modes_0600_0700", r3a_run_modes_0600_0700)
+
+    def r3a_check_raw_redacts_by_default():
+        import re as _re
+        import check_raw
+        raw = os.path.join(FIX, "raw.sample.txt")
+        redacted, shown = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(redacted):
+            rc1 = check_raw.main([raw, "--panel", PANEL, "--no-hash"])
+        with contextlib.redirect_stdout(shown):
+            rc2 = check_raw.main([raw, "--panel", PANEL, "--no-hash",
+                                  "--no-redact"])
+        allele = _re.compile(r"\[[ACGTID]/[ACGTID]\]")
+        return (rc1 == 0 and rc2 == 0
+                and not allele.search(redacted.getvalue())
+                and bool(allele.search(shown.getvalue())))
+    attempt("R3A.check_raw_redacts_by_default", r3a_check_raw_redacts_by_default)
+
 
 def main():
     passed, failed = [], []
