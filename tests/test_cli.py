@@ -956,7 +956,7 @@ def run(check):
         return subprocess.run(
             [sys.executable, "-B", "-m", "snp_insights", "run", RELEASE_RAW,
              RELEASE_PANEL_ABS, "--out-dir", out_dir, "--template-only"],
-            cwd=out_dir, capture_output=True, text=True, env=env)
+            cwd=os.path.dirname(out_dir), capture_output=True, text=True, env=env)
 
     def r3a_checkpoint_doc_hash_statement():
         flat = _doc_flat()
