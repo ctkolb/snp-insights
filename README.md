@@ -73,7 +73,7 @@ LICENSE        GNU GPL v3.0-or-later
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.12 or 3.14 (the CI matrix); other 3.12+ versions are expected to work.
 - `jsonschema` (optional) — enables JSON Schema validation passes. The semantic
   rule checks are pure standard library.
 - [Ollama](https://ollama.com) (optional) — required only for Stage 3 with a
@@ -224,6 +224,61 @@ Each subcommand wraps a script that still runs directly, if you prefer:
 the sub-tools' directories to `sys.path` at call time and refuses to load a
 sub-tool whose module resolves outside the repository.
 
+## Release panel and your own file
+
+v0.1.0 ships a small public panel of three health-related entries and no trait
+entries, built reproducibly from public references. The curation record is
+[docs/panel-curation.md](docs/panel-curation.md), the curated evidence file is
+`data/targets.release-evidence.json`, and the built panel is
+`data/targets.release-panel.json`.
+
+To check and run your own file, use these two commands. `$PRIV` stands for your
+private directory (see the rule below). Name the release panel explicitly:
+`check-raw` defaults to the sample panel.
+
+```bash
+python -m snp_insights check-raw "$PRIV/raw.txt" --panel data/targets.release-panel.json --no-hash
+python -m snp_insights run "$PRIV/raw.txt" data/targets.release-panel.json --out-dir "$PRIV/out" --template-only
+```
+
+The first command inspects the file offline, with alleles redacted and no file
+hash. The second runs the pipeline with no model and no network and writes the
+report into `--out-dir`. The step-by-step procedure, including what to keep to
+yourself, is [docs/owner-checkpoint.md](docs/owner-checkpoint.md).
+
+**Where to keep your files.** Keep the raw file and all outputs in a private
+directory outside the repository, any shared or synced folder, and any directory
+an agent tool can read. `run` warns when `--out-dir` is inside the checkout but
+cannot see other locations (a synced folder, or a directory mounted into another
+tool), so keeping to this rule is up to you.
+
+### What the report says
+
+The template-only report states what was examined, how many markers were
+measured, what each call state means (not measured means no information, not
+absence), the evidence tiers with their source, and the limitations. It never
+gives a diagnosis or a personal risk estimate.
+
+## Known limitations (v0.1.0)
+
+- The array covers about 0.02% of the genome.
+- Array presence of each marker is not verified: no public array manifest is
+  available, so a marker may not be on your array version.
+- The release panel has three health entries and no trait entries.
+- The panel is small and public: it is a reproducible starting point, not a
+  screening panel.
+- Only template-only narration is verified in this release; the skeleton and full
+  model modes and the online path were not exercised against a live model.
+- A rare array call needs confirmation by a clinical-grade test.
+- An input file with no build statement is annotated against GRCh37 and the report
+  says so.
+- X-linked and mitochondrial markers are excluded from the release panel (it is
+  autosomal only).
+- The first real-file run is the owner's local checkpoint and is not independently
+  verified.
+
+Accepted limits are recorded in [docs/accepted-limits.md](docs/accepted-limits.md).
+
 ## Design rules
 
 The pipeline enforces seven hard rules in code (no invented numbers, three-state
@@ -352,17 +407,29 @@ This runs the core suite plus the staged gates it hooks in. The test files are:
 
 - `tests/test_pipeline.py` — parser, annotator, condition normalization and
   contradiction grouping, ETL robustness, semantic lints, and an end-to-end
-  validator accept/reject; it also calls the guard, evidence, category, and CLI suites below.
+  validator accept/reject; it also calls the guard, evidence, category, CLI,
+  interpretation, release-panel, report-readability, and release-docs suites below.
 - `tests/test_evidence.py` — the shared evidence module (condition matching,
   ClinVar selection, tiers).
 - `tests/test_category.py` — category-aware association derivation.
 - `tests/test_cli.py` — the `snp-insights` CLI (dispatch, `run`, privacy gate,
   tool-module integrity).
 - `tests/test_guard.py` — the privacy/publication guard and its self-tests.
+- `tests/test_release_panel.py` — the release-panel curation record
+  (`docs/panel-curation.md`) and its data files.
+- `tests/test_interpretation.py` — Stage 2 call interpretation: allele membership,
+  build provenance, locus identity, and duplicate rows.
+- `tests/test_report_readability.py` — the readable template report: sentences,
+  result-type sections, summary, caveats, and limitations.
+- `tests/test_docs_release.py` — this README, the AGENTS.md current state, the
+  accepted-limits register, and the release status section.
 - `tests/test_result_block.py` — the build-loop result-block validator (run separately;
   `test_pipeline.py` does not call it).
 
-Each file also runs standalone, e.g. `python tests/test_cli.py`.
+Installing the optional `jsonschema` package (the `schema` extra) enables the
+schema-validation passes; the suite runs without it. Each file also runs
+standalone, e.g. `python -B tests/test_release_panel.py` and
+`python -B tests/test_report_readability.py`.
 
 ## Privacy & safety
 
@@ -386,14 +453,12 @@ inventory, and [SECURITY.md](SECURITY.md) to report an issue.
 
 ## Status
 
-Early / research. Stages 1–2, the panel ETL, and the Stage 3 runner (local model
-by default, with self-repair, template fallback, and an audit artifact) work
-end-to-end against fixtures. A single `python -m snp_insights` entrypoint wraps
-the whole flow (and `run` chains annotate → narrate), with category-aware
-association derivation and condition-aware matching. The ETL has only been tested
-against synthetic source files, and Stage 3 has been exercised against the
-template path and fixtures, not yet against a live model. Known gaps are tracked
-in [DESIGN.md](DESIGN.md#4-design-limitations-and-known-gaps).
+Release candidate v0.1.0. The pipeline runs end to end on synthetic fixtures:
+parse, annotate, a curated three-entry release panel, and a deterministic
+template report. The first real-file run is the owner's local checkpoint
+(docs/owner-checkpoint.md). Model narration (skeleton and full modes) and the
+online path exist but are not part of the verified v0.1.0 scope. Known gaps and
+accepted limits are listed in docs/accepted-limits.md and DESIGN.md.
 
 ## Contributing
 

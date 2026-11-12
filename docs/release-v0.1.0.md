@@ -118,3 +118,14 @@ Open process details for the orchestrator: confirm builder effort, review/sessio
 budget, execution isolation, report-validator compatibility, and public-reference
 network procedure before the steps that depend on them. Do not assume these have
 already been provisioned or approved.
+
+## Release status (recorded 2026-11-12)
+
+Stages 1 to 4 of this plan are implemented on the release branch and independently
+reviewed: the curation method and record (docs/panel-curation.md), the findings
+contract extension (schema 1.2.0), the built release panel, the owner-checkpoint
+procedure (docs/owner-checkpoint.md), and the readable template report. The accepted
+limits are in docs/accepted-limits.md. Not yet done and owner-only: the private
+real-data checkpoint, repository branch protection, hosted checks on the release
+pull request, and the release tag; the existing v0.1.0 tag is preserved and not
+replaced until the owner decides its disposition.
