@@ -237,9 +237,13 @@ against the synthetic fixture, unless the line says it was read from the code.
 - **A refusal with exit code 1: output already exists.** `run` never overwrites.
   It prints the files in the way and writes nothing. Pick a new `--out-dir`, or add
   `--force` if you mean to replace them.
-- **A refusal with exit code 1: symlink or file.** `run` will not write through a
-  symlink, even with `--force`, and will not use an `--out-dir` that is a file.
-  Choose a normal directory.
+- **A refusal with exit code 1: symlink or file.** `run` refuses an output file
+  that is a symlink (exit code 1, even with `--force`) and an `--out-dir` that
+  exists as a file (exit code 1). A symlink used as `--out-dir` that points to a
+  directory is not refused: `run` follows it and writes there. Use a normal
+  private directory as `--out-dir`, not a symlink. The inside-the-checkout warning
+  below compares resolved paths, so it also fires for a symlink that points into
+  the checkout, but keeping the output where you think it is is up to you.
 - **A refusal with exit code 2: wrong options.** `run` refuses `-o` and `--out`;
   use `--out-dir`. `narrate` or `run` with `--endpoint openrouter` and without
   `--accept-privacy-risk` prints what would be sent and stops: nothing is sent.
@@ -256,7 +260,7 @@ against the synthetic fixture, unless the line says it was read from the code.
 | Exit code | Meaning |
 | --- | --- |
 | 0 | Success. |
-| 1 | A refusal: existing output, a symlink, an `--out-dir` that is a file, a failed integrity check of the tool files, or a `--full` download over the 5 GB limit without `--yes`. |
+| 1 | A refusal: existing output, an output file that is a symlink, an `--out-dir` that is a file, a failed integrity check of the tool files, or a `--full` download over the 5 GB limit without `--yes`. |
 | 2 | A usage error or the privacy gate: bad or missing options, `-o` with `run`, an online endpoint without `--accept-privacy-risk`. |
 
 ## Next steps

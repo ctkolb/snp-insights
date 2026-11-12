@@ -246,7 +246,9 @@ python -m snp_insights narrate findings.json --endpoint openrouter \
 `./snp-insights-out`):
 
 - It **never overwrites** existing output without `--force` (exit code 1, nothing
-  written), and refuses a symlink or an `--out-dir` that is a file even with `--force`.
+  written), and refuses an output file that is a symlink or an `--out-dir` that is
+  a file even with `--force`. A symlink used as `--out-dir` that points to a
+  directory is not refused: `run` follows it, so use a normal private directory.
 - `-o` and `--out` are refused (exit code 2). Every other option is forwarded to
   `narrate`, and everything after a `--` token is forwarded as is.
 - Files it creates are mode `0600` and a directory it creates is `0700`. It prints
