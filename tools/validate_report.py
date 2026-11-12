@@ -18,6 +18,15 @@ narrator obeying a prompt:
   Rule 7  every claim cites a resolvable finding_id + field_path, and every
           finding is either cited or explicitly omitted (no silent omissions)
 
+Three more rules apply only to a template-generated release-format report
+(IR generated_by == "template" and findings that carry result_type); legacy
+reports and model-authored IR are not subject to them:
+
+  Rule 8  a Summary section with at least one claim exists
+  Rule 9  no result section mixes result types (the Summary is exempt)
+  Rule 10 every claim for a not_covered finding says "not measured" (the
+          Summary's counting claims are exempt)
+
 Requires jsonschema for the structural (schema) pass; if it is not importable
 the semantic rules still run and a warning is emitted.
 """
@@ -76,6 +85,31 @@ def semantic_violations(text, cited_findings):
             out.append(f"implies absence/negativity but state is {state} (must say not measured)")
             break
     return out
+
+def release_template_violations(report, findings_by_id):
+    """Rules 8-10 for a template-generated release-format report."""
+    out = []
+    sections = report.get("sections", [])
+    summary = next((s for s in sections if s.get("section_id") == "s_summary"), None)
+    if summary is None or not summary.get("claims"):
+        out.append(("R8", "template report has no Summary/coverage claim"))
+    for section in sections:
+        sid = section.get("section_id", "?")
+        if sid == "s_summary":
+            continue
+        groups = set()
+        for claim in section.get("claims", []):
+            cited = [findings_by_id[c.get("finding_id")] for c in claim.get("citations", [])
+                     if c.get("finding_id") in findings_by_id]
+            groups |= {f.get("result_type") for f in cited}
+            if any(f.get("state") == "not_covered" for f in cited) \
+                    and "not measured" not in claim.get("text", "").lower():
+                out.append(("R10", f"{sid}/{claim.get('claim_id', '?')}: claim for a not_covered "
+                                   f"finding must say 'not measured'"))
+        if len(groups) > 1:
+            out.append(("R9", f"section {sid} mixes result types {sorted(str(g) for g in groups)}"))
+    return out
+
 
 ID_RE = re.compile(r"\b(?:rs\d+|f_[0-9a-f]+|c_[0-9a-f]+|cl_[0-9a-f]+|s_[0-9a-z_]+)\b", re.I)
 GENE_RE = re.compile(r"\b[A-Z][A-Za-z]*\d[A-Za-z0-9]*\b")
@@ -246,6 +280,10 @@ def check(findings_path, report, findings=None):
                     err("R4", f"{sid}/{cid}: prescriptive language {p!r}")
             for problem in semantic_violations(text, cited_objs):
                 err("R2", f"{sid}/{cid}: {problem}")
+
+    if report.get("generated_by") == "template" and any("result_type" in f for f in findings["findings"]):
+        for code, msg in release_template_violations(report, findings_by_id):
+            err(code, msg)
 
     for cid in sorted(contradiction_ids - reported_contradictions):
         err("R5", f"contradiction {cid} not reported in any section")

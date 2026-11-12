@@ -1083,8 +1083,14 @@ def _run_r61_char(attempt):
         inline_panel = _panel(_effect_variant(), _refalt_variant())
         inline_rows = [("rs900001", 1, 1000, "A", "G"), ("rs900002", 1, 2000, "A", "A")]
         cases.append(("inline legacy panel", _findings(inline_rows, inline_panel), R61_LEGACY_INLINE_HASH))
+        # D-74-5 extension (4A-2): the rare_ppv caveat text changed on purpose and is
+        # copied into caveats[] and ppv_note; swap the old text back so everything
+        # else stays pinned byte for byte.
+        from caveats import CAVEAT_REGISTRY
+        old_ppv = ("Rare heterozygous array calls have low positive predictive value and "
+                   "warrant clinical-grade confirmation.")
         for label, doc, want in cases:
-            got = _r61_canonical_hash(doc)
+            got = _r61_canonical_hash(json.loads(json.dumps(doc).replace(CAVEAT_REGISTRY["rare_ppv"], old_ppv)))
             _require(f"{label}: legacy findings hash changed, got {got}, want {want}", got == want)
             _require(f"{label}: schema_version is 1.1.0, got {doc['schema_version']!r}",
                      doc["schema_version"] == "1.1.0")

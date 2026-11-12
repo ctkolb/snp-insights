@@ -14,7 +14,7 @@ import argparse
 import json
 import sys
 
-from caveats import CAVEAT_REGISTRY, STANDING_NOTICE
+from caveats import CAVEAT_REGISTRY, LIMITATIONS, STANDING_NOTICE, TEMPLATE_NOTICE, TIER_DEFINITIONS
 import validate_report
 
 
@@ -24,12 +24,17 @@ def render(findings, report):
     findings_by_id = {f["finding_id"]: f for f in findings["findings"]}
 
     lines = ["# Genetic findings report", ""]
-    lines += [f"> {STANDING_NOTICE}", ""]
+    template_made = report.get("generated_by") == "template"
+    lines += [f"> {TEMPLATE_NOTICE if template_made else STANDING_NOTICE}", ""]
 
     lines += ["## Provenance", ""]
     lines.append(f"- Input hash: `{p['input_hash']}`")
     lines.append(f"- Array: {p['array_version']} (converter {p.get('converter_version') or 'n/a'})")
     lines.append(f"- Build: {p['genome_build']}, strand: {p['strand']}")
+    if p.get("build_basis") == "file_statement":
+        lines.append(f"- Input build: {p['input_build']} (stated in the file)")
+    elif p.get("build_basis") == "not_stated":
+        lines.append(f"- Input build: not stated in the file; assumed to match the panel ({p['genome_build']})")
     if p.get("inferred_sex"):
         lines.append(f"- Inferred sex: {p['inferred_sex']}")
     lines.append(f"- Manifest rows: {p['manifest_row_count']}")
@@ -75,6 +80,15 @@ def render(findings, report):
         lines += ["## Findings intentionally omitted", ""]
         for o in omissions:
             lines.append(f"- `{o['finding_id']}`: {o['reason']}")
+        lines.append("")
+
+    if template_made and any("result_type" in f for f in findings["findings"]):
+        lines += ["## Evidence and sources", ""]
+        lines += [f"- **{tier}**: {text}" for tier, text in TIER_DEFINITIONS.items()]
+        lines += ["- Annotation sources and releases are listed under Provenance; each section's "
+                  "Read more links, where present, point to the public records.", ""]
+        lines += ["## Limitations", ""]
+        lines += [f"- {item}" for item in LIMITATIONS]
         lines.append("")
 
     return "\n".join(lines) + "\n"

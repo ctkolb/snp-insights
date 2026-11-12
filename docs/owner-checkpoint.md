@@ -89,6 +89,7 @@ Do not share per-marker coverage.
 ## Current release facts
 
 The v0.1.0 release panel has three health entries (risk or carrier) and no trait
-entries. No reserves exist for v0.1.0, so a coverage-poor outcome is reported
+entries. The array covers about 0.02% of the genome. A rare array call should be
+confirmed by a clinical-grade test. No reserves exist for v0.1.0, so a coverage-poor outcome is reported
 and decided by the owner; no reserve swap is possible in this release. If you
 report `coverage-poor`, that is the recorded outcome, not a failure of the run.

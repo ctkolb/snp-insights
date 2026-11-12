@@ -9,6 +9,7 @@
   "properties": {
     "ir_version": { "const": "1.0.0" },
     "report_id": { "type": "string" },
+    "generated_by": { "enum": ["template", "model"], "description": "Who wrote the claim text: 'template' (fixed templates only) or 'model' (a language model wrote at least one sentence). Absent means 'model' for the notice." },
     "findings_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 hex of the exact findings.json this report was generated from" },
     "sections": { "type": "array", "items": { "$ref": "#/$defs/section" } },
     "omitted_findings": { "type": "array", "items": { "$ref": "#/$defs/omission" } }

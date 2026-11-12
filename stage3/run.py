@@ -419,6 +419,7 @@ def template_ir(findings, findings_hash):
     return {
         "ir_version": "1.0.0",
         "report_id": "r_model",
+        "generated_by": "template",
         "findings_hash": findings_hash,
         "sections": sections,
         "omitted_findings": [],
@@ -499,6 +500,8 @@ def merge_prose(ir, fallback, prose):
         else:
             cl["text"] = fallback[cid]
             fell_back += 1
+    if used:
+        ir["generated_by"] = "model"
     return used, fell_back
 
 
@@ -511,6 +514,8 @@ def revert_invalid(ir, fallback, errors):
     for cl in _state_claims(ir):
         if cl["claim_id"] in bad:
             cl["text"] = fallback[cl["claim_id"]]
+    if bad and all(cl["text"] == fallback[cl["claim_id"]] for cl in _state_claims(ir)):
+        ir["generated_by"] = "template"
     return len(bad)
 
 
@@ -519,6 +524,8 @@ def parse_and_check(text, findings_path, findings):
         report = json.loads(text)
     except (json.JSONDecodeError, TypeError) as exc:
         return None, [("json", f"unparseable JSON: {exc}")]
+    if isinstance(report, dict):
+        report.pop("generated_by", None)  # only code labels a report as template-made
     errors, _ = validate_report.check(findings_path, report, findings=findings)
     return report, errors
 

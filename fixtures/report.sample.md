@@ -29,7 +29,7 @@
 **Caveats**
 - Array-based genotyping covers a small fraction of the genome (~0.02%), is chip-dependent, and is not diagnostic grade.
 - Palindromic site: allele orientation cannot be resolved from array data alone.
-- Rare heterozygous array calls have low positive predictive value and warrant clinical-grade confirmation.
+- Rare array calls can be inaccurate; a rare result should be confirmed by a clinical-grade test.
 
 ## On the array, no variant detected, or no call
 
