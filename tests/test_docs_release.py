@@ -113,6 +113,55 @@ real-data checkpoint, repository branch protection, hosted checks on the release
 pull request, and the release tag; the existing v0.1.0 tag is preserved and not
 replaced until the owner decides its disposition."""
 
+RELEASE_AMENDMENT = (
+    "Amendment (recorded 2026-11-12): the Definition of done asks for a small "
+    "mixed panel. The v0.1.0 panel is health-only: no trait entry met the "
+    "evidence bar, and counts are goals, not quotas (docs/accepted-limits.md "
+    "AL-014). The release is complete with a health-only panel once the "
+    "owner-only steps are done."
+)
+
+# Owner-approved closure rows (record: closure docs fixes after CODE-CLOSE r78).
+CLOSURE_ROWS = {
+    "AL-028": (
+        "| AL-028 | REL | Tracked repository metadata contains the owner's "
+        "identity: .github/CODEOWNERS (account handle) and .mailmap (name and "
+        "address mapping, display only). Both predate this release. | LOW | "
+        "CODEOWNERS needs the handle to work; .mailmap changes display only "
+        "and cannot be removed from public history by editing it. | "
+        "2026-11-12 | The owner wants anonymous history or a team owner in "
+        "CODEOWNERS. |"
+    ),
+    "AL-029": (
+        "| AL-029 | REL | No reserve entries exist for v0.1.0, so a "
+        "coverage-poor outcome from the owner's private run has no reserve "
+        "swap; the reserve rules in the curation method apply to later "
+        "panels. | MEDIUM | No candidate met every criterion for a reserve. | "
+        "2026-11-12 | The owner reports coverage-poor. |"
+    ),
+    "AL-030": (
+        "| AL-030 | REL | The standing notice shown on model-written reports "
+        "says \"external language model\" even when the model is local. "
+        "Template-only reports carry a separate, accurate notice. | LOW | "
+        "Conservative wording; model narration is outside the verified v0.1.0 "
+        "scope (AL-016). | 2026-11-12 | Someone enables a local model and "
+        "reads the notice as a statement about where the model runs. |"
+    ),
+}
+
+CURATION_LIMITATIONS_SENTENCE = (
+    "Whether the panel is adequate is the owner's aggregate coverage judgment "
+    "(counts only). No reserves exist for v0.1.0, so a coverage-poor outcome "
+    "has no reserve swap."
+)
+CURATION_LIMITATIONS_NEXT = "The pair rule trusts the captured placements and the"
+CURATION_OLD_PHRASE = "with the reserves as the remedy"
+CURATION_RESERVES_PARAGRAPH = (
+    "For v0.1.0 no candidate remained that met every criterion for a reserve, "
+    "so the record holds no reserve rows; the reserve rules above apply to "
+    "later panels."
+)
+
 README_STATUS = (
     "Release candidate v0.1.0. The pipeline runs end to end on synthetic "
     "fixtures: parse, annotate, a curated three-entry release panel, and a "
@@ -439,6 +488,83 @@ def _release_doc_status_section():
     return True
 
 
+# ------------------------------------------------- closure documentation gates
+
+def _accepted_limits_rows_028_to_030_present():
+    text = _read(LIMITS)
+    found = _rows(text, set(CLOSURE_ROWS))
+    _require("AL-028..AL-030 all present", sorted(found) == sorted(CLOSURE_ROWS))
+    for rid, row in CLOSURE_ROWS.items():
+        _require("%s differs from the approved text" % rid, found[rid] == row)
+    _require("each closure row appears once",
+             all(text.count(row) == 1 for row in CLOSURE_ROWS.values()))
+    order = [l[2:8] for l in text.split("\n") if re.match(r"\| AL-\d{3} \|", l)]
+    _require("rows are in order, 028..030 last",
+             order == sorted(order) and order[-3:] == sorted(CLOSURE_ROWS))
+    return True
+
+
+def _accepted_limits_existing_rows_unchanged_after_029():
+    raw = open(LIMITS, "rb").read()
+    _require("existing bytes unchanged (prefix)",
+             hashlib.sha256(raw[:LIMITS_BASE_BYTES]).hexdigest()
+             == LIMITS_BASE_SHA256)
+    text = raw.decode("utf-8")
+    pins = dict(OLD_ROW_SHA256)
+    pins.update(NEW_ROW_SHA256)
+    found = _rows(text, set(pins))
+    _require("AL-001..AL-027 all present", sorted(found) == sorted(pins))
+    for rid, digest in pins.items():
+        _require("%s changed" % rid, _sha(found[rid]) == digest)
+    return True
+
+
+def _curation_limitations_no_reserves_sentence():
+    text = _read(CURATION)
+    limits = _flat(_section(text, "Limitations"))
+    _require("new Limitations sentence present",
+             CURATION_LIMITATIONS_SENTENCE in limits)
+    _require("the rest of the line follows the new sentence unchanged",
+             CURATION_LIMITATIONS_SENTENCE + " " + CURATION_LIMITATIONS_NEXT
+             in limits)
+    _require("old phrase gone from Limitations", CURATION_OLD_PHRASE not in limits)
+    _require("old phrase gone from the record",
+             CURATION_OLD_PHRASE not in _flat(text))
+    _require("edit is below the Tables heading",
+             text.index(CURATION_LIMITATIONS_SENTENCE.split(" (")[0])
+             > text.index("\n## Tables\n"))
+    return True
+
+
+def _curation_reserves_section_states_none_exist():
+    text = _read(CURATION)
+    sec = _section(text, "Reserves and goals")
+    _require("paragraph present once in the section",
+             _flat(sec).count(CURATION_RESERVES_PARAGRAPH) == 1)
+    paras = [p for p in re.split(r"\n\s*\n", sec) if p.strip()]
+    _require("paragraph is the last in the section",
+             _flat(paras[-1]) == CURATION_RESERVES_PARAGRAPH)
+    _require("paragraph is not above the Tables heading",
+             _flat(text).count(CURATION_RESERVES_PARAGRAPH) == 1
+             and text.index("\n## Reserves and goals\n")
+             > text.index("\n## Tables\n"))
+    return True
+
+
+def _release_doc_dod_amendment():
+    text = _read(RELEASE_DOC)
+    _require("amendment present once", text.count(RELEASE_AMENDMENT) == 1)
+    status = text.index("## Release status (recorded 2026-11-12)")
+    _require("amendment follows the Release status section",
+             text.index(RELEASE_AMENDMENT) > status)
+    _require("amendment is after the status section text",
+             text.index(RELEASE_AMENDMENT) > text.index(
+                 "replaced until the owner decides its disposition."))
+    _require("amendment ends the document",
+             text.rstrip("\n").endswith(RELEASE_AMENDMENT))
+    return True
+
+
 # ---------------------------------------------------------------------- driver
 
 def run(check):
@@ -465,6 +591,15 @@ def run(check):
     attempt("R4B.agents_md_current_state", _agents_md_current_state)
     attempt("R4B.accepted_limits_rows_append_only", _accepted_limits_rows_append_only)
     attempt("R4B.release_doc_status_section", _release_doc_status_section)
+    attempt("R4B.accepted_limits_rows_028_to_030_present",
+            _accepted_limits_rows_028_to_030_present)
+    attempt("R4B.accepted_limits_existing_rows_unchanged_after_029",
+            _accepted_limits_existing_rows_unchanged_after_029)
+    attempt("R4B.curation_limitations_no_reserves_sentence",
+            _curation_limitations_no_reserves_sentence)
+    attempt("R4B.curation_reserves_section_states_none_exist",
+            _curation_reserves_section_states_none_exist)
+    attempt("R4B.release_doc_dod_amendment", _release_doc_dod_amendment)
 
 
 def main():
