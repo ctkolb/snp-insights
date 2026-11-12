@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(ROOT, "stage2"))
 sys.path.insert(0, os.path.join(ROOT, "stage3"))
 
 import annotate  # noqa: E402
+import caveats  # noqa: E402
 import run as stage3_run  # noqa: E402
 import validate_report  # noqa: E402
 from render_report import render  # noqa: E402
@@ -540,6 +541,98 @@ def _run_behavior(attempt):
     attempt("R4A.summary_is_r9_exception", summary_is_r9_exception)
 
 
+# C0 pins for ticket 4A-2 (computed on the base 66a2ca7): the model-path notice and
+# the rare-call caveat condition must not change, and a legacy document keeps its
+# provenance block.
+OLD_STANDING_NOTICE = (
+    "This report was synthesized from a raw DNA file by an external language "
+    "model from structured findings produced locally. It is a research and "
+    "curiosity tool, not medical advice or a diagnostic test."
+)
+
+
+def _notice_line(markdown):
+    for line in markdown.splitlines():
+        if line.startswith("> "):
+            return line[2:]
+    return None
+
+
+def _run_4a2_characterization(attempt):
+    def notice_model_path_unchanged():
+        doc = _load(os.path.join(FIX, "findings.sample.json"))
+        ir = _load(os.path.join(FIX, "report.sample.json"))
+        _require("sample report IR already carries generated_by", "generated_by" not in ir)
+        got = _notice_line(render(doc, ir))
+        _require(f"notice for an IR without generated_by changed: {got!r}", got == OLD_STANDING_NOTICE)
+        model_ir = dict(ir, generated_by="model")
+        got = _notice_line(render(doc, model_ir))
+        _require(f"notice for generated_by=model changed: {got!r}", got == OLD_STANDING_NOTICE)
+        _require("STANDING_NOTICE constant changed", caveats.STANDING_NOTICE == OLD_STANDING_NOTICE)
+        return True
+    attempt("R4A.notice_model_path_unchanged", notice_model_path_unchanged)
+
+    def rare_ppv_applies_to_hom_alt():
+        # required_caveats and the validator already attach rare_ppv for any detected
+        # zygosity; this pins that behavior (only the wording changes in 4A-2).
+        for zygosity in ("het", "hom_alt", "hemizygous"):
+            for rarity in ("rare", "ultra_rare"):
+                f = _hf("f_000000000001", "rs9000001", "GENEA", "Condition one", "detected",
+                        zygosity, "carrier_status", rarity=rarity)
+                _require(f"{zygosity}/{rarity}: rare_ppv not attached",
+                         "rare_ppv" in stage3_run.required_caveats([f]))
+        common = _hf("f_000000000001", "rs9000001", "GENEA", "Condition one", "detected",
+                     "hom_alt", "carrier_status", rarity="common")
+        _require("rare_ppv attached to a common call", "rare_ppv" not in stage3_run.required_caveats([common]))
+        rare_ref = _hf("f_000000000001", "rs9000001", "GENEA", "Condition one", "covered_reference",
+                       "hom_ref", "carrier_status", rarity="rare")
+        _require("rare_ppv attached to a non-detected call",
+                 "rare_ppv" not in stage3_run.required_caveats([rare_ref]))
+        fs = [_hf("f_000000000001", "rs9000001", "GENEA", "Condition one", "detected", "hom_alt",
+                  "carrier_status", rarity="rare")]
+        ir, errors = _report(_hdoc(fs))
+        _require(f"template IR for a rare hom_alt call is invalid: {errors}", not errors)
+        sec = _section(ir, "s_carrier_status")
+        _require("section lacks rare_ppv", "rare_ppv" in sec["caveat_ids"])
+        sec["caveat_ids"] = [c for c in sec["caveat_ids"] if c != "rare_ppv"]
+        with tempfile.TemporaryDirectory() as d:
+            doc = _hdoc(fs)
+            path = os.path.join(d, "findings.json")
+            with open(path, "w") as fh:
+                json.dump(doc, fh)
+            ir["findings_hash"] = stage3_run.sha256_file(path)
+            errors, _ = validate_report.check(path, ir, findings=doc)
+        _require("validator no longer requires rare_ppv for hom_alt",
+                 any(code == "R2" and "rare_ppv" in msg for code, msg in errors))
+        return True
+    attempt("R4A.rare_ppv_applies_to_hom_alt", rare_ppv_applies_to_hom_alt)
+
+    def provenance_legacy_unchanged():
+        doc = _load(os.path.join(FIX, "findings.sample.json"))
+        ir = _load(os.path.join(FIX, "report.sample.json"))
+        _require("legacy findings unexpectedly carry input_build", "input_build" not in doc["provenance"])
+        lines = render(doc, ir).splitlines()
+        start = lines.index("## Provenance")
+        block = []
+        for line in lines[start + 2:]:
+            if line.startswith("## "):
+                break
+            block.append(line)
+        _require(f"legacy provenance block gained an Input build line: {block}",
+                 not any(l.startswith("- Input build") for l in block))
+        _require("legacy Build line changed",
+                 f"- Build: {doc['provenance']['genome_build']}, strand: {doc['provenance']['strand']}" in block)
+        return True
+    attempt("R4A.provenance_legacy_unchanged", provenance_legacy_unchanged)
+
+    def sample_report_fixture_validates():
+        path = os.path.join(FIX, "findings.sample.json")
+        errors, _ = validate_report.check(path, _load(os.path.join(FIX, "report.sample.json")))
+        _require(f"sample report fixture invalid: {errors}", not errors)
+        return True
+    attempt("R4A.sample_report_fixture_validates", sample_report_fixture_validates)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -553,6 +646,7 @@ def run(check):
         check(name, bool(result))
 
     _run_characterization(attempt)
+    _run_4a2_characterization(attempt)
     _run_behavior(attempt)
 
 
