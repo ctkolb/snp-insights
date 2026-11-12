@@ -129,3 +129,5 @@ limits are in docs/accepted-limits.md. Not yet done and owner-only: the private
 real-data checkpoint, repository branch protection, hosted checks on the release
 pull request, and the release tag; the existing v0.1.0 tag is preserved and not
 replaced until the owner decides its disposition.
+
+Amendment (recorded 2026-11-12): the Definition of done asks for a small mixed panel. The v0.1.0 panel is health-only: no trait entry met the evidence bar, and counts are goals, not quotas (docs/accepted-limits.md AL-014). The release is complete with a health-only panel once the owner-only steps are done.

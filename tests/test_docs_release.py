@@ -469,8 +469,9 @@ def _accepted_limits_rows_append_only():
         _require("%s differs from the approved text" % rid, _sha(new[rid]) == digest)
     appended = raw[LIMITS_BASE_BYTES:].decode("utf-8").split("\n")
     appended = [l for l in appended if l.strip()]
-    _require("only the 14 approved rows were appended",
-             [l[2:8] for l in appended] == sorted(NEW_ROW_SHA256))
+    _require("only the approved rows AL-014..AL-030 were appended",
+             [l[2:8] for l in appended]
+             == sorted(NEW_ROW_SHA256) + sorted(CLOSURE_ROWS))
     return True
 
 
@@ -484,7 +485,10 @@ def _release_doc_status_section():
              text.count("## Release status (recorded 2026-11-12)") == 1)
     _require("status section is exact", RELEASE_STATUS in text)
     tail = raw[RELEASE_DOC_BASE_BYTES:].decode("utf-8").strip()
-    _require("status section is the only addition", tail == RELEASE_STATUS.strip())
+    status = RELEASE_STATUS.strip()
+    _require("tail starts with the status section", tail.startswith(status))
+    _require("status section is followed only by the amendment",
+             tail[len(status):].strip() == RELEASE_AMENDMENT)
     return True
 
 

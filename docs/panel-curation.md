@@ -512,12 +512,14 @@ Reserves recorded for this release:
 - Health group: none. Every health-candidate row in the pool is either included or excluded above; no further row reaches every inclusion criterion.
 - Trait group: none. No pool trait row has replicated, orientation-verified evidence under the curated label, so none is a fully sourced reserve.
 
+For v0.1.0 no candidate remained that met every criterion for a reserve, so the record holds no reserve rows; the reserve rules above apply to later panels.
+
 ## Limitations
 
 This record documents public-database evidence only.
 For every marker, array presence is not verified: no public array manifest is in the evidence pack.
 The report must never state that a marker is on the array.
-Whether the panel is adequate is the owner's aggregate coverage judgment (counts only), with the reserves as the remedy. The pair rule trusts the captured placements and the
+Whether the panel is adequate is the owner's aggregate coverage judgment (counts only). No reserves exist for v0.1.0, so a coverage-poor outcome has no reserve swap. The pair rule trusts the captured placements and the
 curated alias file; an unmapped record is listed but cannot be judged by the
 checker, so a human reviewer reads every `?` item. Independence of cohorts is
 conservative: when it cannot be shown from captured text, rows form one group.
