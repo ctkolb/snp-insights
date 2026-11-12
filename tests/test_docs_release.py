@@ -37,6 +37,12 @@ RELEASE_DOC = os.path.join(DOCS, "release-v0.1.0.md")
 CHECKPOINT = os.path.join(DOCS, "owner-checkpoint.md")
 CURATION = os.path.join(DOCS, "panel-curation.md")
 RAW_FIXTURE = os.path.join(ROOT, "fixtures", "raw.release.synthetic.txt")
+GETTING_STARTED = os.path.join(DOCS, "getting-started.md")
+REFERENCE_DATA = os.path.join(DOCS, "reference-data.md")
+NEW_DOCS = (GETTING_STARTED, REFERENCE_DATA)
+SOURCES_DIR = os.path.join(ROOT, "fixtures", "sources")
+FETCH_TOOL = os.path.join(ROOT, "tools", "fetch_reference.py")
+SAMPLE_PANEL = os.path.join(ROOT, "data", "panel.sample.json")
 
 # Pins computed on the base commit dbae23a (before ticket 4B).
 LIMITS_BASE_BYTES = 6165
@@ -242,6 +248,18 @@ def _rows(text, ids):
     return found
 
 
+def _cli(argv):
+    """Run the real CLI in-process; returns (exit code, stdout, stderr)."""
+    import snp_insights.cli as cli
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        try:
+            code = cli.main(argv)
+        except SystemExit as exc:
+            code = exc.code if isinstance(exc.code, int) else 1
+    return code, out.getvalue(), err.getvalue()
+
+
 def _release_section():
     return _section(_read(README), "Release panel and your own file")
 
@@ -305,7 +323,6 @@ def _readme_template_only_command():
     _require("exactly two commands", len(cmds) == 2)
     subs = [c[3] for c in cmds]
     _require("check-raw then run", subs == ["check-raw", "run"])
-    import snp_insights.cli as cli
     cwd = os.getcwd()
     with tempfile.TemporaryDirectory() as priv:
         _require("temp dir outside checkout",
@@ -324,13 +341,8 @@ def _readme_template_only_command():
                     argv.append(tok)
                 _require("unresolved placeholder in %r" % (cmd,),
                          not any("$" in a or "<" in a for a in argv))
-                out, err = io.StringIO(), io.StringIO()
-                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                    try:
-                        code = cli.main(argv)
-                    except SystemExit as exc:
-                        code = exc.code if isinstance(exc.code, int) else 1
-                results.append((argv, code, out.getvalue(), err.getvalue()))
+                code, out, err = _cli(argv)
+                results.append((argv, code, out, err))
         finally:
             os.chdir(cwd)
         argv0, code0, out0, _ = results[0]
@@ -364,23 +376,33 @@ def _readme_limitations_list():
     return True
 
 
-def _readme_no_real_paths_or_names():
+def _generic_text_problems(path):
+    """Reasons a tracked document is not generic text (empty when clean)."""
     import guard
     emails = re.compile(r"[\w.+-]+@([\w-]+\.)+[\w-]+")
     british = re.compile(r"\b(colour|behaviour|favour|organis(?:e|ed|ing|ation)"
                          r"|analyse[sd]?|centre|licence|catalogue|grey)\b", re.I)
+    text = _read(path)
+    name = os.path.basename(path)
+    problems = []
+    for label, rx in guard.SECRET_PATTERNS:
+        if rx.search(text):
+            problems.append("%s: guard pattern %s" % (name, label))
+    for m in emails.finditer(text):
+        if not m.group(0).endswith("@example.com"):
+            problems.append("%s: contact address %s" % (name, m.group(0)))
+    if re.search(r"~[A-Za-z0-9_-]+/", text):
+        problems.append("%s: tilde-home path" % name)
+    hit = british.search(text)
+    if hit:
+        problems.append("%s: British spelling %s" % (name, hit))
+    return problems
+
+
+def _readme_no_real_paths_or_names():
     for path in (README, AGENTS, LIMITS, RELEASE_DOC, CHECKPOINT):
-        text = _read(path)
-        name = os.path.basename(path)
-        for label, rx in guard.SECRET_PATTERNS:
-            _require("%s: guard pattern %s" % (name, label), not rx.search(text))
-        for m in emails.finditer(text):
-            _require("%s: contact address %s" % (name, m.group(0)),
-                     m.group(0).endswith("@example.com"))
-        _require("%s: tilde-home path" % name,
-                 not re.search(r"~[A-Za-z0-9_-]+/", text))
-        _require("%s: British spelling %s" % (name, british.search(text)),
-                 not british.search(text))
+        problems = _generic_text_problems(path)
+        _require("; ".join(problems), not problems)
     return True
 
 
@@ -569,6 +591,467 @@ def _release_doc_dod_amendment():
     return True
 
 
+# ------------------------------------------------ getting-started gates (R5.*)
+
+README_PATHS_HEADING = "Pick your path"
+GS_HEADINGS = (
+    "What this tool does and does not do", "Prerequisites",
+    "Getting your raw file", "The pieces in plain words",
+    "What each command reads and writes", "Reading the report", "Glossary",
+    "Troubleshooting and exit codes", "Next steps",
+)
+RD_HEADINGS = (
+    "Why reference data exists", "The sources",
+    "Do you need to fetch anything", "What fetch writes",
+    "Flags for fetch", "Flags for build-panel", "The synthetic samples",
+    "Manual full-file downloads", "Release-format targets",
+    "SNPedia (manual)",
+)
+README_KEEP_HEADINGS = (
+    "How it works", "Why", "Requirements", "Known limitations (v0.1.0)",
+    "Privacy & safety", "Status", "Contributing", "License", "Testing",
+)
+DOC_MAP_TARGETS = (
+    "docs/getting-started.md", "docs/reference-data.md",
+    "docs/owner-checkpoint.md", "docs/panel-curation.md",
+    "docs/accepted-limits.md", "docs/security.md", "DESIGN.md",
+)
+GLOSSARY_TERMS = (
+    "rsID", "genotype", "allele", "effect allele", "no-call", "genome build",
+    "GRCh37", "carrier", "ClinVar review stars", "allele frequency", "array",
+    "panel", "tier",
+)
+PIECES = ("raw file", "targets file", "evidence file", "panel", "findings.json",
+          "report.ir.json", "report.md", "targets.sample.json",
+          "targets.carrier.json", "targets.traits.json", "targets.release")
+SOURCE_NAMES = ("dbSNP", "ClinVar", "gnomAD", "GWAS Catalog", "Open Targets",
+                "SNPedia", "OMIM", "MedlinePlus", "GeneReviews")
+MANUAL_LINKS = (
+    "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz",
+    "https://ftp.ncbi.nlm.nih.gov/snp/latest_release/VCF/",
+    "https://ftp.ncbi.nlm.nih.gov/snp/",
+    "https://gnomad.broadinstitute.org/downloads",
+    "https://www.ebi.ac.uk/gwas/docs/file-downloads",
+)
+# Sizes the docs may state: only figures already in the README, `fetch --help`
+# or the code (no new numbers).
+ALLOWED_SIZES = {"0.5 GB", "70 MB", "90 GB", "5 GB"}
+SMALL_CACHE_NAMES = ("clinvar.tsv", "dbsnp.tsv", "gnomad.small.vcf", "gwas.tsv",
+                     "manifest.json")
+# Commands that are never run by the tests: they use the network or a private
+# file (checked per command by _skip_reason).
+OFFLINE_SUBS = ("check-raw", "annotate", "narrate", "run", "build-panel")
+
+
+def _h2(text):
+    return [l[3:] for l in text.split("\n") if l.startswith("## ")]
+
+
+def _fences(text):
+    """(info string, lines) for every fenced block, in order."""
+    blocks, info, buf = [], None, []
+    for line in text.split("\n"):
+        if line.strip().startswith("```"):
+            if info is None:
+                info, buf = line.strip()[3:].strip(), []
+            else:
+                blocks.append((info, buf))
+                info = None
+        elif info is not None:
+            buf.append(line)
+    return blocks
+
+
+def _unfenced(text):
+    out, inside = [], False
+    for line in text.split("\n"):
+        if line.strip().startswith("```"):
+            inside = not inside
+        elif not inside:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _fenced_commands(text):
+    """Logical `python -m snp_insights ...` lines (continuations joined)."""
+    cmds = []
+    for info, lines in _fences(text):
+        if info == "report":
+            continue
+        joined, cur = [], ""
+        for line in lines:
+            if line.rstrip().endswith("\\"):
+                cur += line.rstrip()[:-1] + " "
+                continue
+            joined.append(cur + line)
+            cur = ""
+        for line in joined:
+            s = line.strip()
+            if s.startswith("python -m snp_insights"):
+                cmds.append(shlex.split(s))
+    return cmds
+
+
+def _skip_reason(argv):
+    """Why a command is not run (network or private input), else None."""
+    if argv and argv[0] == "fetch":
+        return "network"
+    if "--endpoint" in argv:
+        return "online"
+    for tok in argv:
+        if any(m in tok for m in ("$", "<", ">", "~", "/path/to", "PRIV")):
+            return "placeholder"
+    return None
+
+
+def _run_doc_commands(path, text=None):
+    """Run every offline fenced command of a document in order, in a temp dir
+    outside the checkout. Returns (results, skipped); each result is
+    (argv, code, stdout, stderr, out_dir)."""
+    text = _read(path) if text is None else text
+    results, skipped = [], []
+    cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        _require("temp dir outside checkout",
+                 not os.path.realpath(tmp).startswith(os.path.realpath(ROOT) + os.sep))
+        try:
+            os.chdir(ROOT)
+            for cmd in _fenced_commands(text):
+                argv = [t.replace("$OUT", tmp) for t in cmd[3:]]
+                reason = _skip_reason(argv)
+                if reason is not None:
+                    skipped.append((cmd, reason))
+                    continue
+                if argv and argv[0] == "run":
+                    _require("run names --out-dir: %r" % (cmd,), "--out-dir" in argv)
+                for flag in ("-o", "--out", "--out-dir"):
+                    if flag in argv:
+                        val = argv[argv.index(flag) + 1]
+                        _require("%s outside the checkout in %r" % (flag, cmd),
+                                 val.startswith(tmp))
+                code, out, err = _cli(argv)
+                results.append((argv, code, out, err, tmp))
+                if argv[:1] == ["build-panel"] and "data/targets.sample.json" in argv:
+                    outp = argv[argv.index("-o") + 1]
+                    _require("sample build reproduces data/panel.sample.json",
+                             open(outp, "rb").read() == open(SAMPLE_PANEL, "rb").read())
+        finally:
+            os.chdir(cwd)
+    return results, skipped
+
+
+def _help_flags(sub):
+    code, out, _ = _cli([sub, "--help"])
+    _require("%s --help exits 0" % sub, code == 0)
+    return set(re.findall(r"--[a-z][a-z-]*", out)) - {"--help"}
+
+
+def _slug(heading):
+    s = re.sub(r"[^\w\- ]", "", heading.strip().lower())
+    return s.replace(" ", "-")
+
+
+def _link_problems(path):
+    text = _unfenced(_read(path))
+    base = os.path.dirname(path)
+    problems = []
+    for target in re.findall(r"\[[^\]]*\]\(([^)\s]+)\)", text):
+        if re.match(r"(https?:|mailto:)", target):
+            continue
+        rel, _, frag = target.partition("#")
+        dest = path if not rel else os.path.normpath(os.path.join(base, rel))
+        if not os.path.isfile(dest) or not os.path.realpath(dest).startswith(
+                os.path.realpath(ROOT) + os.sep):
+            problems.append("%s: broken link %s" % (os.path.basename(path), target))
+            continue
+        if frag and dest.endswith(".md"):
+            heads = [_slug(l.lstrip("#")) for l in _read(dest).split("\n")
+                     if re.match(r"#{1,6} ", l)]
+            if frag not in heads:
+                problems.append("%s: missing anchor %s" % (os.path.basename(path), target))
+    return problems
+
+
+def _readme_pick_your_path():
+    text = _read(README)
+    names = _h2(text)
+    _require("Pick your path section exists once", names.count(README_PATHS_HEADING) == 1)
+    _require("Pick your path precedes Quickstart",
+             names.index(README_PATHS_HEADING) < names.index("Quickstart"))
+    _require("opening box kept before the paths",
+             text.index("> **Not medical advice.**") < text.index("## " + README_PATHS_HEADING))
+    sec = _flat(_section(text, README_PATHS_HEADING))
+    for label in ("Path A", "Path B", "Path C"):
+        _require("paths section lacks " + label, label in sec)
+    for phrase in ("synthetic", "your own", "rebuild", "docs/getting-started.md",
+                   "docs/reference-data.md", "no network"):
+        _require("paths section lacks " + phrase, phrase in sec)
+    _require("only three paths", "Path D" not in sec)
+    return True
+
+
+def _readme_links_new_docs():
+    flat = _flat(_read(README))
+    for target in NEW_DOCS:
+        _require("%s exists" % os.path.basename(target), os.path.isfile(target))
+        rel = os.path.relpath(target, ROOT)
+        _require("README links " + rel, "](%s" % rel in flat)
+    return True
+
+
+def _readme_documentation_map():
+    sec = _flat(_section(_read(README), "Documentation map"))
+    for target in DOC_MAP_TARGETS:
+        _require("map links " + target, "](%s" % target in sec)
+        _require("map target exists " + target,
+                 os.path.isfile(os.path.join(ROOT, target)))
+    return True
+
+
+def _readme_kept_sections_and_moved_content():
+    text = _read(README)
+    names = _h2(text)
+    for name in README_KEEP_HEADINGS:
+        _require("README lost section " + name, name in names)
+    _require("Fetching section moved out", "Fetching reference data" not in names)
+    _require("SNPedia heading moved out", "SNPedia (optional, manual)" not in text)
+    flat = _flat(text)
+    _require("manual links moved out", "ftp.ncbi.nlm.nih.gov/pub/clinvar" not in flat)
+    ref = [n for n in names if n.startswith("Reference data")]
+    _require("one Reference data pointer", len(ref) == 1)
+    sec = _section(text, "Reference data")
+    _require("pointer links reference-data.md", "](docs/reference-data.md" in sec)
+    body = [l for l in sec.split("\n") if l.strip()]
+    _require("pointer stays short (3 to 8 lines)", 3 <= len(body) <= 8)
+    _require("narrator harness stays, two commands",
+             text.count("python tools/harness.py") == 2)
+    return True
+
+
+def _readme_quickstart_a():
+    text = _read(README)
+    sec = _section(text, "Quickstart")
+    flat = _flat(sec)
+    _require("Quickstart A subsection", "### A." in sec and "### B." in sec)
+    for phrase in ("python -m venv", "pip install jsonschema", "--version",
+                   "fixtures/raw.release.synthetic.txt",
+                   "data/targets.release-panel.json", "--template-only",
+                   "outside", "synthetic", "findings.json", "report.md",
+                   "report.ir.json", "report.run.json"):
+        _require("Quickstart lacks " + phrase, phrase in flat)
+    _require("Python version check shown", "--version" in flat and "3.12" in flat)
+    _require("raw-file source named", "DNA data" in flat and "zip" in flat)
+    _require("no fetch needed stated",
+             "do not need to fetch" in flat.lower() or "no need to fetch" in flat.lower())
+    return True
+
+
+def _readme_quickstart_commands_run():
+    text = _read(README)
+    sec = "## Quickstart\n" + _section(text, "Quickstart")
+    results, skipped = _run_doc_commands(README, sec)
+    _require("Quickstart commands found", len(results) >= 2)
+    runs = [r for r in results if r[0][:1] == ["run"]]
+    _require("synthetic run present",
+             any("fixtures/raw.release.synthetic.txt" in r[0]
+                 and "data/targets.release-panel.json" in r[0]
+                 and "--template-only" in r[0] for r in runs))
+    for argv, code, _, err, _tmp in results:
+        _require("exit 0 for %r (got %s)" % (argv, code), code == 0)
+        _require("no inside-checkout warning for %r" % (argv,), "WARNING" not in err)
+    for cmd, reason in skipped:
+        _require("only private-file placeholders skipped in Quickstart: %r" % (cmd,),
+                 reason == "placeholder")
+    return True
+
+
+def _new_docs_headings():
+    for path, heads in ((GETTING_STARTED, GS_HEADINGS), (REFERENCE_DATA, RD_HEADINGS)):
+        _require("%s exists" % os.path.basename(path), os.path.isfile(path))
+        text = _read(path)
+        _require("%s starts with a title" % os.path.basename(path),
+                 text.startswith("# "))
+        names = _h2(text)
+        pos = -1
+        for h in heads:
+            idx = [i for i, n in enumerate(names) if n.startswith(h)]
+            _require("%s lacks heading %r" % (os.path.basename(path), h), len(idx) == 1)
+            _require("%s heading %r out of order" % (os.path.basename(path), h),
+                     idx[0] > pos)
+            pos = idx[0]
+    return True
+
+
+def _docs_relative_links_resolve():
+    problems = []
+    for path in (README,) + NEW_DOCS:
+        _require("%s exists" % os.path.basename(path), os.path.isfile(path))
+        problems += _link_problems(path)
+    _require("; ".join(problems), not problems)
+    return True
+
+
+def _docs_offline_commands_run():
+    seen = set()
+    for path, minimum in ((GETTING_STARTED, 4), (REFERENCE_DATA, 1)):
+        _require("%s exists" % os.path.basename(path), os.path.isfile(path))
+        results, skipped = _run_doc_commands(path)
+        name = os.path.basename(path)
+        _require("%s: runnable commands found (>=%d)" % (name, minimum),
+                 len(results) >= minimum)
+        for argv, code, _, err, _tmp in results:
+            _require("%s: exit 0 for %r (got %s)" % (name, argv, code), code == 0)
+            _require("%s: no inside-checkout warning for %r" % (name, argv),
+                     "WARNING" not in err)
+            if path == GETTING_STARTED and argv:
+                seen.add(argv[0])
+        for cmd, reason in skipped:
+            _require("%s: unexpected skip %r (%s)" % (name, cmd, reason),
+                     reason in ("network", "online", "placeholder"))
+    _require("getting-started runs check-raw, annotate, narrate and run: %s" % sorted(seen),
+             {"check-raw", "annotate", "narrate", "run"} <= seen)
+    return True
+
+
+def _docs_flags_exist_in_help():
+    helps = {sub: _help_flags(sub) for sub in ("build-panel", "fetch")}
+    for path in NEW_DOCS:
+        _require("%s exists" % os.path.basename(path), os.path.isfile(path))
+        for cmd in _fenced_commands(_read(path)):
+            if cmd[3:4] and cmd[3] in helps:
+                for tok in cmd[4:]:
+                    if tok.startswith("--"):
+                        flag = tok.split("=", 1)[0]
+                        _require("%s: %s is not a %s flag" % (
+                            os.path.basename(path), flag, cmd[3]),
+                            flag in helps[cmd[3]])
+    ref = _read(REFERENCE_DATA)
+    for sub, heading in (("fetch", "Flags for fetch"),
+                         ("build-panel", "Flags for build-panel")):
+        sec = _section(ref, heading)
+        named = set(re.findall(r"`(--[a-z][a-z-]*)", sec))
+        _require("%s table names only real flags: %s" % (
+            sub, sorted(named - helps[sub])), named <= helps[sub])
+        _require("%s table covers every flag: missing %s" % (
+            sub, sorted(helps[sub] - named)), helps[sub] <= named)
+    return True
+
+
+def _reference_data_names_sources_fixtures_and_files():
+    ref = _read(REFERENCE_DATA)
+    flat = _flat(ref)
+    sources = _flat(_section(ref, "The sources"))
+    for name in SOURCE_NAMES:
+        _require("sources section lacks " + name, name in sources)
+    for phrase in ("verify the current terms", "not legal advice",
+                   "CC BY-NC-SA 3.0", "link-only"):
+        _require("terms line lacks " + phrase, phrase in flat)
+    for fname in sorted(os.listdir(SOURCES_DIR)):
+        _require("reference-data.md omits fixtures/sources/" + fname, fname in flat)
+    _require("states fixtures are synthetic", "synthetic" in _flat(
+        _section(ref, "The synthetic samples")))
+    for url in MANUAL_LINKS:
+        _require("manual link missing " + url, url in ref)
+    return True
+
+
+def _reference_data_cache_names_match_code():
+    code = _read(FETCH_TOOL)
+    for name in SMALL_CACHE_NAMES:
+        _require("fetch_reference.py no longer writes %s" % name,
+                 '"%s"' % name in code)
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    try:
+        import fetch_reference
+        full_names = [os.path.basename(u.split("?")[0])
+                      for u in fetch_reference.FULL_URLS.values()]
+    finally:
+        sys.path.pop(0)
+    sec = _flat(_section(_read(REFERENCE_DATA), "What fetch writes"))
+    for name in SMALL_CACHE_NAMES + tuple(full_names):
+        _require("cache section lacks " + name, name in sec)
+    _require("states how build-panel --cache fills paths",
+             "--cache" in sec and "unset" in sec)
+    return True
+
+
+def _new_docs_content_pins():
+    gs = _read(GETTING_STARTED)
+    flat = _flat(gs)
+    pieces = _flat(_section(gs, "The pieces in plain words"))
+    for term in PIECES:
+        _require("pieces section lacks " + term, term in pieces)
+    glossary = _flat(_section(gs, "Glossary")).lower()
+    for term in GLOSSARY_TERMS:
+        _require("glossary lacks " + term, term.lower() in glossary)
+    cmds = _flat(_section(gs, "What each command reads and writes"))
+    for sub in ("check-raw", "annotate", "narrate", "run", "fetch", "build-panel"):
+        _require("commands section lacks " + sub, sub in cmds)
+    _require("commands section states network use", "network" in cmds)
+    trouble = _flat(_section(gs, "Troubleshooting and exit codes"))
+    for phrase in ("python3", "--force", "--panel", "symlink", "exit code 1",
+                   "exit code 2", "--accept-privacy-risk", "No module named"):
+        _require("troubleshooting lacks " + phrase, phrase in trouble)
+    for phrase in ("not medical advice", "not measured means no information"):
+        _require("getting-started lacks " + phrase, phrase in flat.lower())
+    ref = _read(REFERENCE_DATA)
+    rflat = _flat(ref)
+    for phrase in ("--curated-evidence data/targets.release-evidence.json",
+                   "docs/panel-curation.md", "--yes", "never touches the network",
+                   "data/targets.release-panel.json"):
+        _require("reference-data lacks " + phrase, phrase in rflat)
+    decision = _flat(_section(ref, "Do you need to fetch anything"))
+    _require("decision section answers no for v0.1.0",
+             "v0.1.0" in decision and "no" in decision.lower())
+    for path in NEW_DOCS:
+        sizes = set(re.findall(r"\d+(?:\.\d+)? ?(?:GB|MB|GiB)\b", _read(path)))
+        _require("%s: sizes beyond the known figures: %s" % (
+            os.path.basename(path), sorted(sizes - ALLOWED_SIZES)),
+            sizes <= ALLOWED_SIZES)
+    return True
+
+
+def _report_excerpts_are_real():
+    results = []
+    cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.chdir(ROOT)
+            code, _, _ = _cli(["run", RAW_FIXTURE, "data/targets.release-panel.json",
+                               "--out-dir", os.path.join(tmp, "o"), "--template-only"])
+        finally:
+            os.chdir(cwd)
+        _require("fixture run exits 0", code == 0)
+        report = _read(os.path.join(tmp, "o", "report.md")).split("\n")
+    for path in (README, GETTING_STARTED):
+        _require("%s exists" % os.path.basename(path), os.path.isfile(path))
+        blocks = [b for b in _fences(_read(path)) if b[0] == "report"]
+        _require("%s has a report excerpt block" % os.path.basename(path), blocks)
+        for _, lines in blocks:
+            body = [l for l in lines if l.strip() and l.strip() != "..."]
+            _require("%s: excerpt block is not empty" % os.path.basename(path), body)
+            for line in body:
+                _require("%s: excerpt line is not in a real report: %r" % (
+                    os.path.basename(path), line), line in report)
+    return True
+
+
+def _new_docs_generic_text():
+    problems = []
+    for path in (README,) + NEW_DOCS:
+        _require("%s exists" % os.path.basename(path), os.path.isfile(path))
+        problems += _generic_text_problems(path)
+        text = _read(path)
+        bad = [c for c in text if 0x1F000 <= ord(c) <= 0x1FAFF
+               or 0x2600 <= ord(c) <= 0x27BF or ord(c) == 0xFE0F]
+        if bad:
+            problems.append("%s: emoji %r" % (os.path.basename(path), bad[:3]))
+        for m in re.finditer(r"(?:/Users|/home)/[A-Za-z0-9_.-]+", text):
+            problems.append("%s: home path %s" % (os.path.basename(path), m.group(0)))
+    _require("; ".join(problems), not problems)
+    return True
+
+
 # ---------------------------------------------------------------------- driver
 
 def run(check):
@@ -604,6 +1087,25 @@ def run(check):
     attempt("R4B.curation_reserves_section_states_none_exist",
             _curation_reserves_section_states_none_exist)
     attempt("R4B.release_doc_dod_amendment", _release_doc_dod_amendment)
+
+    attempt("R5.readme_pick_your_path_names_three_paths", _readme_pick_your_path)
+    attempt("R5.readme_links_new_docs_and_they_exist", _readme_links_new_docs)
+    attempt("R5.readme_documentation_map", _readme_documentation_map)
+    attempt("R5.readme_keeps_sections_and_moves_reference_content",
+            _readme_kept_sections_and_moved_content)
+    attempt("R5.readme_quickstart_a_content", _readme_quickstart_a)
+    attempt("R5.readme_quickstart_commands_run", _readme_quickstart_commands_run)
+    attempt("R5.new_docs_have_required_headings", _new_docs_headings)
+    attempt("R5.relative_links_resolve", _docs_relative_links_resolve)
+    attempt("R5.new_docs_offline_commands_run", _docs_offline_commands_run)
+    attempt("R5.new_docs_flags_exist_in_help", _docs_flags_exist_in_help)
+    attempt("R5.reference_data_names_sources_fixtures_and_links",
+            _reference_data_names_sources_fixtures_and_files)
+    attempt("R5.reference_data_cache_names_match_code",
+            _reference_data_cache_names_match_code)
+    attempt("R5.new_docs_content_pins", _new_docs_content_pins)
+    attempt("R5.report_excerpts_are_real", _report_excerpts_are_real)
+    attempt("R5.docs_are_generic_text", _new_docs_generic_text)
 
 
 def main():
