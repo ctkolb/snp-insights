@@ -702,12 +702,15 @@ def _main_run(doc, argv, reply=None):
         with open(path, "w") as fh:
             json.dump(doc, fh)
         out = os.path.join(d, "report.md")
-        with contextlib.redirect_stdout(io.StringIO()):
-            if reply is None:
-                rc = stage3_run.main([path] + argv + ["-o", out])
-            else:
-                with _FakeChat(reply):
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                if reply is None:
                     rc = stage3_run.main([path] + argv + ["-o", out])
+                else:
+                    with _FakeChat(reply):
+                        rc = stage3_run.main([path] + argv + ["-o", out])
+        except SystemExit as exc:  # a stage3 abort is a gate failure, not a crashed run
+            raise _Gate(f"stage3 main exited: {exc}") from None
         with open(out) as fh:
             markdown = fh.read()
         return rc, markdown, _load(os.path.join(d, "report.ir.json")), _load(os.path.join(d, "report.run.json"))
