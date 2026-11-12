@@ -43,6 +43,8 @@ NEW_DOCS = (GETTING_STARTED, REFERENCE_DATA)
 SOURCES_DIR = os.path.join(ROOT, "fixtures", "sources")
 FETCH_TOOL = os.path.join(ROOT, "tools", "fetch_reference.py")
 SAMPLE_PANEL = os.path.join(ROOT, "data", "panel.sample.json")
+RELEASE_FIXTURES = (RAW_FIXTURE,
+                    os.path.join(ROOT, "fixtures", "raw.release.synthetic.states.txt"))
 
 # Pins computed on the base commit dbae23a (before ticket 4B).
 LIMITS_BASE_BYTES = 6165
@@ -221,18 +223,26 @@ def _flat(text):
     return " ".join(text.split())
 
 
+def _headings(text):
+    """(line index, line) of every level-2 heading outside fenced blocks."""
+    found, inside = [], False
+    for i, line in enumerate(text.split("\n")):
+        if line.strip().startswith("```"):
+            inside = not inside
+        elif not inside and line.startswith("## "):
+            found.append((i, line))
+    return found
+
+
 def _section(text, heading):
     """Body of the level-2 section whose heading starts with `heading`."""
     lines = text.split("\n")
-    start = None
-    for i, line in enumerate(lines):
-        if start is None:
-            if line.startswith("## ") and line[3:].startswith(heading):
-                start = i + 1
-        elif line.startswith("## "):
-            return "\n".join(lines[start:i])
-    _require("section %r not found" % heading, start is not None)
-    return "\n".join(lines[start:])
+    marks = _headings(text)
+    for n, (i, line) in enumerate(marks):
+        if line[3:].startswith(heading):
+            end = marks[n + 1][0] if n + 1 < len(marks) else len(lines)
+            return "\n".join(lines[i + 1:end])
+    _require("section %r not found" % heading, False)
 
 
 def _sha(text):
@@ -279,8 +289,7 @@ def _release_commands():
 def _readme_release_panel_workflow():
     text = _read(README)
     flat = _flat(text)
-    heads = [l for l in text.split("\n") if l.startswith("## ")]
-    names = [h[3:] for h in heads]
+    names = _h2(text)
     quick = names.index("Quickstart")
     rel = [i for i, n in enumerate(names)
            if n.startswith("Release panel and your own file")]
@@ -436,10 +445,10 @@ def _readme_status_exact():
 
 def _readme_testing_section_complete():
     sec = _section(_read(README), "Testing")
-    listed = re.findall(r"^- `(tests/test_[a-z_]+\.py)`", sec, re.M)
+    listed = set(re.findall(r"`(tests/test_[a-z_]+\.py)`", sec))
     actual = sorted("tests/" + n for n in os.listdir(os.path.join(ROOT, "tests"))
                     if re.fullmatch(r"test_[a-z_]+\.py", n))
-    _require("every test file is listed once", sorted(listed) == actual)
+    _require("every test file is named", sorted(listed) == actual)
     flat = _flat(sec)
     _require("schema extra noted", "jsonschema" in flat)
     _require("standalone files noted",
@@ -618,7 +627,7 @@ DOC_MAP_TARGETS = (
 )
 GLOSSARY_TERMS = (
     "rsID", "genotype", "allele", "effect allele", "no-call", "genome build",
-    "GRCh37", "carrier", "ClinVar review stars", "allele frequency", "array",
+    "carrier", "ClinVar review stars", "allele frequency", "array",
     "panel", "tier",
 )
 PIECES = ("raw file", "targets file", "evidence file", "panel", "findings.json",
@@ -644,7 +653,7 @@ OFFLINE_SUBS = ("check-raw", "annotate", "narrate", "run", "build-panel")
 
 
 def _h2(text):
-    return [l[3:] for l in text.split("\n") if l.startswith("## ")]
+    return [line[3:] for _, line in _headings(text)]
 
 
 def _fences(text):
@@ -981,9 +990,13 @@ def _new_docs_content_pins():
     pieces = _flat(_section(gs, "The pieces in plain words"))
     for term in PIECES:
         _require("pieces section lacks " + term, term in pieces)
-    glossary = _flat(_section(gs, "Glossary")).lower()
+    gloss = _section(gs, "Glossary")
+    items = [l.lower() for l in gloss.split("\n") if l.startswith("- **")]
     for term in GLOSSARY_TERMS:
-        _require("glossary lacks " + term, term.lower() in glossary)
+        _require("glossary lacks an entry for " + term,
+                 any(i.startswith("- **%s:**" % term.lower())
+                     or i.startswith("- **%s (" % term.lower()) for i in items))
+    _require("glossary names GRCh37", "GRCh37" in gloss)
     cmds = _flat(_section(gs, "What each command reads and writes"))
     for sub in ("check-raw", "annotate", "narrate", "run", "fetch", "build-panel"):
         _require("commands section lacks " + sub, sub in cmds)
@@ -1012,17 +1025,20 @@ def _new_docs_content_pins():
 
 
 def _report_excerpts_are_real():
-    results = []
+    report = []
     cwd = os.getcwd()
     with tempfile.TemporaryDirectory() as tmp:
         try:
             os.chdir(ROOT)
-            code, _, _ = _cli(["run", RAW_FIXTURE, "data/targets.release-panel.json",
-                               "--out-dir", os.path.join(tmp, "o"), "--template-only"])
+            for i, fixture in enumerate(RELEASE_FIXTURES):
+                out_dir = os.path.join(tmp, "o%d" % i)
+                code, _, _ = _cli(["run", fixture, "data/targets.release-panel.json",
+                                   "--out-dir", out_dir, "--template-only"])
+                _require("fixture run exits 0: %s" % os.path.basename(fixture),
+                         code == 0)
+                report += _read(os.path.join(out_dir, "report.md")).split("\n")
         finally:
             os.chdir(cwd)
-        _require("fixture run exits 0", code == 0)
-        report = _read(os.path.join(tmp, "o", "report.md")).split("\n")
     for path in (README, GETTING_STARTED):
         _require("%s exists" % os.path.basename(path), os.path.isfile(path))
         blocks = [b for b in _fences(_read(path)) if b[0] == "report"]
