@@ -1226,8 +1226,8 @@ def _symlink_statements_text():
     _require("one troubleshooting item on a symlink or file", len(item) == 1)
     flat = _flat(item[0])
     for phrase in ("refuses an output file that is a symlink",
-                   "even with `--force`",
-                   "an `--out-dir` that exists as a file",
+                   "that is a symlink (exit code 1, even with `--force`)",
+                   "an `--out-dir` that exists as a file (exit code 1)",
                    "A symlink used as `--out-dir` that points to a directory",
                    "is not refused",
                    "follows it and writes there",
