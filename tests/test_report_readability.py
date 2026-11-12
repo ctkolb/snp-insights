@@ -1021,6 +1021,44 @@ def _run_4a2_behavior(attempt):
         return True
     attempt("R4A.limitations_agree_with_docs", limitations_agree_with_docs)
 
+    def covered_reference_wording():
+        for result_type, section_id in (("carrier_status", "s_carrier_status"),
+                                        ("risk_association", "s_associations"),
+                                        ("trait", "s_traits")):
+            finding = _hf("f_000000000001", "rs9000001", "GENEA", "Condition one",
+                          "covered_reference", "hom_ref", result_type)
+            ir, errors = _report(_hdoc([finding]))
+            _require(f"{result_type}: unexpected validation errors: {errors}", not errors)
+            texts = list(_texts(ir, section_id).values())
+            _require(f"{result_type}: no claim in {section_id}", len(texts) == 1)
+            text = texts[0]
+            _require(f"{result_type}: reference claim must say the effect allele was not found "
+                     f"in the genotype: {text!r}",
+                     "the effect allele was not found in the genotype" in text)
+            for word in ("variant", "absent", "negative", "ruled out"):
+                _require(f"{result_type}: reference claim must not say {word!r}: {text!r}",
+                         word not in text.lower())
+        return True
+    attempt("R4A.covered_reference_wording", covered_reference_wording)
+
+    def limitations_trait_statement_matches_docs():
+        limitations = getattr(caveats, "LIMITATIONS", None)
+        _require("caveats.LIMITATIONS missing", isinstance(limitations, list) and limitations)
+        phrases = ("three health entries", "no trait entries")
+        items = [i for i in limitations if "three health entries" in i.lower()]
+        _require(f"{len(items)} limitation items state the panel contents", len(items) == 1)
+        for phrase in phrases:
+            _require(f"panel limitation lacks {phrase!r}: {items[0]!r}", phrase in items[0].lower())
+        docs = ""
+        for name in DOC_FILES:
+            with open(os.path.join(ROOT, "docs", name)) as fh:
+                docs += " " + fh.read()
+        docs = " ".join(docs.lower().split())
+        for phrase in phrases:
+            _require(f"docs lack {phrase!r}", phrase in docs)
+        return True
+    attempt("R4A.limitations_trait_statement_matches_docs", limitations_trait_statement_matches_docs)
+
     def schema_accepts_generated_by():
         try:
             import jsonschema
