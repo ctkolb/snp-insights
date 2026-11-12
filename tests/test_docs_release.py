@@ -1068,6 +1068,285 @@ def _new_docs_generic_text():
     return True
 
 
+# ------------------------------------------------- R5 fixes after review CODE r81
+
+BUILD_PANEL_TOOL = os.path.join(ROOT, "tools", "build_panel.py")
+HARNESS_TOOL = os.path.join(ROOT, "tools", "harness.py")
+ALL_SUBS = ("check-raw", "annotate", "narrate", "run", "build-panel", "fetch")
+FILE_NAME_RE = re.compile(r"`([A-Za-z0-9_.-]+\.(?:tsv|vcf|gz|bgz|zip|json))`")
+
+# (flag, key words its description must contain), in the order of each table.
+BUILD_PANEL_FLAG_ROWS = (
+    ("--targets", ("targets",)),
+    ("--clinvar", ("ClinVar", "variant_summary")),
+    ("--gnomad", ("gnomAD", "VCF")),
+    ("--dbsnp", ("dbSNP", "VCF", "coordinates")),
+    ("--gwas", ("GWAS Catalog", "trait")),
+    ("--snpedia", ("rsid", "magnitude")),
+    ("--dbsnp-merge", ("RsMergeArch", "old rsID")),
+    ("--curated-evidence", ("curated", "release-format")),
+    ("--cache", ("fetch", "source paths")),
+    ("--merge-direction", ("RsMergeArch", "high-to-low", "low-to-high")),
+    ("--dbsnp-release", ("label", "dbSNP release")),
+    ("--clinvar-release", ("label", "ClinVar release")),
+    ("--gnomad-release", ("label", "gnomAD release")),
+    ("--gwas-release", ("label", "GWAS Catalog release")),
+    ("--snpedia-release", ("label", "SNPedia release")),
+    ("--retrieved-at", ("retrieval time",)),
+    ("--out", ("write the panel", "stdout")),
+)
+FETCH_FLAG_ROWS = (
+    ("--targets", ("targets JSON", "small mode")),
+    ("--full", ("complete files",)),
+    ("--cache", ("cache directory", "~/.cache/snp-insights")),
+    ("--email", ("NCBI", "SNP_INSIGHTS_EMAIL")),
+    ("--accept-license", ("SNPedia license", "not downloaded")),
+    ("--dry-run", ("plan",)),
+    ("--no-gwas", ("skip the GWAS step",)),
+    ("--gwas-mode", ("ot", "Open Targets", "full")),
+    ("--clinvar-mode", ("summary", "api", "E-utilities")),
+    ("--sizes", ("size",)),
+    ("--yes", ("5 GB",)),
+)
+OLD_SYMLINK_SENTENCE = "will not write through a symlink, even with"
+
+
+def _table_rows(section_text):
+    """{first cell: description} for each `| cell | cell |` row; a repeated
+    first cell is a gate failure."""
+    rows = {}
+    for line in section_text.split("\n"):
+        cells = [c.strip() for c in line.strip().strip("|").split(" | ")]
+        if not line.startswith("|") or len(cells) != 2 or set(cells[0]) <= set("- "):
+            continue
+        if cells[0] in ("Flag", "What goes there", "Left unset", "What it does"):
+            continue
+        _require("table row repeated: %s" % cells[0], cells[0] not in rows)
+        rows[cells[0]] = cells[1]
+    return rows
+
+
+def _flag_table_matches_pins(heading, pins):
+    rows = _table_rows(_section(_read(REFERENCE_DATA), heading))
+    expected = ["`%s`" % flag for flag, _ in pins]
+    _require("%s table rows are %s, found %s" % (heading, expected, list(rows)),
+             list(rows) == expected)
+    for flag, words in pins:
+        desc = rows["`%s`" % flag]
+        for word in words:
+            _require("%s row %s lacks %r" % (heading, flag, word), word in desc)
+    return True
+
+
+def _reference_data_cache_table_matches_code():
+    """Per row, the cache-lookup table equals the resolve() calls in build_panel,
+    and every file name in the document is one the code reads or writes."""
+    code = _read(BUILD_PANEL_TOOL)
+    resolved = {}
+    for m in re.finditer(r"args\.(\w+) = resolve\(args\.\w+, ([^)]*)\)", code):
+        flag = "--" + m.group(1).replace("_", "-")
+        resolved[flag] = tuple(re.findall(r'"([^"]+)"', m.group(2)))
+    _require("found the resolve() calls in build_panel.py: %s" % sorted(resolved),
+             len(resolved) == 6)
+    sec = _section(_read(REFERENCE_DATA), "What fetch writes")
+    rows = _table_rows(sec)
+    _require("cache table has one row per resolved flag: %s" % list(rows),
+             sorted(rows) == sorted("`%s`" % f for f in resolved))
+    for flag, names in resolved.items():
+        listed = tuple(re.findall(r"`([^`]+)`", rows["`%s`" % flag]))
+        listed = tuple(n for n in listed if FILE_NAME_RE.fullmatch("`%s`" % n))
+        _require("cache table row %s lists %s but build_panel.py reads %s" % (
+            flag, listed, names), listed == names)
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    try:
+        import fetch_reference
+        full_names = {os.path.basename(u.split("?")[0])
+                      for u in fetch_reference.FULL_URLS.values()}
+    finally:
+        sys.path.pop(0)
+    known = (set(SMALL_CACHE_NAMES) | full_names
+             | {n for names in resolved.values() for n in names}
+             | set(os.listdir(SOURCES_DIR)))
+    for path in (REFERENCE_DATA, GETTING_STARTED, README):
+        for name in FILE_NAME_RE.findall(_unfenced(_read(path))):
+            if "/" in name or name in {"findings.json", "report.ir.json",
+                                       "report.run.json", "panel.sample.json"}:
+                continue
+            _require("%s names a cache or source file the code does not use: %s" % (
+                os.path.basename(path), name), name in known)
+    return True
+
+
+def _reference_data_flag_rows_match_flags():
+    _flag_table_matches_pins("Flags for build-panel", BUILD_PANEL_FLAG_ROWS)
+    _flag_table_matches_pins("Flags for fetch", FETCH_FLAG_ROWS)
+    cache_rows = _table_rows(_section(_read(REFERENCE_DATA), "What fetch writes"))
+    for flag, word in (("--clinvar", "variant_summary"), ("--dbsnp", "GCF_"),
+                       ("--gnomad", "gnomad"), ("--gwas", "gwas"),
+                       ("--snpedia", "snpedia"), ("--dbsnp-merge", "RsMergeArch")):
+        _require("cache table row %s does not name a %s file" % (flag, word),
+                 word.lower() in cache_rows["`%s`" % flag].lower())
+    return True
+
+
+def _readme_where_to_keep_files_pinned():
+    text = _read(README)
+    paras = [p for p in text.split("\n\n")
+             if p.lstrip().startswith("**Where to keep your files.**")]
+    _require("exactly one 'Where to keep your files' paragraph", len(paras) == 1)
+    flat = _flat(paras[0])
+    ordered = ("Keep the raw file and all outputs in a private directory outside "
+               "the repository",
+               "any shared or synced folder",
+               "any directory an agent tool can read",
+               "`run` warns when `--out-dir` is inside the checkout",
+               "but cannot see other locations",
+               "a synced folder",
+               "so keeping to this rule is up to you")
+    at = -1
+    for phrase in ordered:
+        found = flat.find(phrase)
+        _require("private-output paragraph lacks %r" % phrase, found >= 0)
+        _require("private-output paragraph has %r out of order" % phrase, found > at)
+        at = found
+    _require("the paragraph sits in the release section",
+             "**Where to keep your files.**" in _release_section())
+    return True
+
+
+def _symlink_statements_text():
+    """The three statements about a symlink (README, troubleshooting item,
+    exit-code row), and the old sentence nowhere."""
+    readme, gs = _read(README), _read(GETTING_STARTED)
+    for path in (README,) + NEW_DOCS:
+        _require("old symlink sentence still in %s" % os.path.basename(path),
+                 OLD_SYMLINK_SENTENCE not in _flat(_read(path)))
+    item = [p for p in _section(gs, "Troubleshooting and exit codes").split("\n- ")
+            if p.lstrip("- ").startswith("**A refusal with exit code 1: symlink")]
+    _require("one troubleshooting item on a symlink or file", len(item) == 1)
+    flat = _flat(item[0])
+    for phrase in ("refuses an output file that is a symlink",
+                   "even with `--force`",
+                   "an `--out-dir` that exists as a file",
+                   "A symlink used as `--out-dir` that points to a directory",
+                   "is not refused",
+                   "follows it and writes there",
+                   "normal private directory",
+                   "not a symlink",
+                   "compares resolved paths",
+                   "up to you"):
+        _require("troubleshooting item lacks %r" % phrase, phrase in flat)
+    rows = [l for l in gs.split("\n") if l.startswith("| 1 |")]
+    _require("one exit-code-1 row", len(rows) == 1)
+    _require("exit-code row qualifies the symlink: %r" % rows[0],
+             "an output file that is a symlink" in rows[0]
+             and rows[0].count("symlink") == 1)
+    para = [b for b in readme.split("\n- ") if b.startswith("It **never overwrites**")]
+    _require("one README bullet on overwriting", len(para) == 1)
+    rflat = _flat(para[0])
+    for phrase in ("refuses an output file that is a symlink",
+                   "an `--out-dir` that is a file even with `--force`",
+                   "A symlink used as `--out-dir` that points to a directory is "
+                   "not refused",
+                   "`run` follows it",
+                   "normal private directory"):
+        _require("README bullet lacks %r" % phrase, phrase in rflat)
+    return True
+
+
+def _symlink_statements_match_cli():
+    """Each claim in the symlink statements, run through the real CLI in a
+    temporary directory outside the checkout."""
+    base = ["run", RAW_FIXTURE, "data/targets.release-panel.json", "--template-only"]
+    names = ("findings.json", "report.md", "report.ir.json", "report.run.json")
+    cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        _require("temp dir outside checkout",
+                 not os.path.realpath(tmp).startswith(os.path.realpath(ROOT) + os.sep))
+        try:
+            os.chdir(ROOT)
+            # an output file that is a symlink: refused, even with --force
+            real = os.path.join(tmp, "b-out")
+            os.makedirs(real)
+            elsewhere = os.path.join(tmp, "elsewhere.json")
+            os.symlink(elsewhere, os.path.join(real, "findings.json"))
+            for extra in ([], ["--force"]):
+                code, _, err = _cli(base + ["--out-dir", real] + extra)
+                _require("output-file symlink %s: exit 1, got %s" % (extra, code),
+                         code == 1 and "refusing to write through a symlink" in err)
+                _require("nothing written through the symlink",
+                         not os.path.lexists(elsewhere)
+                         and os.listdir(real) == ["findings.json"])
+            # an --out-dir that is a file: refused, even with --force
+            afile = os.path.join(tmp, "c-file")
+            with open(afile, "w") as fh:
+                fh.write("x")
+            for extra in ([], ["--force"]):
+                code, _, err = _cli(base + ["--out-dir", afile] + extra)
+                _require("out-dir file %s: exit 1, got %s" % (extra, code),
+                         code == 1 and "is not a directory" in err)
+                _require("file untouched", _read(afile) == "x")
+            # a symlink used as --out-dir that points to a directory: followed
+            target = os.path.join(tmp, "a-target")
+            os.makedirs(target)
+            link = os.path.join(tmp, "a-link")
+            os.symlink(target, link)
+            code, _, err = _cli(base + ["--out-dir", link])
+            _require("directory symlink is followed (exit 0), got %s: %s" % (
+                code, err[-200:]), code == 0)
+            _require("files landed in the symlink's target: %s" % os.listdir(target),
+                     sorted(os.listdir(target)) == sorted(names))
+            # the inside-the-checkout warning compares resolved paths; a dangling
+            # link into the checkout writes nothing (the run stops after it)
+            ghost = os.path.join(ROOT, "zz-r5-absent-target")
+            _require("ghost target is absent", not os.path.lexists(ghost))
+            into = os.path.join(tmp, "d-link")
+            os.symlink(ghost, into)
+            code, _, err = _cli(base + ["--out-dir", into])
+            _require("warning fires for a link into the checkout: %r" % err[:200],
+                     "inside the repository checkout" in err)
+            _require("nothing created in the checkout", not os.path.lexists(ghost))
+        finally:
+            os.chdir(cwd)
+    return True
+
+
+def _docs_flags_are_real():
+    """Every `--flag` the README and the guides write, in prose or in a fenced
+    block, is a real flag of the CLI or of tools/harness.py."""
+    real = set()
+    for sub in ALL_SUBS:
+        real |= _help_flags(sub)
+    real |= {"--version"}
+    real |= set(re.findall(r'add_argument\("(--[a-z][a-z-]*)"', _read(HARNESS_TOOL)))
+    for path in (README,) + NEW_DOCS:
+        mentioned = set(re.findall(r"--[a-z][a-z-]*", _read(path)))
+        _require("%s writes flags that do not exist: %s" % (
+            os.path.basename(path), sorted(mentioned - real - {"--help"})),
+            mentioned <= real | {"--help"})
+    for path in (README,) + NEW_DOCS:
+        for cmd in _fenced_commands(_read(path)):
+            for tok in cmd[4:]:
+                if tok.startswith("--template-"):
+                    _require("%s: %r" % (os.path.basename(path), tok),
+                             tok == "--template-only")
+    return True
+
+
+def _docs_fixture_paths_exist():
+    """Every `fixtures/...` path the README and the guides write exists."""
+    seen = 0
+    for path in (README,) + NEW_DOCS:
+        for token in re.findall(r"fixtures/[A-Za-z0-9_./-]*", _read(path)):
+            token = token.rstrip(".,")
+            seen += 1
+            _require("%s points at a missing path: %s" % (
+                os.path.basename(path), token),
+                os.path.exists(os.path.join(ROOT, token)))
+    _require("found fixture paths to check", seen >= 8)
+    return True
+
+
 # ---------------------------------------------------------------------- driver
 
 def run(check):
@@ -1122,6 +1401,15 @@ def run(check):
     attempt("R5.new_docs_content_pins", _new_docs_content_pins)
     attempt("R5.report_excerpts_are_real", _report_excerpts_are_real)
     attempt("R5.docs_are_generic_text", _new_docs_generic_text)
+    attempt("R5.reference_data_cache_table_matches_code",
+            _reference_data_cache_table_matches_code)
+    attempt("R5.reference_data_flag_rows_match_flags",
+            _reference_data_flag_rows_match_flags)
+    attempt("R5.readme_where_to_keep_files_pinned", _readme_where_to_keep_files_pinned)
+    attempt("R5.symlink_statements_text", _symlink_statements_text)
+    attempt("R5.symlink_statements_match_cli", _symlink_statements_match_cli)
+    attempt("R5.docs_flags_are_real_flags", _docs_flags_are_real)
+    attempt("R5.docs_fixture_paths_exist", _docs_fixture_paths_exist)
 
 
 def main():
