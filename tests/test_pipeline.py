@@ -32,6 +32,7 @@ import test_category  # noqa: E402
 import test_cli  # noqa: E402
 import test_interpretation  # noqa: E402
 import test_release_panel  # noqa: E402
+import test_report_readability  # noqa: E402
 
 FIX = os.path.join(ROOT, "fixtures")
 DATA = os.path.join(ROOT, "data")
@@ -372,6 +373,7 @@ def main():
     test_cli.run(check)
     test_interpretation.run(check)
     test_release_panel.run(check)
+    test_report_readability.run(check)
     for name in PASSED:
         print(f"  ok   {name}")
     for name in FAILED:
