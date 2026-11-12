@@ -434,7 +434,7 @@ def _release_doc_status_section():
     _require("one status heading",
              text.count("## Release status (recorded 2026-11-12)") == 1)
     _require("status section is exact", RELEASE_STATUS in text)
-    tail = text[RELEASE_DOC_BASE_BYTES:].strip()
+    tail = raw[RELEASE_DOC_BASE_BYTES:].decode("utf-8").strip()
     _require("status section is the only addition", tail == RELEASE_STATUS.strip())
     return True
 
