@@ -14,8 +14,15 @@ SNP Insights reads the raw DNA file that AncestryDNA lets you download. It check
 short, curated list of markers (called a panel) against public reference
 data, and writes a plain-language report. Everything that matters is computed by
 code on your computer: which markers were measured, what you carry, how strong the
-published evidence is, and which links to show. A language model, when you choose
-to use one, may only phrase sentences about those results.
+published evidence is, and which links to show.
+
+In v0.1.0 the report is written by fixed templates, with no language model. That is
+the verified path, it needs no network, and every command in this guide that writes
+a report uses `--template-only`. An optional narration step can have a language model phrase the
+sentences instead (a local model through Ollama by default, or an opt-in online
+model). It is built and tested against fixtures but is not verified against a live
+model in v0.1.0, and the model may only phrase sentences about results that code
+has already computed.
 
 It does **not** diagnose anything, give a personal risk estimate, or replace a
 clinician or genetic counselor. A consumer DNA chip measures a tiny part of the
@@ -31,7 +38,8 @@ and no trait entries, so most of what you might wonder about is not covered.
 - **`jsonschema`** (optional). It turns on extra JSON Schema checks. Nothing else
   needs it.
 - **Ollama** (optional). Only for narration by a local language model, which is
-  not verified in v0.1.0. The verified mode is `--template-only`, which uses no model.
+  not verified against a live model in v0.1.0. Nothing in this guide needs it. The
+  verified mode is `--template-only`, which uses no model.
 
 Set up a clean environment inside your copy of the repository:
 
@@ -195,6 +203,13 @@ count of independent studies.
 
 The report never gives a diagnosis or a personal risk estimate.
 
+**The run record.** `report.run.json` records how the report was made. On a
+`--template-only` run it shows `"model": null`, `"attempts_used": 0` and
+`"used_fallback": true`. That last value only means the template path produced the
+report, as you asked. It does not mean that anything failed. Outside
+`--template-only`, the same value means a model's output could not be used, so the
+template report was written instead.
+
 ## Glossary
 
 - **SNP:** a single-letter difference in DNA that people can have. Pronounced "snip".
@@ -255,12 +270,32 @@ against the synthetic fixture, unless the line says it was read from the code.
 - **`WARNING: the output directory is inside the repository checkout`.** `run`
   still works, but the private output now sits in your checkout. Choose a
   directory outside the repository.
+- **`template IR failed validation (bug)`.** With `--template-only`, `run` and
+  `narrate` build the report from fixed templates and check it against the same
+  rules as a model's report before anything is rendered. This message means the
+  tool's own template report failed that self-check. It is a bug in the tool, not
+  in your file. No report is written and the command stops with exit code 1 (`run` has
+  already written the findings file). In v0.1.0 the message is followed by one
+  violation line per problem, each starting with a rule code, then ids, numbers or
+  words from the check. This example comes from a deliberately broken test report,
+  not from a real file:
+
+  ```text
+  template IR failed validation (bug):
+    R1: s_summary/cl_summary_coverage: number '42' not found in any cited field (invented value?)
+  ```
+
+  At most 20 lines are shown, then `... and N more`. The lines never contain your
+  genotypes. To report the bug, copy only the violation lines, or only the rule
+  codes, and never the findings file, the report or your raw file. Look at each
+  line first and leave out anything that is a file path. If you can, reproduce it
+  with a synthetic file and share that instead.
 - **No `jsonschema`.** Nothing breaks; it only turns on extra checks.
 
 | Exit code | Meaning |
 | --- | --- |
 | 0 | Success. |
-| 1 | A refusal: existing output, an output file that is a symlink, an `--out-dir` that is a file, a failed integrity check of the tool files, or a `--full` download over the 5 GB limit without `--yes`. |
+| 1 | A refusal: existing output, an output file that is a symlink, an `--out-dir` that is a file, a failed integrity check of the tool files, a template report that fails its own check, or a `--full` download over the 5 GB limit without `--yes`. |
 | 2 | A usage error or the privacy gate: bad or missing options, `-o` with `run`, an online endpoint without `--accept-privacy-risk`. |
 
 ## Next steps

@@ -3,12 +3,18 @@
 Turn a raw consumer DNA file into readable, **traceable** genetic findings —
 without handing your genome to a language model.
 
-SNP Insights parses your raw AncestryDNA file locally, annotates a curated set of
-variants against public reference data, and computes every coverage state and
-confidence value deterministically. A language model narrates the result — by
-default a **local** model, so nothing leaves your machine. Every sentence it
-writes is mechanically checked against the structured findings before anything is
-rendered.
+In v0.1.0 the report is written by fixed templates, with no language model and no
+network. That is the verified, private path. SNP Insights parses your raw
+AncestryDNA file locally, annotates a curated set of variants against public
+reference data, and computes every coverage state and confidence value
+deterministically. Every sentence of the report is mechanically checked against the
+structured findings before anything is rendered.
+
+An optional narration step can have a language model phrase those sentences
+instead: a local model through Ollama by default, or an opt-in online model. That
+step is built and tested against fixtures, but it is **not verified against a live
+model** in v0.1.0. When it is used, the model writes prose only, and the same
+checks apply.
 
 > **Not medical advice.** This is a research and curiosity tool. It is not a
 > diagnostic test, a clinical-grade genetic test, or a substitute for a
@@ -17,6 +23,8 @@ rendered.
 ## Pick your path
 
 Three ways to use this repository. Start with Path A if you have never run it.
+Every path that produces a report in v0.1.0 uses `--template-only`, and nothing in
+v0.1.0 needs Ollama or a language model.
 
 - **Path A: try it on synthetic data.** Needs Python and this repository. No
   personal file, no network, about two minutes. Go to
@@ -165,11 +173,17 @@ Stage 3  Narrate   (local)   findings.json ─▶ [LLM] ─▶ report_ir.json
                                         renderer ─▶ report.md
 ```
 
+`--template-only` skips the `[LLM]` box: fixed templates write the report from
+`findings.json`, and the same validator and renderer run. This is the only Stage 3
+path verified in v0.1.0.
+
 - **Stages 1–2 are fully local.** Raw DNA never leaves the machine.
-- **Stage 3 is local by default.** An online model is opt-in only, behind an
-  explicit risk-acknowledgment flag.
-- **The model authors prose only.** Numbers, caveats, citations, and
-  contradictions are owned by code.
+- **Stage 3 has two paths.** With `--template-only` (the verified path) no model
+  is used and there is no network call. Without it, a local model narrates by
+  default; that is not verified against a live model in v0.1.0. An online model is
+  opt-in only, behind an explicit risk-acknowledgment flag.
+- **When a model is used, it authors prose only.** Numbers, caveats, citations,
+  and contradictions are owned by code on both paths.
 - **Every claim cites a `finding_id` + `field_path`.** If it isn't in
   `findings.json`, it can't reach the report.
 - **Links are code-generated.** Each finding points to dbSNP, ClinVar, gnomAD,

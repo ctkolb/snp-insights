@@ -500,9 +500,9 @@ def _accepted_limits_rows_append_only():
         _require("%s differs from the approved text" % rid, _sha(new[rid]) == digest)
     appended = raw[LIMITS_BASE_BYTES:].decode("utf-8").split("\n")
     appended = [l for l in appended if l.strip()]
-    _require("only the approved rows AL-014..AL-030 were appended",
+    _require("only the approved rows AL-014..AL-032 were appended",
              [l[2:8] for l in appended]
-             == sorted(NEW_ROW_SHA256) + sorted(CLOSURE_ROWS))
+             == sorted(NEW_ROW_SHA256) + sorted(CLOSURE_ROWS) + sorted(APPENDED_ROWS))
     return True
 
 
@@ -534,8 +534,8 @@ def _accepted_limits_rows_028_to_030_present():
     _require("each closure row appears once",
              all(text.count(row) == 1 for row in CLOSURE_ROWS.values()))
     order = [l[2:8] for l in text.split("\n") if re.match(r"\| AL-\d{3} \|", l)]
-    _require("rows are in order, 028..030 last",
-             order == sorted(order) and order[-3:] == sorted(CLOSURE_ROWS))
+    _require("rows are in order, 028..030 followed only by AL-031 and AL-032",
+             order == sorted(order) and order[-5:-2] == sorted(CLOSURE_ROWS))
     return True
 
 
@@ -1470,7 +1470,8 @@ def _r6_template_failure_example_is_real():
     item = _template_failure_item()
     blocks = [b for b in _fences(item) if b[0] == "text"]
     _require("template-failure item has a text example block", blocks)
-    shown = tuple(l.rstrip() for l in blocks[0][1])
+    import textwrap
+    shown = tuple(textwrap.dedent("\n".join(blocks[0][1])).split("\n"))
     _require("example is not the documented lines", shown == FAILURE_EXAMPLE)
     import snp_insights.cli as cli
     stage3 = cli._tool_module("run")
