@@ -1349,6 +1349,172 @@ def _docs_fixture_paths_exist():
 
 # ---------------------------------------------------------------------- driver
 
+# ------------------------------------------------- R6: what v0.1.0 verifies
+
+# The two rows owner-approved on 2026-11-12 (ticket r85), appended after AL-030.
+AL_031_ROW = (
+    "| AL-031 | REL | The invented-number rule (R1) reads a gene-like "
+    "symbol immediately followed by a period and a digit, for example "
+    "\"BRCA1.2\", as the number 1.2 instead of stripping the symbol, so a"
+    " claim containing such a token is rejected unless 1.2 appears in a"
+    " cited field. Dotted array versions such as \"V2.0\" are read the "
+    "same way on both sides, which fixed the real-file failure found by"
+    " the owner's checkpoint. The effect is a false rejection (the "
+    "report falls back to the template), never an accepted invented "
+    "number. | LOW | Prose does not write a gene symbol directly "
+    "followed by a period and a digit; the exception is needed for real"
+    " array versions. Review finding R84-F1. | 2026-11-12 | A narrated "
+    "claim or caveat uses a gene symbol followed by \".<digit>\". |"
+)
+
+AL_032_ROW = (
+    "| AL-032 | REL | `run` refuses an output file that is a symlink "
+    "and an `--out-dir` that is a file, but follows a symlink used as "
+    "`--out-dir` that points to a directory and writes there. The "
+    "inside-the-checkout warning compares resolved paths. The "
+    "documentation tells users to use a normal private directory. | LOW"
+    " | Found by review r81; fixing it is a code change outside the "
+    "documentation tickets. | 2026-11-12 | A user points `--out-dir` at"
+    " a symlink into a synced or agent-readable location. |"
+)
+
+APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW}
+NARRATION_NOT_VERIFIED = "not verified against a live model"
+FAILURE_EXAMPLE = (
+    "template IR failed validation (bug):",
+    "  R1: s_summary/cl_summary_coverage: number '42' not found in any cited "
+    "field (invented value?)",
+)
+
+
+def _readme_opening():
+    text = _read(README)
+    return _flat(text[:text.index("> **Not medical advice.**")])
+
+
+def _r6_readme_opening_template_first():
+    flat = _readme_opening()
+    for phrase in ("fixed templates", "no language model", "optional narration",
+                   NARRATION_NOT_VERIFIED):
+        _require("README opening lacks %r" % phrase, phrase in flat)
+    _require("README opening names narration before the template path",
+             flat.index("fixed templates") < flat.index("optional narration"))
+    _require("README opening still presents the local model as the default",
+             "by default a **local** model" not in flat)
+    return True
+
+
+def _r6_pick_your_path_says_template_only_once():
+    sec = _flat(_section(_read(README), README_PATHS_HEADING))
+    for phrase in ("uses `--template-only`", "needs Ollama or a language model"):
+        _require("Pick your path lacks %r" % phrase, phrase in sec)
+    _require("the statement is made once", sec.count("uses `--template-only`") == 1)
+    return True
+
+
+def _r6_readme_how_it_works_marks_the_template_path():
+    sec = _flat(_section(_read(README), "How it works"))
+    _require("diagram footnote missing",
+             "`--template-only` skips the `[LLM]` box" in sec)
+    _require("Stage 3 still described as local by default without a caveat",
+             "Stage 3 is local by default" not in sec)
+    _require("How it works lacks the not-verified statement",
+             NARRATION_NOT_VERIFIED in sec)
+    return True
+
+
+def _r6_getting_started_says_template_only_and_not_verified():
+    text = _read(GETTING_STARTED)
+    what = _flat(_section(text, "What this tool does and does not do"))
+    for phrase in ("fixed templates", "no language model", "uses `--template-only`"):
+        _require("what-it-does section lacks %r" % phrase, phrase in what)
+    prereq = _flat(_section(text, "Prerequisites"))
+    _require("prerequisites lack the not-verified statement",
+             NARRATION_NOT_VERIFIED in prereq)
+    _require("prerequisites do not say nothing needs Ollama",
+             "Nothing in this guide needs it" in prereq)
+    return True
+
+
+def _r6_used_fallback_explained():
+    sec = _flat(_section(_read(GETTING_STARTED), "Reading the report"))
+    for phrase in ("report.run.json", '"used_fallback": true', "--template-only",
+                   "does not mean that anything failed"):
+        _require("Reading the report lacks %r" % phrase, phrase in sec)
+    return True
+
+
+def _template_failure_item():
+    trouble = _section(_read(GETTING_STARTED), "Troubleshooting and exit codes")
+    for item in re.split(r"\n(?=- \*\*)", trouble):
+        if "template IR failed validation (bug)" in item:
+            return item
+    _require("troubleshooting has no item for the template validation message", False)
+
+
+def _r6_template_failure_troubleshooting():
+    item = _template_failure_item()
+    flat = _flat(item)
+    for phrase in ("template IR failed validation (bug)", "a bug in the tool",
+                   "not in your file", "violation lines", "rule code", "exit code 1"):
+        _require("template-failure item lacks %r" % phrase, phrase in flat)
+    for sentence in re.split(r"(?<=[.!?])\s+", flat):
+        for name in ("findings.json", "raw file", "report.md"):
+            if name in sentence:
+                _require("a sentence naming %s must forbid sharing it: %r" % (
+                    name, sentence), "never" in sentence.lower())
+    return True
+
+
+def _r6_template_failure_example_is_real():
+    item = _template_failure_item()
+    blocks = [b for b in _fences(item) if b[0] == "text"]
+    _require("template-failure item has a text example block", blocks)
+    shown = tuple(l.rstrip() for l in blocks[0][1])
+    _require("example is not the documented lines", shown == FAILURE_EXAMPLE)
+    import snp_insights.cli as cli
+    stage3 = cli._tool_module("run")
+    real = stage3.template_ir
+
+    def broken(findings, findings_hash):
+        ir = real(findings, findings_hash)
+        for sec in ir["sections"]:
+            for claim in sec["claims"]:
+                if claim["claim_id"] == "cl_summary_coverage":
+                    claim["text"] = "The array covers 42% of the genome."
+        return ir
+
+    cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.chdir(ROOT)
+            stage3.template_ir = broken
+            code, _, err = _cli(["run", RAW_FIXTURE, "data/targets.release-panel.json",
+                                 "--out-dir", os.path.join(tmp, "o"), "--template-only"])
+        finally:
+            stage3.template_ir = real
+            os.chdir(cwd)
+    _require("deliberately broken template exits %s, want 1" % code, code == 1)
+    lines = err.split("\n")
+    for line in FAILURE_EXAMPLE:
+        _require("real output lacks the documented line %r" % line, line in lines)
+    return True
+
+
+def _r6_accepted_limits_al031_al032_verbatim():
+    text = _read(LIMITS)
+    found = _rows(text, set(APPENDED_ROWS))
+    _require("AL-031 and AL-032 present", sorted(found) == sorted(APPENDED_ROWS))
+    for rid, row in APPENDED_ROWS.items():
+        _require("%s differs from the approved text" % rid, found[rid] == row)
+        _require("%s appears once" % rid, text.count(row) == 1)
+    order = [l[2:8] for l in text.split("\n") if re.match(r"\| AL-\d{3} \|", l)]
+    _require("AL-031 and AL-032 are the last rows, in order",
+             order == sorted(order) and order[-2:] == ["AL-031", "AL-032"])
+    _require("AL-030 sits directly before AL-031", order[-3] == "AL-030")
+    return True
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -1410,6 +1576,15 @@ def run(check):
     attempt("R5.symlink_statements_match_cli", _symlink_statements_match_cli)
     attempt("R5.docs_flags_are_real_flags", _docs_flags_are_real)
     attempt("R5.docs_fixture_paths_exist", _docs_fixture_paths_exist)
+    attempt("R6.readme_opening_states_template_path_first", _r6_readme_opening_template_first)
+    attempt("R6.pick_your_path_says_template_only_once", _r6_pick_your_path_says_template_only_once)
+    attempt("R6.readme_how_it_works_marks_the_template_path", _r6_readme_how_it_works_marks_the_template_path)
+    attempt("R6.getting_started_says_template_only_and_not_verified",
+            _r6_getting_started_says_template_only_and_not_verified)
+    attempt("R6.getting_started_explains_used_fallback", _r6_used_fallback_explained)
+    attempt("R6.getting_started_template_failure_troubleshooting", _r6_template_failure_troubleshooting)
+    attempt("R6.template_failure_example_is_real", _r6_template_failure_example_is_real)
+    attempt("R6.accepted_limits_al031_al032_verbatim", _r6_accepted_limits_al031_al032_verbatim)
 
 
 def main():
