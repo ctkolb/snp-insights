@@ -1307,6 +1307,30 @@ def _run_r83(attempt):
         return True
     attempt("R83.fallback_paths_print_violations", fallback_paths_print_violations)
 
+    def violation_list_is_capped():
+        doc = _release_doc("raw.release.synthetic.txt")
+        many = [("R1", "x" * 1000)] * 25
+        orig = stage3_run.validate_report.check
+        stage3_run.validate_report.check = lambda *a, **k: (many, [])
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                path = os.path.join(d, "findings.json")
+                with open(path, "w") as fh:
+                    json.dump(doc, fh)
+                err = io.StringIO()
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                    rc = stage3_run.main([path, "--template-only", "-o", os.path.join(d, "report.md")])
+        finally:
+            stage3_run.validate_report.check = orig
+        lines = err.getvalue().splitlines()
+        _require(f"exit {rc}, want 1", rc == 1)
+        shown = [ln for ln in lines if ln.startswith("  R1: ")]
+        _require(f"{len(shown)} violations shown, want 20", len(shown) == 20)
+        _require("a long message was not truncated", all(len(ln) <= len("  R1: ") + 300 for ln in shown))
+        _require("the omitted count is missing", "  ... and 5 more" in lines)
+        return True
+    attempt("R83.violation_list_is_capped", violation_list_is_capped)
+
 
 def run(check):
     def attempt(name, fn):
