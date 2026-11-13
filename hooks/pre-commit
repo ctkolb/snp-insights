@@ -20,6 +20,8 @@ fi
 python3 scripts/guard.py --staged
 
 if command -v gitleaks >/dev/null 2>&1; then
+    . "$root/hooks/gitleaks-version.sh"
+    check_gitleaks_version pre-commit
     gitleaks git --pre-commit --staged --redact --no-banner --config .gitleaks.toml .
 else
     echo "pre-commit: gitleaks not installed — skipping; CI secret scan is the backstop." >&2

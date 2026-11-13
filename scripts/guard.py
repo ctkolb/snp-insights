@@ -87,6 +87,7 @@ DATA_SUFFIXES = {
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp",
     ".mp3", ".mp4", ".mov", ".wav", ".m4a", ".ogg",
     ".photoslibrary", ".numbers", ".pages", ".key",
+    ".pem", ".p12", ".pfx", ".kdbx",
 }
 # Data-bearing suffixes are permitted only inside these (deliberate, synthetic).
 DATA_ALLOWED_PREFIX = ("fixtures/", "data/", "schema/", "harness/")
