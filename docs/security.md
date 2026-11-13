@@ -162,8 +162,8 @@ git config core.hooksPath hooks
 ```
 
 - `hooks/pre-commit` — staged guard + `gitleaks git --pre-commit --staged`.
-- `hooks/pre-push` — `tests/test_pipeline.py`, `guard.py --full`, and
-  `gitleaks git` over history. Use the same gitleaks release the CI
+- `hooks/pre-push` — `guard.py --full`, `gitleaks git` over history, then
+  `tests/test_pipeline.py` (cheap checks first). Use the same gitleaks release the CI
   `secret-scan` job pins; default rules change between releases.
 
 Both skip the external scanner gracefully if gitleaks is absent and warn that
@@ -178,16 +178,15 @@ message. `git -c key=value push` sets `GIT_CONFIG_PARAMETERS`, so repeat the
 push without `-c`. Do not work around a refusal with `--no-verify`.
 
 A push from a detached `HEAD` is refused (no branch context); push from an
-attached branch. The hook runs `tests/test_pipeline.py` before the guard, so
-those steps still see an inherited environment the guard has not yet
-validated; this is a documented residual, not an accepted limit.
+attached branch. The hook runs the guard first, so the inherited environment is
+validated before `tests/test_pipeline.py` runs.
 
 ## 5. CI
 
-`.github/workflows/ci.yml` runs three separate jobs on pushes and PRs to
+`.github/workflows/ci.yml` runs four separate jobs on pushes and PRs to
 `main`, all with `permissions: contents: read`:
 
-1. `test` — `python tests/test_pipeline.py` on Python 3.12/3.14, plus actionlint.
+1. `test` — `python tests/test_pipeline.py` on Python 3.12/3.14.
 2. `privacy-guard` — `guard.py --full` on the exact event commit with
    `fetch-depth: 0`. A small fixed dispatch in the workflow reads the runner's
    event JSON as data and passes `--history-base` (a push's `before`, or a pull
@@ -196,7 +195,7 @@ validated; this is a documented residual, not an accepted limit.
    stale or inconsistent pull-request merge commit, and any other event.
 3. `secret-scan` — gitleaks over full history, run from a pinned release binary
    whose SHA-256 is checked before use (`--redact` keeps values out of logs).
-   The actionlint binary in `test` is pinned and checksum-verified the same way.
+4. `actionlint` — lints the workflows. Its binary is pinned and checksum-verified the same way.
    Dependabot does not update these two downloads; bump `VER` and `SHA` by hand.
 
 The `SENSITIVE_TERMS` repository secret is optional; the guard passes when it is

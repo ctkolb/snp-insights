@@ -246,6 +246,9 @@ def run(check):
           not guard.check_data_suffix(["schema/findings.schema.json"]))
     check("guard data-suffix rejects csv", bool(guard.check_data_suffix(["notes/data.csv"])))
     check("guard data-suffix rejects db", bool(guard.check_data_suffix(["cache/store.db"])))
+    check("guard data-suffix rejects key containers",
+          all(bool(guard.check_data_suffix([f"notes/x{s}"]))
+              for s in (".pem", ".p12", ".pfx", ".kdbx")))
 
     # 3. secret/PII patterns (never returns the matched value) --------------
     priv = "-----BEGIN RSA PRIVATE KEY-----"
@@ -1734,8 +1737,9 @@ def _ci_static(check):
           "permissions:\n  contents: read\n" in text
           and all(k in text for k in ("  test:\n    name: test (py${{ matrix.python }})",
                                       "  privacy-guard:\n    name: privacy guard",
-                                      "  secret-scan:\n    name: secret scan"))
-          and text.count("timeout-minutes:") == 3)
+                                      "  secret-scan:\n    name: secret scan",
+                                      "  actionlint:\n    name: actionlint"))
+          and text.count("timeout-minutes:") == 4)
     check("CI.secret_mapping_unchanged_and_single",
           text.count("secrets.") == 1
           and "        env:\n          SENSITIVE_TERMS: ${{ secrets.SENSITIVE_TERMS }}\n" in privacy)
@@ -1746,7 +1750,7 @@ def _ci_static(check):
     check("CI.test_job_still_runs_pipeline",
           "        run: python tests/test_pipeline.py\n" in text)
     check("CI.action_pins_unchanged",
-          text.count("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1") == 3
+          text.count("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1") == 4
           and text.count("actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97") == 2)
     check("CI.guard_invoked_by_argv_not_shell",
           "sys.executable, \"scripts/guard.py\", \"--full\"" in src and "shell=True" not in src

@@ -1,16 +1,20 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Full pre-push gate: mirrors CI (tests + full guard + history secret scan).
+# Full pre-push gate: mirrors CI (full guard + history secret scan + tests).
+# Cheap checks run first so a failure surfaces in seconds, not after the suite.
 # Install once per clone:  git config core.hooksPath hooks
 set -eu
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 
-python3 tests/test_pipeline.py
 python3 scripts/guard.py --full
 
 if command -v gitleaks >/dev/null 2>&1; then
+    . "$root/hooks/gitleaks-version.sh"
+    check_gitleaks_version pre-push
     gitleaks git --redact --no-banner --config .gitleaks.toml .
 else
     echo "pre-push: gitleaks not installed — skipping; CI secret scan is the backstop." >&2
 fi
+
+python3 tests/test_pipeline.py
