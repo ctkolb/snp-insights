@@ -1455,6 +1455,8 @@ def _template_failure_item():
 def _r6_template_failure_troubleshooting():
     item = _template_failure_item()
     flat = _flat(item)
+    _require("the item is not headed by the message name",
+             item.lstrip().startswith("- **`template IR failed validation (bug)`"))
     for phrase in ("template IR failed validation (bug)", "a bug in the tool",
                    "not in your file", "violation lines", "rule code", "exit code 1"):
         _require("template-failure item lacks %r" % phrase, phrase in flat)
