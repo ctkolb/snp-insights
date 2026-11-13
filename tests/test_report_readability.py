@@ -1095,10 +1095,10 @@ R83_HEADERS = (
     ("V2.0", "V2.0", "37.1"),
     ("V10.0", "V1.0", "37.1"),
     ("V2.10", "V2.0", "37"),
-    ("V2.0.1", "V10.0.1", "38"),
+    ("V2.0.1", "V10.0.1", "37.1 coordinates, converted from an earlier release"),
     ("V2.0-rc1", "V1.0", "37.1"),
-    ("V2.0 (beta)", "V1.0", "36"),
-    ("TESTARRAY2.0", "TESTCONVERTER-1", "GRCh37.p13"),
+    ("V2.0 (beta)", "V1.0", "37"),
+    ("TESTARRAY2.0", "TESTCONVERTER-1", "37.1"),
     ("2.0", "1.0", "37.1"),
     ("TESTARRAY-1", "TESTCONVERTER-1", "37.1"),
 )

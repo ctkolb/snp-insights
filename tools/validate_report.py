@@ -112,7 +112,10 @@ def release_template_violations(report, findings_by_id):
 
 
 ID_RE = re.compile(r"\b(?:rs\d+|f_[0-9a-f]+|c_[0-9a-f]+|cl_[0-9a-f]+|s_[0-9a-z_]+)\b", re.I)
-GENE_RE = re.compile(r"\b[A-Z][A-Za-z]*\d[A-Za-z0-9]*\b")
+# A symbol followed by ".<digit>" is a dotted version ("V2.0"), not a gene: leave it
+# in so its numbers are read the same way as in the cited field, instead of
+# stripping "V2" and reading a stray "0" from what is left.
+GENE_RE = re.compile(r"\b[A-Z][A-Za-z]*\d[A-Za-z0-9]*\b(?!\.\d)")
 NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
 
 

@@ -530,6 +530,23 @@ def parse_and_check(text, findings_path, findings):
     return report, errors
 
 
+MAX_VIOLATIONS_SHOWN = 20
+MAX_VIOLATION_CHARS = 300
+
+
+def print_template_violations(errors):
+    """Show why the template report failed validation: one line per violation.
+
+    Messages carry rule codes, section/claim/finding ids and the offending
+    number or word, never a genotype; each is capped so a schema message cannot
+    flood the terminal.
+    """
+    for code, msg in errors[:MAX_VIOLATIONS_SHOWN]:
+        print(f"  {code}: {str(msg)[:MAX_VIOLATION_CHARS]}", file=sys.stderr)
+    if len(errors) > MAX_VIOLATIONS_SHOWN:
+        print(f"  ... and {len(errors) - MAX_VIOLATIONS_SHOWN} more", file=sys.stderr)
+
+
 def run_skeleton(findings, findings_path, findings_hash, args, chat_kwargs):
     base_ir, fallback = build_skeleton(findings, findings_hash)
     messages = skeleton_prompt(findings, base_ir, findings_hash)
@@ -565,6 +582,7 @@ def run_skeleton(findings, findings_path, findings_hash, args, chat_kwargs):
         accepted = template_ir(findings, findings_hash)
         errors, _ = validate_report.check(findings_path, accepted, findings=findings)
         if errors:
+            print_template_violations(errors)
             raise SystemExit("template IR failed validation (bug)")
         return accepted, attempts_used, attempt_violations, True, 0, len(fallback)
     return accepted, attempts_used, attempt_violations, False, prose_used, fell_back
@@ -614,6 +632,7 @@ def main(argv=None):
         errors, _ = validate_report.check(args.findings, report, findings=findings)
         if errors:
             print("template IR failed validation (bug):", file=sys.stderr)
+            print_template_violations(errors)
             return 1
         attempts_used, attempt_violations, used_fallback = 0, [], True
     else:
@@ -692,6 +711,7 @@ def run_full(findings, findings_path, findings_hash, args, messages, chat_kwargs
         report = template_ir(findings, findings_hash)
         errors, _ = validate_report.check(findings_path, report, findings=findings)
         if errors:
+            print_template_violations(errors)
             raise SystemExit("template IR failed validation (bug)")
         return report, attempts_used, attempt_violations, True
     return report, attempts_used, attempt_violations, False
