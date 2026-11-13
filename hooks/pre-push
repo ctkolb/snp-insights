@@ -10,7 +10,7 @@ python3 tests/test_pipeline.py
 python3 scripts/guard.py --full
 
 if command -v gitleaks >/dev/null 2>&1; then
-    gitleaks detect --source . --redact --no-banner --config .gitleaks.toml
+    gitleaks git --redact --no-banner --config .gitleaks.toml .
 else
     echo "pre-push: gitleaks not installed — skipping; CI secret scan is the backstop." >&2
 fi

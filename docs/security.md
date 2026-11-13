@@ -161,9 +161,10 @@ Hooks are committed under `hooks/`, not `.git/hooks/`:
 git config core.hooksPath hooks
 ```
 
-- `hooks/pre-commit` — staged guard + `gitleaks protect --staged`.
+- `hooks/pre-commit` — staged guard + `gitleaks git --pre-commit --staged`.
 - `hooks/pre-push` — `tests/test_pipeline.py`, `guard.py --full`, and
-  `gitleaks detect` over history.
+  `gitleaks git` over history. Use the same gitleaks release the CI
+  `secret-scan` job pins; default rules change between releases.
 
 Both skip the external scanner gracefully if gitleaks is absent and warn that
 CI remains the backstop. Hooks are a convenience; **CI and branch protection
@@ -194,7 +195,9 @@ validated; this is a documented residual, not an accepted limit.
    head ref) as argv. It refuses new, deleted, forced or zero-`before` pushes, a
    stale or inconsistent pull-request merge commit, and any other event.
 3. `secret-scan` — gitleaks over full history, run from a pinned release binary
-   (`--redact` keeps values out of logs).
+   whose SHA-256 is checked before use (`--redact` keeps values out of logs).
+   The actionlint binary in `test` is pinned and checksum-verified the same way.
+   Dependabot does not update these two downloads; bump `VER` and `SHA` by hand.
 
 The `SENSITIVE_TERMS` repository secret is optional; the guard passes when it is
 unset. Third-party actions are pinned to commit SHAs; Dependabot keeps the pins
