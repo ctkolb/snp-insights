@@ -1082,6 +1082,232 @@ def _run_4a2_behavior(attempt):
     attempt("R4A.schema_accepts_generated_by", schema_accepts_generated_by)
 
 
+# ---------------------------------------------------------------------------
+# R83: header-derived values in a real-format file must survive the validator
+# ---------------------------------------------------------------------------
+
+R83_OUTPUTS = ("findings.json", "report.md", "report.ir.json", "report.run.json")
+R83_BUILD_LINE = "#using human reference build {} coordinates."
+# (array version, converter version, text after "human reference build")
+R83_HEADERS = (
+    ("V1.0", "V1.0", "37.1"),
+    ("V2.0", "V1.0", "37.1"),
+    ("V2.0", "V2.0", "37.1"),
+    ("V10.0", "V1.0", "37.1"),
+    ("V2.10", "V2.0", "37"),
+    ("V2.0.1", "V10.0.1", "38"),
+    ("V2.0-rc1", "V1.0", "37.1"),
+    ("V2.0 (beta)", "V1.0", "36"),
+    ("TESTARRAY2.0", "TESTCONVERTER-1", "GRCh37.p13"),
+    ("2.0", "1.0", "37.1"),
+    ("TESTARRAY-1", "TESTCONVERTER-1", "37.1"),
+)
+R83_RAW_FIXTURES = ("raw.release.synthetic.txt", "raw.release.synthetic.states.txt", "raw.sex.txt")
+
+
+def _r83_raw(directory, fixture, array_version, converter_version, build):
+    """Derive a raw file from a synthetic fixture with different header values."""
+    lines = []
+    with open(os.path.join(FIX, fixture)) as fh:
+        for line in fh.read().splitlines():
+            if line.startswith("#") and "array version:" in line:
+                line = line.split("array version:", 1)[0] + f"array version: {array_version}"
+            elif line.startswith("#") and "converter version:" in line:
+                line = line.split("converter version:", 1)[0] + f"converter version: {converter_version}"
+            elif line.startswith("#") and "human reference build" in line:
+                line = R83_BUILD_LINE.format(build)
+            lines.append(line)
+    path = os.path.join(directory, "raw.txt")
+    with open(path, "w") as fh:
+        fh.write("\n".join(lines) + "\n")
+    return path
+
+
+def _r83_cli(argv):
+    """Run snp_insights.cli.main(argv); returns (exit code, stdout, stderr)."""
+    import snp_insights.cli as cli
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        try:
+            code = cli.main(argv)
+        except SystemExit as exc:
+            code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+            if isinstance(exc.code, str):
+                err.write(exc.code + "\n")
+    return code, out.getvalue(), err.getvalue()
+
+
+def _r83_ir_errors(findings_path, ir_path):
+    errors, _ = validate_report.check(findings_path, _load(ir_path), findings=_load(findings_path))
+    return errors
+
+
+def _r83_broken_template(findings, findings_hash):
+    """A template report that carries an invented number (a deliberate defect)."""
+    ir = _R83_REAL_TEMPLATE(findings, findings_hash)
+    for sec in ir["sections"]:
+        for claim in sec["claims"]:
+            if claim["claim_id"] == "cl_summary_coverage":
+                claim["text"] = "The array covers 42% of the genome."
+    return ir
+
+
+_R83_REAL_TEMPLATE = stage3_run.template_ir
+
+
+class _R83BrokenTemplate:
+    """Make stage3's template_ir return a report that fails validation."""
+
+    def __enter__(self):
+        stage3_run.template_ir = _r83_broken_template
+        return self
+
+    def __exit__(self, *exc):
+        stage3_run.template_ir = _R83_REAL_TEMPLATE
+
+
+def _run_r83(attempt):
+    def check_run(raw, directory):
+        out_dir = os.path.join(directory, "out")
+        code, _out, err = _r83_cli(["run", raw, RELEASE_PANEL, "--out-dir", out_dir, "--template-only"])
+        _require(f"run --template-only exit {code}; stderr {err.strip()[:300]!r}", code == 0)
+        for name in R83_OUTPUTS:
+            _require(f"run --template-only did not write {name}", os.path.isfile(os.path.join(out_dir, name)))
+        errors = _r83_ir_errors(os.path.join(out_dir, "findings.json"), os.path.join(out_dir, "report.ir.json"))
+        _require(f"run template report fails its validator: {errors[:2]}", not errors)
+
+    def check_narrate(raw, directory):
+        findings = os.path.join(directory, "findings.json")
+        code, _out, err = _r83_cli(["annotate", raw, RELEASE_PANEL, "-o", findings])
+        _require(f"annotate exit {code}; stderr {err.strip()[:300]!r}", code == 0)
+        report = os.path.join(directory, "report.md")
+        code, _out, err = _r83_cli(["narrate", findings, "--template-only", "-o", report])
+        _require(f"narrate --template-only exit {code}; stderr {err.strip()[:300]!r}", code == 0)
+        for name in R83_OUTPUTS[1:]:
+            _require(f"narrate --template-only did not write {name}", os.path.isfile(os.path.join(directory, name)))
+        errors = _r83_ir_errors(findings, os.path.join(directory, "report.ir.json"))
+        _require(f"narrate template report fails its validator: {errors[:2]}", not errors)
+
+    def run_template_only_real_headers():
+        for fixture in R83_RAW_FIXTURES:
+            for version, converter, build in R83_HEADERS:
+                with tempfile.TemporaryDirectory() as d:
+                    try:
+                        check_run(_r83_raw(d, fixture, version, converter, build), d)
+                    except _Gate as exc:
+                        raise _Gate(f"{fixture} version={version!r} converter={converter!r} "
+                                    f"build={build!r}: {exc}") from None
+        return True
+    attempt("R83.run_template_only_real_headers", run_template_only_real_headers)
+
+    def narrate_template_only_real_headers():
+        for fixture in R83_RAW_FIXTURES:
+            for version, converter, build in R83_HEADERS:
+                with tempfile.TemporaryDirectory() as d:
+                    try:
+                        check_narrate(_r83_raw(d, fixture, version, converter, build), d)
+                    except _Gate as exc:
+                        raise _Gate(f"{fixture} version={version!r} converter={converter!r} "
+                                    f"build={build!r}: {exc}") from None
+        return True
+    attempt("R83.narrate_template_only_real_headers", narrate_template_only_real_headers)
+
+    def numbers_in_version_tokens():
+        n = validate_report.numbers_in
+        _require("V2.0 sentence yields a stray 0",
+                 n("This report reads array version V2.0 against build GRCh37.") == ["2"])
+        _require("V2.0 at the end of a sentence", n("This report reads array version V2.0.") == ["2"])
+        _require("V2.10 keeps its minor part", n("version V2.10 here") == ["2.1"])
+        _require("V10.0 keeps its major part", n("version V10.0 here") == ["10"])
+        _require("a gene symbol is still not a number", n("The BRCA1 gene and TP53 were examined.") == [])
+        _require("a gene symbol at a sentence end is still not a number", n("It lies in BRCA1.") == [])
+        _require("an invented percentage is still a number", n("The array covers 42% of it.") == ["42"])
+        return True
+    attempt("R83.numbers_in_version_tokens", numbers_in_version_tokens)
+
+    def invented_numbers_and_versions_still_rejected():
+        with tempfile.TemporaryDirectory() as d:
+            raw = _r83_raw(d, "raw.release.synthetic.txt", "V2.0", "V1.0", "37.1")
+            doc = annotate.build_findings(raw, _load(RELEASE_PANEL), annotate.load_aliases(ALIASES))
+        base = stage3_run.template_ir(doc, "0" * 64)
+
+        def with_text(ir, claim_id, text):
+            ir = json.loads(json.dumps(ir))
+            for sec in ir["sections"]:
+                for claim in sec["claims"]:
+                    if claim["claim_id"] == claim_id:
+                        claim["text"] = text
+            return ir
+
+        def r1(ir, document=doc):
+            return [m for c, m in _validate_ir(document, ir) if c == "R1"]
+
+        _require("the V2.0 summary of a V2.0 file was rejected", r1(base) == [])
+        _require("an invented percentage was accepted",
+                 any("'42'" in m for m in r1(with_text(
+                     base, "cl_summary_coverage", "The array covers 42% of the genome."))))
+        _require("a different version was accepted",
+                 r1(with_text(base, "cl_summary_input",
+                              "This report reads array version V3.0 against build GRCh37.")))
+        _require("a longer minor version was accepted",
+                 r1(with_text(base, "cl_summary_input",
+                              "This report reads array version V2.10 against build GRCh37.")))
+        other = json.loads(json.dumps(doc))
+        for f in other["findings"]:
+            f["coverage"]["source"] = "AncestryDNA V3.0 file manifest"
+        _require("a version absent from the cited field was accepted",
+                 r1(base, other))
+        return True
+    attempt("R83.invented_numbers_and_versions_still_rejected", invented_numbers_and_versions_still_rejected)
+
+    def broken_template_prints_violations():
+        with tempfile.TemporaryDirectory() as d:
+            raw = _r83_raw(d, "raw.release.synthetic.txt", "V2.0", "V1.0", "37.1")
+            findings = os.path.join(d, "findings.json")
+            code, _out, _err = _r83_cli(["annotate", raw, RELEASE_PANEL, "-o", findings])
+            _require("annotate for the broken-template gate failed", code == 0)
+            with _R83BrokenTemplate():
+                out_dir = os.path.join(d, "out")
+                code, _out, err = _r83_cli(["run", raw, RELEASE_PANEL, "--out-dir", out_dir, "--template-only"])
+                _require(f"run exit {code}, want 1", code == 1)
+                _require("run printed no violation code", "R1" in err)
+                _require("run printed no claim id", "cl_summary_coverage" in err)
+                _require("run printed no violation message", "number '42' not found" in err)
+                _require("run lost the header line", "template IR failed validation (bug)" in err)
+                _require("run wrote a report anyway", not os.path.exists(os.path.join(out_dir, "report.md")))
+                report = os.path.join(d, "narrate.md")
+                code, _out, err = _r83_cli(["narrate", findings, "--template-only", "-o", report])
+                _require(f"narrate exit {code}, want 1", code == 1)
+                _require("narrate printed no violation code", "R1" in err)
+                _require("narrate printed no violation message", "number '42' not found" in err)
+                _require("narrate wrote a report anyway", not os.path.exists(report))
+        return True
+    attempt("R83.broken_template_prints_violations", broken_template_prints_violations)
+
+    def fallback_paths_print_violations():
+        doc = _release_doc("raw.release.synthetic.txt")
+        for mode in ("skeleton", "full"):
+            with tempfile.TemporaryDirectory() as d:
+                path = os.path.join(d, "findings.json")
+                with open(path, "w") as fh:
+                    json.dump(doc, fh)
+                err, exit_value = io.StringIO(), None
+                with _R83BrokenTemplate(), _FakeChat("not json"), \
+                        contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                    try:
+                        stage3_run.main([path, "--mode", mode, "--attempts", "1",
+                                         "-o", os.path.join(d, "report.md")])
+                    except SystemExit as exc:
+                        exit_value = exc.code
+                _require(f"{mode}: no abort when the template fallback is invalid",
+                         exit_value == "template IR failed validation (bug)")
+                _require(f"{mode}: printed no violation code", "R1" in err.getvalue())
+                _require(f"{mode}: printed no violation message", "number '42' not found" in err.getvalue())
+                _require(f"{mode}: wrote a report anyway", not os.path.exists(os.path.join(d, "report.md")))
+        return True
+    attempt("R83.fallback_paths_print_violations", fallback_paths_print_violations)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -1098,6 +1324,7 @@ def run(check):
     _run_4a2_characterization(attempt)
     _run_behavior(attempt)
     _run_4a2_behavior(attempt)
+    _run_r83(attempt)
 
 
 def main():
