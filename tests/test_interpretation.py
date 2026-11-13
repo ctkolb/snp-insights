@@ -1054,8 +1054,10 @@ def _run_r58_char(attempt):
 # Ticket 2D C0 (add-only): golden canonical hashes of today's legacy findings
 # output. generated_at is dropped (it is wall-clock); everything else is pinned,
 # so any change to legacy output (a new field, a version bump, an altered value)
-# changes the hash and fails the characterization gate.
-R61_LEGACY_FIXTURE_HASH = "e86cddca2c9fdaa9a3f4474d0c4f41a432090e21e161cebc9089ba2e2e578200"
+# changes the hash and fails the characterization gate. The fixture hash also
+# covers provenance.input_hash, so any byte change to fixtures/raw.sample.txt
+# (even a header comment) moves it; re-pinned after the header was marked fabricated.
+R61_LEGACY_FIXTURE_HASH = "46a9cee628470077cba2ce6f3f3818648999e9d52a528452f895f5017502145f"
 R61_LEGACY_INLINE_HASH = "8f30f3abc644383be9631091fee365ca8a36bed500840df9284d70251589d78d"
 
 
