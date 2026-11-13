@@ -26,6 +26,8 @@ DATA = os.path.join(ROOT, "data")
 FIX = os.path.join(ROOT, "fixtures")
 RAW = os.path.join(FIX, "raw.sample.txt")
 PANEL = os.path.join(DATA, "panel.sample.json")
+DOC = os.path.join(ROOT, "docs", "owner-checkpoint.md")
+RELEASE_PANEL = "data/targets.release-panel.json"
 SUBCOMMANDS = ("fetch", "build-panel", "check-raw", "annotate", "narrate", "run")
 OUTPUTS = ("findings.json", "report.md", "report.ir.json", "report.run.json")
 
@@ -98,6 +100,57 @@ def _get_umask():
 
 def _output_paths(d):
     return {name: os.path.join(d, name) for name in OUTPUTS}
+
+
+class _ParseStop(Exception):
+    """Raised after the real parser has validated a doc command's argv."""
+
+
+def _parse_only(module, argv):
+    """Run a sub-tool's real argparse parser without executing its body."""
+    import argparse
+    orig = argparse.ArgumentParser.parse_args
+    captured = {}
+
+    def fake(self, args=None, namespace=None):
+        captured["ns"] = orig(self, args, namespace)
+        raise _ParseStop()
+
+    argparse.ArgumentParser.parse_args = fake
+    try:
+        module.main(argv)
+    except _ParseStop:
+        return captured.get("ns")
+    finally:
+        argparse.ArgumentParser.parse_args = orig
+    return None
+
+
+def _doc_text():
+    with open(DOC, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def _doc_commands():
+    """Every `python -m snp_insights ...` command line in the checkpoint doc."""
+    commands = []
+    for line in _doc_text().splitlines():
+        stripped = line.strip()
+        for prefix in ("python3 -m snp_insights ", "python -m snp_insights "):
+            if stripped.startswith(prefix):
+                commands.append(stripped[len(prefix):])
+                break
+    return commands
+
+
+def _run_capture(raw, panel, out_dir, extra=()):
+    """Invoke `run` with the annotate/narrate tools stubbed out."""
+    ma, oa = _patch_main("annotate", ret=0)
+    mn, on = _patch_main("run", ret=0)
+    try:
+        return _invoke(["run", raw, panel, "--out-dir", out_dir] + list(extra))
+    finally:
+        ma.main, mn.main = oa, on
 
 
 def run(check):
@@ -724,6 +777,272 @@ def run(check):
                     return False
         return True
     attempt("S4.no_data_in_package", s4_no_data_in_package)
+
+    # --- R3A characterization: current run/check-raw behavior --------------
+    def r3a_run_still_refuses_overwrite():
+        d = tempfile.mkdtemp()
+        with _no_network():
+            first, _, _ = _invoke(["run", RAW, PANEL, "--out-dir", d,
+                                   "--template-only"])
+        paths = _output_paths(d)
+        before = {n: _read_bytes(p) for n, p in paths.items()}
+        with _no_network():
+            second, _, err = _invoke(["run", RAW, PANEL, "--out-dir", d,
+                                      "--template-only"])
+        after = {n: _read_bytes(p) for n, p in paths.items()}
+        return (first == 0 and second == 1 and before == after
+                and "overwrite" in err.lower())
+    attempt("R3A.run_still_refuses_overwrite", r3a_run_still_refuses_overwrite)
+
+    def r3a_run_modes_0600_0700():
+        orig = os.umask(0o022)
+        try:
+            d = tempfile.mkdtemp()
+            out = os.path.join(d, "created")
+            with _no_network():
+                code, _, _ = _invoke(["run", RAW, PANEL, "--out-dir", out,
+                                      "--template-only"])
+            if code != 0 or (os.stat(out).st_mode & 0o777) != 0o700:
+                return False
+            return all((os.stat(os.path.join(out, n)).st_mode & 0o777) == 0o600
+                       for n in OUTPUTS)
+        finally:
+            os.umask(orig)
+    attempt("R3A.run_modes_0600_0700", r3a_run_modes_0600_0700)
+
+    def r3a_check_raw_redacts_by_default():
+        import re as _re
+        import check_raw
+        raw = os.path.join(FIX, "raw.sample.txt")
+        redacted, shown = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(redacted):
+            rc1 = check_raw.main([raw, "--panel", PANEL, "--no-hash"])
+        with contextlib.redirect_stdout(shown):
+            rc2 = check_raw.main([raw, "--panel", PANEL, "--no-hash",
+                                  "--no-redact"])
+        allele = _re.compile(r"\[[ACGTID]/[ACGTID]\]")
+        return (rc1 == 0 and rc2 == 0
+                and not allele.search(redacted.getvalue())
+                and bool(allele.search(shown.getvalue())))
+    attempt("R3A.check_raw_redacts_by_default", r3a_check_raw_redacts_by_default)
+
+    # --- R3A: the inside-repo --out-dir warning -------------------------
+    def r3a_warn_out_dir_inside_repo():
+        cli = _cli()
+        d = tempfile.mkdtemp()
+        out = os.path.join(d, "out")
+        saved = cli._within_root
+        cli._within_root = lambda p: True
+        try:
+            code, _, err = _run_capture(RAW, PANEL, out, ["--template-only"])
+        finally:
+            cli._within_root = saved
+        return code == 0 and "inside the repository" in err.lower()
+    attempt("R3A.warn_out_dir_inside_repo", r3a_warn_out_dir_inside_repo)
+
+    def r3a_no_warn_out_dir_outside_repo():
+        d = tempfile.mkdtemp()
+        out = os.path.join(d, "out")
+        code, _, err = _run_capture(RAW, PANEL, out, ["--template-only"])
+        return code == 0 and "inside the repository" not in err.lower()
+    attempt("R3A.no_warn_out_dir_outside_repo", r3a_no_warn_out_dir_outside_repo)
+
+    def r3a_warn_symlinked_path_into_repo():
+        cli = _cli()
+        d = tempfile.mkdtemp()
+        link = os.path.join(d, "link-into-repo")
+        os.symlink(os.path.realpath(cli._ROOT), link)
+        code, _, err = _run_capture(RAW, PANEL, link, ["--template-only"])
+        return code == 0 and "inside the repository" in err.lower()
+    attempt("R3A.warn_symlinked_path_into_repo", r3a_warn_symlinked_path_into_repo)
+
+    def r3a_warning_does_not_echo_file_content():
+        cli = _cli()
+        d = tempfile.mkdtemp()
+        raw = os.path.join(d, "PRIVRAWSENTINEL.txt")
+        out = os.path.join(d, "out")
+        saved = cli._within_root
+        cli._within_root = lambda p: True
+        try:
+            code, _, err = _run_capture(raw, PANEL, out, ["--template-only"])
+        finally:
+            cli._within_root = saved
+        return (code == 0 and "inside the repository" in err.lower()
+                and "PRIVRAWSENTINEL" not in err)
+    attempt("R3A.warning_does_not_echo_file_content",
+            r3a_warning_does_not_echo_file_content)
+
+    # --- R3A: the owner-checkpoint document -----------------------------
+    def r3a_checkpoint_doc_commands_parse():
+        import shlex
+        cli = _cli()
+        commands = _doc_commands()
+        if not commands:
+            return False
+        run_line = None
+        for cmd in commands:
+            try:
+                argv = shlex.split(cmd)
+            except ValueError:
+                return False
+            if not argv:
+                return False
+            sub = argv[0]
+            if sub == "run":
+                run_line = cmd
+                try:
+                    cli._parse_run(argv[1:])
+                except cli._UsageError:
+                    return False
+            elif sub in cli._SUBCOMMAND_MODULES:
+                try:
+                    module = cli._tool_module(cli._SUBCOMMAND_MODULES[sub])
+                    ns = _parse_only(module, argv[1:])
+                except SystemExit:
+                    return False
+                if ns is None:
+                    return False
+            else:
+                return False
+        if run_line is None:
+            return False
+        return "--template-only" in run_line and "--out-dir" in run_line
+    attempt("R3A.checkpoint_doc_commands_parse", r3a_checkpoint_doc_commands_parse)
+
+    def r3a_checkpoint_doc_has_no_real_paths():
+        import guard
+        text = _doc_text()
+        for _name, rx in guard.SECRET_PATTERNS:
+            if rx.search(text):
+                return False
+        return "/Users/" not in text and "/home/" not in text
+    attempt("R3A.checkpoint_doc_has_no_real_paths",
+            r3a_checkpoint_doc_has_no_real_paths)
+
+    def r3a_checkpoint_doc_states_no_sharing_rule():
+        low = _doc_text().lower()
+        return ("no-sharing rule" in low and "no report text" in low
+                and "rsids" in low and "hashes" in low)
+    attempt("R3A.checkpoint_doc_states_no_sharing_rule",
+            r3a_checkpoint_doc_states_no_sharing_rule)
+
+    def r3a_checkpoint_doc_states_aggregate_adequacy_rule():
+        low = _doc_text().lower()
+        return "aggregate judgment" in low and "counts only" in low
+    attempt("R3A.checkpoint_doc_states_aggregate_adequacy_rule",
+            r3a_checkpoint_doc_states_aggregate_adequacy_rule)
+
+    def r3a_checkpoint_doc_names_release_panel():
+        return RELEASE_PANEL in _doc_text()
+    attempt("R3A.checkpoint_doc_names_release_panel",
+            r3a_checkpoint_doc_names_release_panel)
+
+    # --- R3A: owner-checkpoint document accuracy (r71) -------------------
+    RELEASE_RAW = os.path.join(FIX, "raw.release.synthetic.txt")
+    RELEASE_PANEL_ABS = os.path.join(ROOT, RELEASE_PANEL)
+
+    def _doc_flat():
+        return " ".join(_doc_text().lower().split())
+
+    def _release_raw_hash():
+        import hashlib
+        with open(RELEASE_RAW, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+
+    def _synthetic_release_run(out_dir):
+        env = dict(os.environ)
+        env["PYTHONPATH"] = ROOT + os.pathsep + env.get("PYTHONPATH", "")
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        return subprocess.run(
+            [sys.executable, "-B", "-m", "snp_insights", "run", RELEASE_RAW,
+             RELEASE_PANEL_ABS, "--out-dir", out_dir, "--template-only"],
+            cwd=os.path.dirname(out_dir), capture_output=True, text=True, env=env)
+
+    def r3a_checkpoint_doc_hash_statement():
+        flat = _doc_flat()
+        if ("always contains the raw-file sha-256 in `provenance.input_hash`"
+                not in flat):
+            return False
+        if "`--keep-input-hash` does not remove it from this file" not in flat:
+            return False
+        if "--no-hash" not in _doc_text():
+            return False
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "out")
+            proc = _synthetic_release_run(out)
+            if proc.returncode != 0:
+                return False
+            with open(os.path.join(out, "findings.json"), encoding="utf-8") as fh:
+                findings = fh.read()
+        return _release_raw_hash() in findings
+    attempt("R3A.checkpoint_doc_hash_statement", r3a_checkpoint_doc_hash_statement)
+
+    def r3a_checkpoint_doc_output_file_descriptions():
+        flat = _doc_flat()
+        raw_hash = _release_raw_hash()
+        raw_path = os.path.realpath(RELEASE_RAW)
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "out")
+            proc = _synthetic_release_run(out)
+            if proc.returncode != 0:
+                return False
+            texts = {}
+            for name in OUTPUTS:
+                with open(os.path.join(out, name), encoding="utf-8") as fh:
+                    texts[name] = fh.read()
+        if raw_hash not in texts["findings.json"]:
+            return False
+        if raw_hash not in texts["report.md"]:
+            return False
+        if raw_hash not in texts["report.run.json"]:
+            return False
+        if raw_hash in texts["report.ir.json"]:
+            return False
+        if '"allele1"' not in texts["findings.json"]:
+            return False
+        for name in ("report.md", "report.ir.json", "report.run.json"):
+            if '"allele1"' in texts[name]:
+                return False
+        for name in OUTPUTS:
+            if raw_path in texts[name] or RELEASE_RAW in texts[name]:
+                return False
+        required = (
+            "always contains the raw-file sha-256 in `provenance.input_hash`",
+            "does not remove it from this file",
+            "`report.md` also includes the input hash",
+            "`report.run.json` records it",
+            "`report.ir.json` contains the findings-file hash",
+            "all four files contain private health-relevant data",
+        )
+        return all(phrase in flat for phrase in required)
+    attempt("R3A.checkpoint_doc_output_file_descriptions",
+            r3a_checkpoint_doc_output_file_descriptions)
+
+    def r3a_checkpoint_doc_adequacy_no_trait_cutoff():
+        flat = _doc_flat()
+        if "measured trait entries" in flat:
+            return False
+        if "aggregate judgment" not in flat or "counts only" not in flat:
+            return False
+        return "trait-count cutoff cannot distinguish" in flat
+    attempt("R3A.checkpoint_doc_adequacy_no_trait_cutoff",
+            r3a_checkpoint_doc_adequacy_no_trait_cutoff)
+
+    def r3a_checkpoint_doc_no_sharing_one_line():
+        flat = _doc_flat()
+        if "one line and nothing more" not in flat:
+            return False
+        if "do not share the reproduction" not in flat:
+            return False
+        if "not private data" not in flat or "never required" not in flat:
+            return False
+        for bad in ("plus the complete report",
+                    "share only that synthetic reproduction"):
+            if bad in flat:
+                return False
+        return True
+    attempt("R3A.checkpoint_doc_no_sharing_one_line",
+            r3a_checkpoint_doc_no_sharing_one_line)
 
 
 def main():

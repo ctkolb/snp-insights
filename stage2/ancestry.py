@@ -6,12 +6,22 @@ Handles the conventions that break naive parsers:
   - numeric chromosomes: 23=X, 24=Y, 25=PAR, 26=MT
   - no-calls represented as "0"
   - alleles split across two columns
+  - a repeated rsID keeps the last row; rsIDs whose repeated rows disagree are
+    reported in "conflicting_rsids"
 """
 import re
 
 NUMERIC_CHROMOSOME = {"23": "X", "24": "Y", "25": "PAR", "26": "MT"}
-BUILD_RE = re.compile(r"build\s+([0-9]+(?:\.[0-9]+)?)")
+# A build statement is the phrase `human reference build <token>` in a comment
+# line; the phrase is case-insensitive, the token is the next run of non-space
+# characters and is matched exactly. Accepted spellings: 37, 37.1 (GRCh37) and
+# 38 (GRCh38). Any other token (hg19, GRCh37 written in words, 37.2, 37.) is a
+# stated-but-unrecognized build, reported as UNRECOGNIZED_BUILD so that annotate
+# refuses it; the token itself is never kept. Comment lines without the phrase
+# are not build statements.
+BUILD_RE = re.compile(r"human\s+reference\s+build\s+(\S+)", re.IGNORECASE)
 BUILD_MAP = {"37": "GRCh37", "37.1": "GRCh37", "38": "GRCh38"}
+UNRECOGNIZED_BUILD = "unrecognized"
 
 
 def normalize_chromosome(value):
@@ -19,10 +29,16 @@ def normalize_chromosome(value):
     return NUMERIC_CHROMOSOME.get(v, v)
 
 
+def _identity(row):
+    """What a repeated rsID row must agree on: locus and genotype, allele order aside."""
+    return (row["chromosome"], row["position"], tuple(sorted((row["allele1"], row["allele2"]))))
+
+
 def parse_ancestry(path):
     meta = {"array_version": None, "converter_version": None, "genome_build": None, "strand": "forward"}
     rows = {}
     by_position = {}
+    conflicting = set()
     row_count = 0
     with open(path) as fh:
         for line in fh:
@@ -36,7 +52,10 @@ def parse_ancestry(path):
                     meta["converter_version"] = line.split("converter version:", 1)[1].strip()
                 m = BUILD_RE.search(line)
                 if m:
-                    meta["genome_build"] = BUILD_MAP.get(m.group(1), "GRCh" + m.group(1))
+                    # an unrecognized statement is never overridden by a later recognized one
+                    stated = BUILD_MAP.get(m.group(1), UNRECOGNIZED_BUILD)
+                    if meta["genome_build"] != UNRECOGNIZED_BUILD:
+                        meta["genome_build"] = stated
                 continue
             parts = line.split("\t")
             if parts[0] == "rsid" or len(parts) < 5:
@@ -47,7 +66,12 @@ def parse_ancestry(path):
                 pos = int(pos)
             except ValueError:
                 continue
-            rows[rsid] = {"rsid": rsid, "chromosome": chrom, "position": pos, "allele1": a1, "allele2": a2}
+            row = {"rsid": rsid, "chromosome": chrom, "position": pos, "allele1": a1, "allele2": a2}
+            earlier = rows.get(rsid)
+            if earlier is not None and _identity(earlier) != _identity(row):
+                conflicting.add(rsid)
+            rows[rsid] = row
             by_position[(chrom, pos)] = rsid
             row_count += 1
-    return {"meta": meta, "rows": rows, "by_position": by_position, "row_count": row_count}
+    return {"meta": meta, "rows": rows, "by_position": by_position, "row_count": row_count,
+            "conflicting_rsids": conflicting}

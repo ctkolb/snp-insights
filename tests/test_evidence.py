@@ -569,6 +569,28 @@ def run(check):
         return all(evidence.sig_rank(k) == v for k, v in expected.items())
     attempt("S1.sig_rank_pinned", sig_rank_pinned)
 
+    def gnomad_first_alternate_preserved():
+        _, fetch_reference, _ = _mods()
+        requested = []
+        original = fetch_reference.http_post_json
+
+        def fake(url, payload, email=None, **kwargs):
+            requested.append(payload["variables"]["v"])
+            return {"data": {"variant": {"genome": {"af": 0.25}}}}
+        fetch_reference.http_post_json = fake
+        try:
+            coords = {"rs9000001": ("1", 101, "A", ["C", "G"])}
+            afs = fetch_reference.fetch_gnomad_small(coords, None)
+            out = os.path.join(tempfile.mkdtemp(), "gnomad.vcf")
+            fetch_reference.write_gnomad_vcf(out, coords, afs)
+        finally:
+            fetch_reference.http_post_json = original
+        with open(out) as fh:
+            body = fh.read()
+        return (requested == ["1-101-A-C"]
+                and "\trs9000001\tA\tC\t.\tPASS\tAF=0.25" in body)
+    attempt("R2C.gnomad_first_alternate_preserved", gnomad_first_alternate_preserved)
+
 
 def main():
     passed, failed = [], []

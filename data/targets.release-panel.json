@@ -1,0 +1,115 @@
+{
+  "panel_version": "0.1.0",
+  "genome_build": "GRCh37",
+  "strand": "forward",
+  "sources": [
+    {
+      "source": "dbSNP",
+      "release": "variation-api-2026-11-11",
+      "retrieved_at": "2026-11-11T19:57:14Z",
+      "license": "public domain (NCBI)"
+    },
+    {
+      "source": "ClinVar",
+      "release": "variant_summary-2026-11-11",
+      "retrieved_at": "2026-11-11T19:57:14Z",
+      "license": "public domain (NCBI)"
+    },
+    {
+      "source": "gnomAD",
+      "release": "graphql-2026-11-11",
+      "retrieved_at": "2026-11-11T19:57:14Z",
+      "license": "free (Broad)"
+    },
+    {
+      "source": "GWAS Catalog",
+      "release": "opentargets-2026-11-11",
+      "retrieved_at": "2026-11-11T19:57:14Z",
+      "license": "free (EMBL-EBI)"
+    }
+  ],
+  "merges": {},
+  "variants": [
+    {
+      "rsid": "rs1800562",
+      "gene": "HFE",
+      "condition": "Hereditary hemochromatosis",
+      "category": "carrier",
+      "result_type": "carrier_status",
+      "effect_allele": "A",
+      "assayability": "snp",
+      "strand": "forward",
+      "chromosome": "6",
+      "position": 26093141,
+      "reference_allele": "G",
+      "alternate_alleles": [
+        "A",
+        "T"
+      ],
+      "alternate_allele": "A",
+      "gnomad_af": 0.038250669386714266,
+      "clinvar": {
+        "significance": "Pathogenic",
+        "review_stars": 2,
+        "review_status_text": "criteria provided, multiple submitters, no conflicts",
+        "source_version": "curated clinvar:rcv:RCV000000019"
+      },
+      "snpedia": null,
+      "association": "replicated"
+    },
+    {
+      "rsid": "rs1799963",
+      "gene": "F2",
+      "condition": "Prothrombin thrombophilia",
+      "category": "carrier",
+      "result_type": "risk_association",
+      "effect_allele": "A",
+      "assayability": "snp",
+      "strand": "forward",
+      "chromosome": "11",
+      "position": 46761055,
+      "reference_allele": "G",
+      "alternate_alleles": [
+        "A"
+      ],
+      "alternate_allele": "A",
+      "gnomad_af": 0.008440565677156326,
+      "clinvar": {
+        "significance": "Pathogenic",
+        "review_stars": 2,
+        "review_status_text": "criteria provided, multiple submitters, no conflicts",
+        "source_version": "curated clinvar:rcv:RCV005419865"
+      },
+      "snpedia": null,
+      "association": "replicated"
+    },
+    {
+      "rsid": "rs6025",
+      "gene": "F5",
+      "condition": "Factor V Leiden thrombophilia",
+      "category": "carrier",
+      "result_type": "risk_association",
+      "effect_allele": "T",
+      "assayability": "snp",
+      "strand": "forward",
+      "chromosome": "1",
+      "position": 169519049,
+      "reference_allele": "T",
+      "alternate_alleles": [
+        "C",
+        "A",
+        "G"
+      ],
+      "alternate_allele": "C",
+      "gnomad_af": 0.982739952869244,
+      "clinvar": {
+        "significance": "Pathogenic/Pathogenic, low penetrance",
+        "review_stars": 2,
+        "review_status_text": "criteria provided, multiple submitters, no conflicts",
+        "source_version": "curated clinvar:rcv:RCV000454249"
+      },
+      "snpedia": null,
+      "association": "replicated"
+    }
+  ]
+}

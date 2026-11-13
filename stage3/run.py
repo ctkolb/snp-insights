@@ -108,33 +108,266 @@ def required_caveats(findings_cited):
     return sorted(keys)
 
 
-def template_ir(findings, findings_hash):
-    """Deterministic Option-C report IR built from findings alone."""
-    by_state = {}
-    for f in findings["findings"]:
-        by_state.setdefault(f["state"], []).append(f)
+# --- readable claim wording (ticket 4A-1; C-1/C-3 + ADDENDUM A-3/A-4/A-7) ----
+# Numbers are always words so validator rule R1 holds; every sentence cites the
+# finding fields it uses so rule 7 holds. Nothing here is model-authored.
+NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven",
+                "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
+                "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
+TENS_WORDS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+              "eighty", "ninety"]
 
+TIER_WORDS = {
+    "established": "established",
+    "replicated": "replicated",
+    "single_study": "single study",
+    "conflicting": "conflicting",
+    "none": "none",
+    "unknown": "unknown",
+}
+
+RESULT_TYPE_SECTIONS = (
+    ("carrier_status", "Health-related: carrier status", "s_carrier_status"),
+    ("risk_association", "Health-related: associations", "s_associations"),
+    ("trait", "Traits", "s_traits"),
+)
+RESULT_TYPE_LABELS = {"carrier_status": "carrier status", "risk_association": "association",
+                      "trait": "trait"}
+MEASURED_STATES = ("detected", "covered_reference")
+NOT_MEASURED_STATES = ("not_covered", "not_assayable")
+NOCALL_STATES = ("covered_nocall", "covered_uninterpretable")
+# Order claims deterministically inside a result-type section.
+STATE_ORDER = ("detected", "covered_reference", "covered_nocall",
+               "covered_uninterpretable", "not_covered", "not_assayable")
+# Sections whose claims are never model-narrated (the skeleton keeps their text).
+NON_STATE_SECTIONS = ("s_summary",)
+
+
+def words(n):
+    """Spell a non-negative integer in English (no digits appear in claim text)."""
+    if n < 20:
+        return NUMBER_WORDS[n]
+    if n < 100:
+        tens, ones = divmod(n, 10)
+        return TENS_WORDS[tens] + (f"-{NUMBER_WORDS[ones]}" if ones else "")
+    if n < 1000:
+        hundreds, rest = divmod(n, 100)
+        return NUMBER_WORDS[hundreds] + " hundred" + (f" {words(rest)}" if rest else "")
+    thousands, rest = divmod(n, 1000)
+    return words(thousands) + " thousand" + (f" {words(rest)}" if rest else "")
+
+
+def _citation(finding_id, field_path):
+    return {"finding_id": finding_id, "field_path": field_path}
+
+
+def _label(f):
+    return f.get("condition") or f.get("rsid") or f.get("gene") or "locus"
+
+
+def _gene_seg(f):
+    gene = f.get("gene")
+    return f" ({gene})" if gene else ""
+
+
+def coverage_sentence(f):
+    """A7 exact wording for covered_reference and the four missing-call states."""
+    label, gene, state = _label(f), _gene_seg(f), f["state"]
+    if state == "covered_nocall":
+        return (f"{label}{gene}: this position is on the array, but the array returned no call, "
+                f"so no genotype is available.")
+    if state == "covered_uninterpretable":
+        return (f"{label}{gene}: this position was measured, but the alleles did not match the "
+                f"known alleles, so no genotype is interpreted.")
+    if state == "not_covered":
+        return (f"{label}{gene}: this marker was not measured by this array. That gives no "
+                f"information about whether the effect allele is present.")
+    if state == "not_assayable":
+        return f"{label}{gene}: this locus cannot be assessed from array data."
+    if state == "covered_reference":
+        return (f"{label}{gene}: both copies match the reference at this position; the effect "
+                f"allele was not found in the genotype.")
+    return f"{label}{gene}: this result cannot be interpreted from array data."
+
+
+def _detected_core(f):
+    """C-1 + A-4 core sentence for a detected call, by zygosity and result type."""
+    label, gene = _label(f), _gene_seg(f)
+    result_type = f.get("result_type")
+    zygosity = (f.get("call") or {}).get("zygosity")
+    allele = f.get("effect_allele")
+    condition = f.get("condition") or label
+    one = "one copy of the effect allele was detected"
+    two = "two copies of the effect allele were detected"
+    if allele:
+        one = f"one copy of the effect allele {allele} was detected"
+        two = f"two copies of the effect allele {allele} were detected"
+    if zygosity == "het":
+        if result_type == "carrier_status":
+            return (f"{label}{gene}: {one} (carrier status for {condition}; one copy is not the "
+                    f"condition itself).")
+        return f"{label}{gene}: {one}."
+    if zygosity == "hom_alt":
+        if result_type == "carrier_status":
+            return (f"{label}{gene}: {two} (carrier status refers to one copy; this report does "
+                    f"not diagnose {condition}).")
+        return f"{label}{gene}: {two}."
+    # any other detected zygosity (hemizygous, homoplasmic, unknown): neutral
+    return (f"{label}{gene}: the effect allele was detected; this report does not interpret the "
+            f"number of copies for this call.")
+
+
+def evidence_clause(f):
+    """A3 wording for the evidence tier, attributed to its source."""
+    evidence = f.get("evidence") or {}
+    association = evidence.get("association")
+    clinvar = evidence.get("clinvar")
+    if clinvar:
+        tier = TIER_WORDS.get(association, association or "unknown")
+        stars = clinvar.get("review_stars")
+        stars_word = words(stars) if isinstance(stars, int) else "an unknown number of"
+        return (f"Evidence tier: {tier}, from ClinVar's review level: ClinVar lists this record "
+                f"as {clinvar.get('significance')} with {stars_word} review stars "
+                f"({clinvar.get('review_status_text')}); this is a review level, not a count of "
+                f"independent studies.")
+    if association in (None, "unknown"):
+        return "No evidence tier is recorded for this marker."
+    tier = TIER_WORDS.get(association, association)
+    if f.get("result_type") == "trait":
+        return f"Evidence tier: {tier}, from the GWAS Catalog association count."
+    return f"Evidence tier: {tier}."
+
+
+def association_sentence(f):
+    """A4: every detected risk_association/trait ends with this exact sentence."""
+    return (f"This is an association with {f.get('condition') or _label(f)}; this report does "
+            f"not diagnose the condition.")
+
+
+def _detected_citations(f):
+    paths = ["state", "call.zygosity", "result_type"]
+    if f.get("effect_allele"):
+        paths.append("effect_allele")
+    if f.get("condition") is not None:
+        paths.append("condition")
+    evidence = f.get("evidence") or {}
+    if evidence.get("association") is not None:
+        paths.append("evidence.association")
+    clinvar = evidence.get("clinvar")
+    if clinvar:
+        for key in ("significance", "review_stars", "review_status_text"):
+            if key in clinvar:
+                paths.append(f"evidence.clinvar.{key}")
+    return [_citation(f["finding_id"], p) for p in paths]
+
+
+def _plain_citations(f):
+    paths = ["state"]
+    for key in ("condition", "rsid", "gene"):
+        if f.get(key) is not None:
+            paths.append(key)
+    if f.get("effect_allele"):
+        paths.append("effect_allele")
+    return [_citation(f["finding_id"], p) for p in paths]
+
+
+def readable_claim(f):
+    if f["state"] == "detected":
+        text = _detected_core(f) + " " + evidence_clause(f)
+        if f.get("result_type") in ("risk_association", "trait"):
+            text += " " + association_sentence(f)
+        citations = _detected_citations(f)
+    else:
+        text = coverage_sentence(f)
+        citations = _plain_citations(f)
+    return {"claim_id": "cl_" + f["finding_id"][2:], "text": text, "citations": citations}
+
+
+def _count_claim(group, claim_id, label):
+    measured = sum(1 for f in group if f["state"] in MEASURED_STATES)
+    not_measured = sum(1 for f in group if f["state"] in NOT_MEASURED_STATES)
+    nocall = sum(1 for f in group if f["state"] in NOCALL_STATES)
+    noun = (f"{label} marker" if label else "curated marker") + ("" if len(group) == 1 else "s")
+    verb = "was" if len(group) == 1 else "were"
+    text = (f"{words(len(group))} {noun} {verb} examined: {words(measured)} "
+            f"{'was' if measured == 1 else 'were'} measured, {words(not_measured)} "
+            f"{'was' if not_measured == 1 else 'were'} not measured, and {words(nocall)} "
+            f"returned no call or an uninterpretable result.")
+    return {"claim_id": claim_id, "text": text,
+            "citations": [_citation(f["finding_id"], "state") for f in group]}
+
+
+def _summary_section(findings):
+    fs = findings["findings"]
+    claims = []
+    for result_type, _title, _sid in RESULT_TYPE_SECTIONS:
+        group = [f for f in fs if f.get("result_type") == result_type]
+        if group:
+            claims.append(_count_claim(group, f"cl_summary_{result_type}",
+                                       RESULT_TYPE_LABELS[result_type]))
+    if fs:
+        claims.append(_count_claim(fs, "cl_summary_total", None))
+    provenance = findings.get("provenance") or {}
+    version, build = provenance.get("array_version"), provenance.get("genome_build")
+    # The array version is carried verbatim in each finding's coverage.source, so
+    # the claim can cite it without citing the provenance block (rule 7).
+    anchor = next((f for f in fs if (f.get("coverage") or {}).get("source")), None)
+    if anchor is None and fs:
+        anchor = fs[0]
+    if anchor is not None and version:
+        text = f"This report reads array version {version}"
+        if build:
+            text += f" against build {build}"
+        claims.append({"claim_id": "cl_summary_input",
+                       "text": text + ".",
+                       "citations": [_citation(anchor["finding_id"], "coverage.source")]})
+    if anchor is not None:
+        claims.append({"claim_id": "cl_summary_coverage",
+                       "text": "The array covers a tiny fraction of the genome.",
+                       "citations": [_citation(anchor["finding_id"], "state")]})
+    if fs and not any(f.get("result_type") == "trait" for f in fs):
+        citations = [_citation(f["finding_id"], "result_type")
+                     for f in fs if f.get("result_type")]
+        if not citations:
+            citations = [_citation(fs[0]["finding_id"], "state")]
+        claims.append({"claim_id": "cl_summary_zero_traits",
+                       "text": "This release panel contains no trait markers.",
+                       "citations": citations})
+    return {"section_id": "s_summary", "title": "Summary", "claims": claims,
+            "caveat_ids": required_caveats(fs)}
+
+
+def _legacy_claim(f, state):
+    label = f.get("rsid") or f.get("gene") or "locus"
+    gene = f.get("gene") or "unknown gene"
+    return {
+        "claim_id": "cl_" + f["finding_id"][2:],
+        "text": f"{label} ({gene}): state is {state}.",
+        "citations": [{"finding_id": f["finding_id"], "field_path": "state"}],
+    }
+
+
+def _legacy_sections(fs):
+    """Today's state-based sections, unchanged (legacy findings keep them)."""
+    by_state = {}
+    for f in fs:
+        by_state.setdefault(f["state"], []).append(f)
     sections = []
     for state, title in SECTION_ORDER:
-        fs = by_state.get(state, [])
-        if not fs:
+        group = by_state.get(state, [])
+        if not group:
             continue
-        claims = []
-        for f in fs:
-            label = f.get("rsid") or f.get("gene") or "locus"
-            gene = f.get("gene") or "unknown gene"
-            claims.append({
-                "claim_id": "cl_" + f["finding_id"][2:],
-                "text": f"{label} ({gene}): state is {state}.",
-                "citations": [{"finding_id": f["finding_id"], "field_path": "state"}],
-            })
         sections.append({
             "section_id": "s_" + state,
             "title": title,
-            "claims": claims,
-            "caveat_ids": required_caveats(fs),
+            "claims": [_legacy_claim(f, state) for f in group],
+            "caveat_ids": required_caveats(group),
         })
+    return sections
 
+
+def _contradiction_sections(findings):
+    sections = []
     for c in findings.get("contradictions", []):
         cited = [f for f in findings["findings"] if f["finding_id"] in c["finding_ids"]]
         # The renderer prints the contradiction description from findings.json, so
@@ -146,10 +379,47 @@ def template_ir(findings, findings_hash):
             "caveat_ids": required_caveats(cited),
             "contradiction_ids": [c["contradiction_id"]],
         })
+    return sections
+
+
+def _release_sections(findings):
+    """Result type first, state second (C-2): no section mixes result types."""
+    fs = findings["findings"]
+    order = {state: i for i, state in enumerate(STATE_ORDER)}
+    sections = [_summary_section(findings)]
+    for result_type, title, section_id in RESULT_TYPE_SECTIONS:
+        group = [f for f in fs if f.get("result_type") == result_type]
+        if not group:
+            continue
+        group = sorted(group, key=lambda f: order.get(f["state"], len(order)))
+        sections.append({
+            "section_id": section_id,
+            "title": title,
+            "claims": [readable_claim(f) for f in group],
+            "caveat_ids": required_caveats(group),
+        })
+    sections += _legacy_sections([f for f in fs if "result_type" not in f])
+    sections += _contradiction_sections(findings)
+    return sections
+
+
+def template_ir(findings, findings_hash):
+    """Deterministic Option-C report IR built from findings alone.
+
+    Release-format documents (any finding carries result_type) get the readable
+    result-type sections; legacy documents keep today's state-based sections
+    byte-for-byte.
+    """
+    fs = findings["findings"]
+    if any("result_type" in f for f in fs):
+        sections = _release_sections(findings)
+    else:
+        sections = _legacy_sections(fs) + _contradiction_sections(findings)
 
     return {
         "ir_version": "1.0.0",
         "report_id": "r_model",
+        "generated_by": "template",
         "findings_hash": findings_hash,
         "sections": sections,
         "omitted_findings": [],
@@ -162,7 +432,7 @@ def template_ir(findings, findings_hash):
 
 def _state_claims(ir):
     for sec in ir["sections"]:
-        if sec["section_id"].startswith("s_c_"):
+        if sec["section_id"].startswith("s_c_") or sec["section_id"] in NON_STATE_SECTIONS:
             continue
         for cl in sec["claims"]:
             yield cl
@@ -230,6 +500,8 @@ def merge_prose(ir, fallback, prose):
         else:
             cl["text"] = fallback[cid]
             fell_back += 1
+    if used:
+        ir["generated_by"] = "model"
     return used, fell_back
 
 
@@ -242,6 +514,8 @@ def revert_invalid(ir, fallback, errors):
     for cl in _state_claims(ir):
         if cl["claim_id"] in bad:
             cl["text"] = fallback[cl["claim_id"]]
+    if bad and all(cl["text"] == fallback[cl["claim_id"]] for cl in _state_claims(ir)):
+        ir["generated_by"] = "template"
     return len(bad)
 
 
@@ -250,8 +524,27 @@ def parse_and_check(text, findings_path, findings):
         report = json.loads(text)
     except (json.JSONDecodeError, TypeError) as exc:
         return None, [("json", f"unparseable JSON: {exc}")]
+    if isinstance(report, dict):
+        report.pop("generated_by", None)  # only code labels a report as template-made
     errors, _ = validate_report.check(findings_path, report, findings=findings)
     return report, errors
+
+
+MAX_VIOLATIONS_SHOWN = 20
+MAX_VIOLATION_CHARS = 300
+
+
+def print_template_violations(errors):
+    """Show why the template report failed validation: one line per violation.
+
+    Messages carry rule codes, section/claim/finding ids and the offending
+    number or word, never a genotype; each is capped so a schema message cannot
+    flood the terminal.
+    """
+    for code, msg in errors[:MAX_VIOLATIONS_SHOWN]:
+        print(f"  {code}: {str(msg)[:MAX_VIOLATION_CHARS]}", file=sys.stderr)
+    if len(errors) > MAX_VIOLATIONS_SHOWN:
+        print(f"  ... and {len(errors) - MAX_VIOLATIONS_SHOWN} more", file=sys.stderr)
 
 
 def run_skeleton(findings, findings_path, findings_hash, args, chat_kwargs):
@@ -289,6 +582,7 @@ def run_skeleton(findings, findings_path, findings_hash, args, chat_kwargs):
         accepted = template_ir(findings, findings_hash)
         errors, _ = validate_report.check(findings_path, accepted, findings=findings)
         if errors:
+            print_template_violations(errors)
             raise SystemExit("template IR failed validation (bug)")
         return accepted, attempts_used, attempt_violations, True, 0, len(fallback)
     return accepted, attempts_used, attempt_violations, False, prose_used, fell_back
@@ -338,6 +632,7 @@ def main(argv=None):
         errors, _ = validate_report.check(args.findings, report, findings=findings)
         if errors:
             print("template IR failed validation (bug):", file=sys.stderr)
+            print_template_violations(errors)
             return 1
         attempts_used, attempt_violations, used_fallback = 0, [], True
     else:
@@ -416,6 +711,7 @@ def run_full(findings, findings_path, findings_hash, args, messages, chat_kwargs
         report = template_ir(findings, findings_hash)
         errors, _ = validate_report.check(findings_path, report, findings=findings)
         if errors:
+            print_template_violations(errors)
             raise SystemExit("template IR failed validation (bug)")
         return report, attempts_used, attempt_violations, True
     return report, attempts_used, attempt_violations, False

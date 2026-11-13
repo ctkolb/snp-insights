@@ -1,0 +1,30 @@
+{
+  "_note": "Curated ClinVar evidence for the release carrier targets; each entry mirrors the attributing per-condition RCV cited in docs/panel-curation.md, read from the frozen evidence pack, not a clinical panel",
+  "panel_version": "0.1.0",
+  "entries": [
+    {
+      "rsid": "rs1800562",
+      "condition": "Hereditary hemochromatosis",
+      "clinvar_record": "clinvar:rcv:RCV000000019",
+      "significance": "Pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "review_stars": 2
+    },
+    {
+      "rsid": "rs1799963",
+      "condition": "Prothrombin thrombophilia",
+      "clinvar_record": "clinvar:rcv:RCV005419865",
+      "significance": "Pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "review_stars": 2
+    },
+    {
+      "rsid": "rs6025",
+      "condition": "Factor V Leiden thrombophilia",
+      "clinvar_record": "clinvar:rcv:RCV000454249",
+      "significance": "Pathogenic/Pathogenic, low penetrance",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "review_stars": 2
+    }
+  ]
+}

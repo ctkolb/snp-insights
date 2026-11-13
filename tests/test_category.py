@@ -394,6 +394,61 @@ def run(check):
         return got == want
     attempt("S2.panel_sample_reproduces", s2_panel_sample_reproduces)
 
+    # --- R2D build_panel validation (ticket 2D) -------------------------
+    def r2d_invalid_result_type_build_fails():
+        for bad in ("Carrier_status", "carrier", "risk", "other", "", "  ", 5, [], {}):
+            try:
+                _build([_target("rsBAD", category="trait", result_type=bad)])
+            except ValueError as exc:
+                if "rsBAD" not in str(exc):
+                    return False
+            except Exception:  # noqa: BLE001
+                return False
+            else:
+                return False
+        return True
+    attempt("R2D.invalid_result_type_build_fails", r2d_invalid_result_type_build_fails)
+
+    def r2d_invalid_pair_build_fails():
+        rejects = (("trait", "carrier_status"), ("trait", "risk_association"), ("carrier", "trait"))
+        for cat, rt in rejects:
+            try:
+                _build([_target("rsBAD", category=cat, result_type=rt)])
+            except ValueError as exc:
+                if "rsBAD" not in str(exc):
+                    return False
+            except Exception:  # noqa: BLE001
+                return False
+            else:
+                return False
+        # result_type without a category cannot form an allowed pair either
+        try:
+            _build([_target("rsBAD", result_type="trait")])
+        except ValueError as exc:
+            if "rsBAD" not in str(exc):
+                return False
+        except Exception:  # noqa: BLE001
+            return False
+        else:
+            return False
+        return True
+    attempt("R2D.invalid_pair_build_fails", r2d_invalid_pair_build_fails)
+
+    def r2d_null_result_type_build_fails():
+        # D-63-1: a present result_type is validated by key presence, so an
+        # explicit null is rejected rather than treated as absent.
+        try:
+            _build([_target("rsBAD", category="trait", result_type=None)])
+        except ValueError as exc:
+            if "rsBAD" not in str(exc):
+                return False
+        except Exception:  # noqa: BLE001
+            return False
+        else:
+            return False
+        return True
+    attempt("R2D.null_result_type_build_fails", r2d_null_result_type_build_fails)
+
 
 def main():
     passed, failed = [], []

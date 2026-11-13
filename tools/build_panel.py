@@ -40,6 +40,13 @@ from collections import defaultdict
 import evidence
 
 
+# Ticket 2D: the result_type vocabulary and the only allowed (category,
+# result_type) pairs (INV-06). Shared with tests/test_release_panel.py's checkers.
+RESULT_TYPES = ("trait", "carrier_status", "risk_association")
+VALID_RESULT_PAIRS = (("trait", "trait"), ("carrier", "carrier_status"),
+                      ("carrier", "risk_association"))
+
+
 def open_any(path):
     # utf-8-sig strips a leading byte-order mark so the first header name is
     # never corrupted; it is a no-op for files without a BOM.
@@ -190,8 +197,10 @@ def load_dbsnp(path, wanted):
                     continue
                 for rid in ids.split(";"):
                     if rid in wanted:
+                        alts = alt.split(",")
                         out[rid] = {"chromosome": normalize_chromosome(chrom), "position": int(pos),
-                                    "reference_allele": ref, "alternate_allele": alt.split(",")[0]}
+                                    "reference_allele": ref, "alternate_allele": alts[0],
+                                    "alternate_alleles": alts}
         else:
             header = first.rstrip("\n").lstrip("#").split("\t")
             idx = {norm(n): i for i, n in enumerate(header)}
@@ -203,11 +212,18 @@ def load_dbsnp(path, wanted):
                 if not rsid or (wanted and rsid not in wanted):
                     continue
                 pos = _col(row, idx, "position", "pos")
+                singular = _col(row, idx, "alternate_allele", "alt")
+                listed = _col(row, idx, "alternate_alleles")
+                if listed:
+                    alts = [a for a in listed.split(",") if a]
+                else:
+                    alts = [singular] if singular else []
                 out[rsid] = {
                     "chromosome": normalize_chromosome(_col(row, idx, "chromosome", "chrom", "chr")),
                     "position": int(pos) if pos.isdigit() else None,
                     "reference_allele": _col(row, idx, "reference_allele", "ref"),
-                    "alternate_allele": _col(row, idx, "alternate_allele", "alt"),
+                    "alternate_allele": singular,
+                    "alternate_alleles": alts,
                 }
     return out
 
@@ -313,19 +329,51 @@ def assoc_from_gwas(n):
     return evidence.gwas_tier(n)
 
 
-def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, snpedia=None, merges=None, aliases=None):
+def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, snpedia=None, merges=None, aliases=None, curated=None):
     clinvar = clinvar or {}
     gnomad = gnomad or {}
     gwas = gwas or {}
     snpedia = snpedia or {}
     merges = merges or {}
-    for t in targets["variants"]:
+    has_curated = curated is not None
+    curated = curated or {}
+    target_list = targets["variants"]
+    release_format = any("result_type" in t for t in target_list)
+    for t in target_list:
         category = t.get("category")
         if category is not None and category not in ("carrier", "trait"):
             label = t.get("rsid") or t.get("gene")
             raise ValueError(f"invalid category {category!r} for {label}")
+        result_type = t.get("result_type")
+        if "result_type" in t:
+            label = t.get("rsid") or t.get("gene")
+            if result_type not in RESULT_TYPES:
+                raise ValueError(f"invalid result_type {result_type!r} for {label}")
+            if (category, result_type) not in VALID_RESULT_PAIRS:
+                raise ValueError(
+                    f"invalid (category, result_type) pair ({category!r}, {result_type!r}) for {label}")
+    # A-2: a release-format file (an entry declares result_type) with a carrier
+    # entry refuses to build without the curated evidence file. Data-free message.
+    if not has_curated and release_format \
+            and any(t.get("category") == "carrier" for t in target_list):
+        raise ValueError("release-format targets with a carrier entry require --curated-evidence")
+    if has_curated:
+        by_rsid = {t.get("rsid"): t for t in target_list if t.get("rsid")}
+        for t in target_list:
+            rsid = t.get("rsid")
+            entry = curated.get(rsid)
+            if t.get("category") == "carrier":
+                if entry is None:
+                    raise ValueError(f"curated evidence missing for carrier target {rsid}")
+                if entry.get("condition") != t.get("condition"):
+                    raise ValueError(f"curated evidence condition mismatch for {rsid}")
+            elif entry is not None:
+                raise ValueError(f"curated evidence provided for non-carrier target {rsid}")
+        for rsid in curated:
+            if rsid not in by_rsid:
+                raise ValueError(f"curated evidence names an unknown target {rsid}")
     variants = []
-    for t in targets["variants"]:
+    for t in target_list:
         v = dict(t)
         rsid = t.get("rsid")
         canon = merges.get(rsid, rsid) if rsid else None
@@ -335,9 +383,29 @@ def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, sn
             v["chromosome"] = rec["chromosome"] if rec else None
             v["position"] = rec["position"] if rec else None
             v["reference_allele"] = rec["reference_allele"] if rec else None
-            v["alternate_allele"] = rec["alternate_allele"] if rec else None
+            alts = list(rec.get("alternate_alleles") or []) if rec else []
+            if not alts and rec and rec.get("alternate_allele"):
+                alts = [rec["alternate_allele"]]
+            v["alternate_alleles"] = alts
+            effect = t.get("effect_allele")
+            if effect and effect in alts:
+                v["alternate_allele"] = effect
+            elif alts:
+                v["alternate_allele"] = alts[0]
+            else:
+                v["alternate_allele"] = rec["alternate_allele"] if rec else None
 
-        cv = clinvar.get(rsid) if rsid else None
+        entry = curated.get(rsid) if rsid else None
+        if entry is not None:
+            cv = {"significance": entry["significance"], "review_stars": entry["review_stars"],
+                  "review_status_text": entry["review_status"],
+                  "source_version": f"curated {entry['clinvar_record']}"}
+            cv_matched = True
+        else:
+            cv = clinvar.get(rsid) if rsid else None
+            cv_matched = bool(cv and not (release_format and t.get("category") == "trait")
+                              and cv.get("phenotype") and t.get("condition")
+                              and evidence.condition_matches(cv.get("phenotype"), t.get("condition"), aliases))
         v["gnomad_af"] = gnomad.get(rsid, {}).get("af") if rsid else None
         v["clinvar"] = (
             {k: cv[k] for k in ("significance", "review_stars", "review_status_text", "source_version")}
@@ -361,11 +429,8 @@ def build(targets, sources, clinvar=None, gnomad=None, dbsnp=None, gwas=None, sn
             else:
                 n = g
             category = t.get("category")
-            cv_matched = bool(cv and cv.get("phenotype") and t.get("condition")
-                              and evidence.condition_matches(cv.get("phenotype"),
-                                                             t.get("condition"), aliases))
             # 'none' means assessed with no known link; 'unknown' means not assessed.
-            assoc = evidence.derive_association(category, cv, n, cv_matched)
+            assoc = evidence.derive_association(category, cv, n, cv_matched, t.get("result_type"))
             if category is None:
                 print(f"  warning: {rsid or v.get('gene')}: no category; derived association "
                       f"with the legacy rule", file=sys.stderr)
@@ -391,6 +456,7 @@ def main(argv=None):
     ap.add_argument("--gwas", help="GWAS Catalog associations TSV; drives trait association tier")
     ap.add_argument("--snpedia", help="rsid<TAB>magnitude, or JSON; optional")
     ap.add_argument("--dbsnp-merge", help="dbSNP RsMergeArch file (old->new rsID map)")
+    ap.add_argument("--curated-evidence", help="curated ClinVar evidence file for release targets")
     ap.add_argument("--cache", help="directory from fetch_reference.py; fills unset source paths")
     ap.add_argument("--merge-direction", choices=["high-to-low", "low-to-high"], default="high-to-low")
     ap.add_argument("--dbsnp-release", default="b156")
@@ -404,6 +470,11 @@ def main(argv=None):
 
     with open(args.targets) as fh:
         targets = json.load(fh)
+
+    curated = None
+    if args.curated_evidence:
+        with open(args.curated_evidence) as fh:
+            curated = {e["rsid"]: e for e in json.load(fh).get("entries", [])}
 
     if args.cache:
         def resolve(explicit, *names):
@@ -448,7 +519,7 @@ def main(argv=None):
 
     try:
         panel = build(targets, sources, clinvar=clinvar, gnomad=gnomad, dbsnp=dbsnp,
-                      gwas=gwas, snpedia=snpedia, merges=merges, aliases=aliases)
+                      gwas=gwas, snpedia=snpedia, merges=merges, aliases=aliases, curated=curated)
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 1

@@ -1,0 +1,9 @@
+#Invented synthetic raw data for release-panel end-to-end tests; not a real person.
+#Data was collected using AncestryDNA array version: TESTARRAY-1
+#Data is formatted using AncestryDNA converter version: TESTCONVERTER-1
+#Genetic data is provided below as five TAB delimited columns.
+#using human reference build 37.1 coordinates.
+rsid	chromosome	position	allele1	allele2
+rs1800562	6	26093141	A	G
+rs1799963	11	46761055	A	A
+rs6025	1	169519049	C	C

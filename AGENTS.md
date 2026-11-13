@@ -119,14 +119,13 @@ tests/    test_pipeline.py + test_evidence.py, test_category.py, test_cli.py,
   validator) and the guard all pass; `data/panel.sample.json` reproduces exactly
   from the ETL.
 
-## NEXT STEP (do this first, next session)
+## Current state (v0.1.0 release run)
 
-Complete independent review of the initial CI/support stage: Python 3.12+,
-CI Python 3.12/3.14 on ubuntu-24.04, and retained tests, optional schema
-validation, workflow lint, privacy/security jobs, and committed hooks. Local
-integration and release-branch transition require separately dispatched,
-reviewed gates; see `docs/release-v0.1.0.md`. Whole-release planning follows
-that transition. Historical build-loop decisions remain historical.
+The release branch carries the reviewed v0.1.0 work: a curated three-entry health
+panel (no trait entries), the template report, the owner-checkpoint procedure
+(docs/owner-checkpoint.md) and the accepted-limits register
+(docs/accepted-limits.md). The remaining steps are owner-only: the private
+real-data checkpoint, repository branch protection, and the release tag.
 
 The real-data checkpoint is owner-only, in a separate local environment. Keep
 real DNA, findings, reports, private logs, and hashes outside all agent-accessible
@@ -147,9 +146,7 @@ Priority order (rough):
 1. **Real-data validation** (after reviewed CI/local integration and release
    planning). The owner performs the private checkpoint described above; coding
    sessions validate parser and call-state behavior with synthetic fixtures.
-2. **Curate a usable panel.** Review `data/targets.carrier.json` and
-   `data/targets.traits.json` (currently DRAFT): verify rsID↔condition, fill
-   `effect_allele`, drop shaky entries, grow to ~20 carrier / ~30 traits.
+2. **Curate a usable panel — DONE for v0.1.0** (three health entries, no trait entries; see docs/panel-curation.md).
 3. **Single entrypoint CLI — DONE.** `python -m snp_insights` and a
    `snp-insights` console script wrap `fetch`, `build-panel`, `check-raw`,
    `annotate`, `narrate`, and `run` (annotate → narrate); `pyproject.toml` and
@@ -168,9 +165,7 @@ Priority order (rough):
 8. **Tests & CI — PRESENT.** The workflow runs `tests/test_pipeline.py` with
    optional schema validation, actionlint, privacy guard, and secret scanning.
    Review the initial support update and retain offline bare/schema coverage.
-9. **Docs polish.** Troubleshooting (Ollama not running, API 429s, WAF), the
-   manual SNPedia flow, and an explicit "not medical advice" reminder in the
-   report and README.
+9. **Docs polish — DONE for v0.1.0** (README release section, owner checkpoint, accepted limits).
 10. **Packaging/release.** License already set (GPL-3.0-or-later). Tag a beta,
     write a changelog, sanity-check the privacy story for the opt-in online path.
 
