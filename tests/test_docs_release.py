@@ -1828,7 +1828,7 @@ def _s3b_curation_release_paragraph_matches_tables():
             draft += [v["rsid"] for v in json.load(fh)["variants"]]
     for phrase in ("the %d DRAFT rsIDs" % len(draft), "no marker was added",
                    "every trait row was excluded"):
-        hits = [s for s in sentences if phrase in s.lower()]
+        hits = [s for s in sentences if phrase.lower() in s.lower()]
         _require("the v0.1.0 statement %r is missing" % phrase, hits)
         for s in hits:
             _require("%r is not scoped to v0.1.0: %r" % (phrase, s), "v0.1.0" in s)
