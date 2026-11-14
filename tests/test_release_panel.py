@@ -2852,7 +2852,9 @@ POOL_RSIDS = (
 NON_AUTOSOMAL_POOL = ("rs1050828", "rs6152")
 GOAL_BOUND = 7
 RESERVE_BOUND = 3
-METHOD_HASH_1BA = "5d975e62ab8e4888594651735196b3d06208d2e57671289f902b621abdb4e1df"
+# Moved by ticket S3-B (A-4): only the two intro sentences about data rows changed;
+# the 1B-A value was 5d975e62ab8e4888594651735196b3d06208d2e57671289f902b621abdb4e1df.
+METHOD_HASH_1BA = "a7254091734a0828d3700415d6ef6439fd25bb9cbeafa234b549822d0aa521f1"
 PACK_IDS = ("N0a", "N0b", "N0c", "N0d")
 
 

@@ -500,7 +500,7 @@ def _accepted_limits_rows_append_only():
         _require("%s differs from the approved text" % rid, _sha(new[rid]) == digest)
     appended = raw[LIMITS_BASE_BYTES:].decode("utf-8").split("\n")
     appended = [l for l in appended if l.strip()]
-    _require("only the approved rows AL-014..AL-032 were appended",
+    _require("only the approved rows AL-014..AL-038 were appended",
              [l[2:8] for l in appended]
              == sorted(NEW_ROW_SHA256) + sorted(CLOSURE_ROWS) + sorted(APPENDED_ROWS))
     return True
@@ -534,8 +534,9 @@ def _accepted_limits_rows_028_to_030_present():
     _require("each closure row appears once",
              all(text.count(row) == 1 for row in CLOSURE_ROWS.values()))
     order = [l[2:8] for l in text.split("\n") if re.match(r"\| AL-\d{3} \|", l)]
-    _require("rows are in order, 028..030 followed only by AL-031 and AL-032",
-             order == sorted(order) and order[-5:-2] == sorted(CLOSURE_ROWS))
+    tail = len(APPENDED_ROWS)
+    _require("rows are in order, 028..030 followed only by the appended rows",
+             order == sorted(order) and order[-tail - 3:-tail] == sorted(CLOSURE_ROWS))
     return True
 
 
@@ -1378,7 +1379,77 @@ AL_032_ROW = (
     " a symlink into a synced or agent-readable location. |"
 )
 
-APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW}
+
+# Owner-approved rows (decision D-7 on r103, ticket S3-B), appended after AL-032.
+AL_033_ROW = (
+    "| AL-033 | REL | The v0.2.0 release panel has seven health-related "
+    "entries (five carrier status, two risk association) and one trait "
+    "entry (rs11591147, LDL cholesterol levels). This row supersedes "
+    "AL-014 for v0.2.0; AL-014 describes v0.1.0 and stays as recorded. "
+    "| LOW | Goals are not quotas; evidence-first curation (owner "
+    "decisions on r96 and r97). | 2026-11-14 | The panel changes. |"
+)
+
+AL_034_ROW = (
+    "| AL-034 | REL | The release panel carries one retrieved_at per "
+    "source (2026-11-14T14:16:47Z, a capture file time), although the "
+    "rows of three entries were captured on 2026-11-11 and those of "
+    "five on 2026-11-14. The dbSNP, gnomAD and GWAS Catalog labels name "
+    "both dates, docs/panel-curation.md records the split, and the "
+    "report prints the single time for every source. | LOW | Accepted "
+    "with the rebuild plan (owner decision R-1 on r100); per-entry "
+    "dates need a panel format change. | 2026-11-14 | The panel gains "
+    "per-entry retrieval dates. |"
+)
+
+AL_035_ROW = (
+    "| AL-035 | REL | The panel build counts GWAS studies by "
+    "word-boundary containment of the curated label or an alias, while "
+    "the T4 replication rule uses equality; for rs11591147 the build "
+    "counts 34 studies where T4 counts 4 rows in 3 groups. The tier is "
+    "the same (replicated). | LOW | Aligning the two rules is a tools "
+    "change outside the S3 wording stage. | 2026-11-14 | A trait's tier "
+    "differs between the build count and the T4 rule. |"
+)
+
+AL_036_ROW = (
+    "| AL-036 | REL | The T4 grammar allows \"-\" in the orientation "
+    "source cell, but the evidence-index check rejects it, so a row "
+    "with an unverified orientation source cannot be recorded; seven "
+    "PCSK9 (rs11591147) rows were left out of T4, with no effect on the "
+    "replication result. | LOW | Found in S2 (r98); changing the "
+    "checker is outside the S3 wording stage. | 2026-11-14 | A trait's "
+    "replication depends on a row whose orientation source is not "
+    "verified. |"
+)
+
+AL_037_ROW = (
+    "| AL-037 | REL | Checker gaps in tests/test_release_panel.py: a "
+    "trait T1 row needs no specific typed source id, and trait T5 "
+    "VariationIDs are not cross-checked. | LOW | Found as surviving "
+    "mutants in S2 (r98); closing them is a checker change outside the "
+    "S3 wording stage. | 2026-11-14 | A trait row cites a wrong or "
+    "missing source id. |"
+)
+
+AL_038_ROW = (
+    "| AL-038 | REL | The full-mode and online model payload still "
+    "carries a trait entry's ClinVar block from findings.json; the "
+    "template report, its citations and the skeleton prompt leave it "
+    "out. Model narration is outside the verified scope (AL-016). | LOW "
+    "| Render-level suppression (owner decision D-2 on r103) leaves "
+    "findings.json and the redaction in tools/prompt.py unchanged. | "
+    "2026-11-14 | Someone enables full-mode or online narration for a "
+    "panel with a trait entry. |"
+)
+
+APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
+                 "AL-033": AL_033_ROW,
+                 "AL-034": AL_034_ROW,
+                 "AL-035": AL_035_ROW,
+                 "AL-036": AL_036_ROW,
+                 "AL-037": AL_037_ROW,
+                 "AL-038": AL_038_ROW}
 NARRATION_NOT_VERIFIED = "not verified against a live model"
 FAILURE_EXAMPLE = (
     "template IR failed validation (bug):",
@@ -1512,9 +1583,11 @@ def _r6_accepted_limits_al031_al032_verbatim():
         _require("%s differs from the approved text" % rid, found[rid] == row)
         _require("%s appears once" % rid, text.count(row) == 1)
     order = [l[2:8] for l in text.split("\n") if re.match(r"\| AL-\d{3} \|", l)]
-    _require("AL-031 and AL-032 are the last rows, in order",
-             order == sorted(order) and order[-2:] == ["AL-031", "AL-032"])
-    _require("AL-030 sits directly before AL-031", order[-3] == "AL-030")
+    tail = len(APPENDED_ROWS)
+    _require("AL-031 and AL-032 start the appended rows, which end the register in order",
+             order == sorted(order) and order[-tail:] == sorted(APPENDED_ROWS)
+             and order[-tail:][:2] == ["AL-031", "AL-032"])
+    _require("AL-030 sits directly before AL-031", order[-tail - 1] == "AL-030")
     return True
 
 

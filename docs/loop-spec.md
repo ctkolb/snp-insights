@@ -598,3 +598,29 @@ identifiers only (rsIDs, gene names); no machine paths.
   or guard changes.
 - **Cost note.** The fixed overhead (rebuild, pin updates, wording change,
   reviews) is shared across all included markers.
+
+### Rev 4 (recorded 2026-11-14): owner decisions during S1 to S3
+
+- **D8 (pair reading, owner decision 2026-11-13).** At a multi-allelic site,
+  criteria 1 and 4 apply to the reference/effect allele pair (pair reading, as
+  the rs28929474 precedent). Every included multi-allelic entry carries a T1
+  limitation note that says so.
+- **D9 (stage 2 capture, owner decision 2026-11-13).** The stage 2 raw capture
+  was approved and run by the owner as STAGE=2.
+- **D3 superseded (owner decision 2026-11-14).** Rev 2 D3 said the package and
+  pipeline version stays `0.1.0`. The owner decided that the package and
+  pipeline versions bump to 0.2.0 in a separate ticket (ticket B). The
+  `panel_version` rule in D3 is unchanged.
+- **Decision sets (one line each).**
+  - r96 (2026-11-14): six MEFV rsIDs excluded as inheritance-unresolved; BCHE,
+    AGXT, HOGA1 and GRHPR included as `carrier_status`; VCV 2555 left out of T2
+    and T5; MedGen text accepted as the source of the one-copy carrier meaning.
+  - r97 (2026-11-14): rs11591147 included as trait "LDL cholesterol levels" with
+    an alias group; literal allele rule; cohort ids from PubMed abstract text;
+    not ancestry-informative; ClinVar not shown for trait entries.
+  - r100 (2026-11-14): cached rows reused for the three v0.1.0 entries; PCSK9
+    GWAS rows from the evidence pack's GWAS Catalog associations, because Open
+    Targets returned no LDL study; gnomAD effect-allele workaround, with a tools
+    fix deferred; frozen pack manifest; ticket split A/B/S3/T.
+  - r105 (2026-11-14): the trait sentence repeats the finding's label ("not a
+    measurement of" the label "and not a diagnosis") and is ratified.
