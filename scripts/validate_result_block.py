@@ -464,7 +464,7 @@ def check_named_files(problems, block, root):
         try:
             resolved = os.path.realpath(path if os.path.isabs(path) else os.path.join(real_root, path))
             return resolved if os.path.commonpath((real_root, resolved)) == real_root else None
-        except (OSError, ValueError):
+        except ValueError:  # a NUL byte; realpath already tolerates missing paths
             return None
     for i, row in enumerate(block["scripts"]):
         path = resolve(row["path"])
