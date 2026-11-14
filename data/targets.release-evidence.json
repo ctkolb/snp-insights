@@ -25,6 +25,38 @@
       "significance": "Pathogenic/Pathogenic, low penetrance",
       "review_status": "criteria provided, multiple submitters, no conflicts",
       "review_stars": 2
+    },
+    {
+      "rsid": "rs1799807",
+      "condition": "Deficiency of butyrylcholinesterase",
+      "clinvar_record": "clinvar:rcv:RCV000277104",
+      "significance": "Pathogenic/Likely pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "review_stars": 2
+    },
+    {
+      "rsid": "rs121908529",
+      "condition": "Primary hyperoxaluria, type I",
+      "clinvar_record": "clinvar:rcv:RCV000032681",
+      "significance": "Pathogenic/Likely pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "review_stars": 2
+    },
+    {
+      "rsid": "rs185803104",
+      "condition": "Primary hyperoxaluria type 3",
+      "clinvar_record": "clinvar:rcv:RCV000186492",
+      "significance": "Pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "review_stars": 2
+    },
+    {
+      "rsid": "rs180177314",
+      "condition": "Primary hyperoxaluria, type II",
+      "clinvar_record": "clinvar:rcv:RCV000186442",
+      "significance": "Pathogenic/Likely pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "review_stars": 2
     }
   ]
 }

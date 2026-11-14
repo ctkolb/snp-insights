@@ -33,6 +33,56 @@
       "effect_allele": "T",
       "assayability": "snp",
       "strand": "forward"
+    },
+    {
+      "rsid": "rs1799807",
+      "gene": "BCHE",
+      "condition": "Deficiency of butyrylcholinesterase",
+      "category": "carrier",
+      "result_type": "carrier_status",
+      "effect_allele": "C",
+      "assayability": "snp",
+      "strand": "forward"
+    },
+    {
+      "rsid": "rs121908529",
+      "gene": "AGXT",
+      "condition": "Primary hyperoxaluria, type I",
+      "category": "carrier",
+      "result_type": "carrier_status",
+      "effect_allele": "A",
+      "assayability": "snp",
+      "strand": "forward"
+    },
+    {
+      "rsid": "rs185803104",
+      "gene": "HOGA1",
+      "condition": "Primary hyperoxaluria type 3",
+      "category": "carrier",
+      "result_type": "carrier_status",
+      "effect_allele": "T",
+      "assayability": "snp",
+      "strand": "forward"
+    },
+    {
+      "rsid": "rs180177314",
+      "gene": "GRHPR",
+      "condition": "Primary hyperoxaluria, type II",
+      "category": "carrier",
+      "result_type": "carrier_status",
+      "effect_allele": "A",
+      "assayability": "snp",
+      "strand": "forward"
+    },
+    {
+      "rsid": "rs11591147",
+      "gene": "PCSK9",
+      "condition": "LDL cholesterol levels",
+      "category": "trait",
+      "result_type": "trait",
+      "effect_allele": "T",
+      "assayability": "snp",
+      "strand": "forward"
     }
   ]
 }

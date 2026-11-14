@@ -46,7 +46,7 @@ PINNED_HASHES = {
     "targets.carrier.json": "e9e7453a440ce51609b350b62a2f321c12374286355178edd3a52b47698c4f10",
     "targets.traits.json": "aabf84bfc412144214fc8f4f09eac8983a4ebaec0095c9cd2c9b16f6735fa6ce",
     "targets.sample.json": "0f1ae6151508f8bafeb3c64986d5f59c4cd0704f4ee6a859d795fe97047a93ad",
-    "condition_aliases.json": "8335a74dfae716acd420e525e03289b8fb1c339ba87088b645605850ac32e7f2",
+    "condition_aliases.json": "61a09b1be59412d998698933f284e149d74e02b267bf82538ee5789f4d6cb5dd",
 }
 
 # --- rule constants (single source of truth for the checkers) ----------------
@@ -2845,9 +2845,11 @@ POOL_RSIDS = (
     "rs1799963", "rs1050828", "rs28929474", "rs12913832", "rs1805007", "rs1805008",
     "rs17822931", "rs4988235", "rs671", "rs1229984", "rs762551", "rs72921001",
     "rs1426654", "rs16891982", "rs1800407", "rs1042602", "rs6152",
+    "rs61752717", "rs28940579", "rs28940578", "rs104895097", "rs28940580", "rs104895085",
+    "rs1799807", "rs121908529", "rs185803104", "rs180177314", "rs11591147",
 )
 NON_AUTOSOMAL_POOL = ("rs1050828", "rs6152")
-GOAL_BOUND = 6
+GOAL_BOUND = 7
 RESERVE_BOUND = 3
 METHOD_HASH_1BA = "5d975e62ab8e4888594651735196b3d06208d2e57671289f902b621abdb4e1df"
 PACK_IDS = ("N0a", "N0b", "N0c", "N0d")
