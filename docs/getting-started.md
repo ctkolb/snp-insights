@@ -176,6 +176,8 @@ synthetic fixture (`...` marks skipped lines). Its genotypes are invented:
 - Prothrombin thrombophilia (F2): two copies of the effect allele A were detected. Evidence tier: replicated, from ClinVar's review level: ClinVar lists this record as Pathogenic with two review stars (criteria provided, multiple submitters, no conflicts); this is a review level, not a count of independent studies. This is an association with Prothrombin thrombophilia; this report does not diagnose the condition. [f_b7dae4647a6b · state] [f_b7dae4647a6b · call.zygosity] [f_b7dae4647a6b · result_type] [f_b7dae4647a6b · effect_allele] [f_b7dae4647a6b · condition] [f_b7dae4647a6b · evidence.association] [f_b7dae4647a6b · evidence.clinvar.significance] [f_b7dae4647a6b · evidence.clinvar.review_stars] [f_b7dae4647a6b · evidence.clinvar.review_status_text]
 ...
 - Factor V Leiden thrombophilia (F5): both copies match the reference at this position; the effect allele was not found in the genotype. [f_bfc3a4f653bb · state] [f_bfc3a4f653bb · condition] [f_bfc3a4f653bb · rsid] [f_bfc3a4f653bb · gene] [f_bfc3a4f653bb · effect_allele]
+...
+- LDL cholesterol levels (PCSK9): one copy of the effect allele T was detected. Evidence tier: replicated, from the GWAS Catalog association count. This is a statistical association with LDL cholesterol levels in published studies; it is not a measurement of LDL cholesterol levels and not a diagnosis. [f_1d985d06c208 · state] [f_1d985d06c208 · call.zygosity] [f_1d985d06c208 · result_type] [f_1d985d06c208 · effect_allele] [f_1d985d06c208 · condition] [f_1d985d06c208 · evidence.association]
 ```
 
 **Call states.** Each marker ends in one of these:
