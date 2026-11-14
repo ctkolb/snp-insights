@@ -137,9 +137,10 @@ MUTATION = {
     "name": "m1", "file": "a.py", "anchor": "x > 1", "replacement": "x > 2", "modules": ["tests/t.py"],
     "expect": "KILLED", "why": "boundary", "result": "KILLED",
 }
+DEF = "def5678" + "0" * 33  # a full 40-character commit id; current mode compares full ids
 CREVIEWER = {
-    "session": "tag-r1", "stage": "S1", "reviewed_commit": "def5678",
-    "reviewed_exports": [{"role": "tip", "path": "/x/tip", "sha": "def5678"},
+    "session": "tag-r1", "stage": "S1", "reviewed_commit": DEF,
+    "reviewed_exports": [{"role": "tip", "path": "/x/tip", "sha": DEF},
                          {"role": "base", "path": "/x/base", "sha": "abc1234"}],
     "mode": "CODE", "verdict": "READY_WITH_CHANGES",
     "coverage": [{"attack": "a1", "stage": "S1", "result": "PASS", "depth": "executed", "evidence": "ran it"}],
@@ -156,7 +157,7 @@ CREVIEWER = {
     "repository_unchanged": True, "status": "complete",
 }
 CBUILDER = {
-    "session": "tag-r2", "stage": "S1", "mode": "BUILD", "base_commit": "abc1234", "head_commit": "def5678",
+    "session": "tag-r2", "stage": "S1", "mode": "BUILD", "base_commit": "abc1234", "head_commit": DEF,
     "status": "ready", "plan_first": False, "sheet_path": None, "calls_used": 40, "calls_limit": 90,
     "remaining_work": [], "files_changed": ["scripts/x.py"], "contracts_addressed": ["c1"],
     "checks": [{"command": "python tests/test_pipeline.py", "exit_code": 0, "log": "/x/log.txt"}],
@@ -211,7 +212,7 @@ def test_current_mode():
     check("current builder --max-calls exceeded", cbad(CBUILDER, "max-calls", max_calls=39))
     check("current builder --max-calls respected", cok(CBUILDER, max_calls=40))
     check("current builder head mismatch", cbad(CBUILDER, "head_commit", expect_head="9999999"))
-    check("current builder head prefix ok", cok(CBUILDER, expect_head="def5678abcdef"))
+    check("current builder head full sha ok", cok(CBUILDER, expect_head=DEF))
     check("current builder plan_first needs sheet", cbad(mutated(CBUILDER, plan_first=True), "sheet_path"))
     check("current builder plan_first with sheet ok", cok(mutated(CBUILDER, plan_first=True, sheet_path="/x/sheet.md")))
     check("current builder blocked needs reason",
@@ -299,7 +300,7 @@ def test_current_mode():
     check("current reviewer DIGEST NOT_READY ok", cok(dict(digest, verdict="NOT_READY")))
     check("current reviewer DIGEST READY_WITH_CHANGES rejected", cbad(dict(digest, verdict="READY_WITH_CHANGES"), "DIGEST"))
     check("current reviewer expect-head mismatch", cbad(CREVIEWER, "reviewed_commit", expect_head="9999999"))
-    check("current reviewer expect-head prefix ok", cok(CREVIEWER, expect_head="def5678abcdef"))
+    check("current reviewer expect-head full sha ok", cok(CREVIEWER, expect_head=DEF))
     check("current reviewer tip sha differs from reviewed_commit",
           cbad(setd(CREVIEWER, ["reviewed_exports", 0, "sha"], "1111111"), "tip"))
     check("current reviewer CODE needs tip export",
@@ -553,7 +554,7 @@ def test_current_mode():
         with open(os.path.join(tmp, "bin.json"), "wb") as fh:
             fh.write(b"\xff\xfe\x00bad")
         rc, out = cli([os.path.join(tmp, "bin.json"), "--contract", "current"])
-        check("current cli: undecodable file exit 2", rc == 2)
+        check("current cli: undecodable file is a report error", rc == 1 and out.startswith("REJECTED:") and "UTF-8" in out)
         rc, out = cli([os.path.join(tmp, "bin.json")])
         check("current cli: legacy undecodable file is not swallowed", isinstance(rc, str) and "UnicodeDecodeError" in rc)
         rc, out = cli([os.path.join(tmp, "bin.json"), "--role", "builder"])
@@ -573,6 +574,280 @@ def test_current_mode():
 def cbad_text(text, needle, **kw):
     return any(needle in p for p in runc(text, **kw)[0] if not p.startswith("EXC"))
 
+
+
+def snapshot(path):
+    """Bytes (or link target) of everything under path, for before/after comparisons."""
+    out = {}
+    for dirpath, dirnames, filenames in os.walk(path):
+        for name in sorted(dirnames + filenames):
+            p = os.path.join(dirpath, name)
+            if os.path.islink(p):
+                out[p] = ("link", os.readlink(p))
+            elif os.path.isfile(p):
+                with open(p, "rb") as fh:
+                    out[p] = ("file", fh.read())
+            else:
+                out[p] = ("dir", None)
+    return out
+
+
+def cli_stdin(argv, data):
+    saved = sys.stdin
+    sys.stdin = types.SimpleNamespace(buffer=io.BytesIO(data), read=lambda: data.decode("utf-8"))
+    try:
+        return cli(argv)
+    finally:
+        sys.stdin = saved
+
+
+def test_path_containment():
+    """Scripts and corpora must resolve inside --root, and that is checked before any file check."""
+    with tempfile.TemporaryDirectory() as base:
+        root = os.path.join(base, "root")
+        for d in (root, os.path.join(base, "root-evil"), os.path.join(root, "sub")):
+            os.mkdir(d)
+        two = "".join('{"n": %d}\n' % i for i in range(2))
+        files = {"root/corpus-cases.jsonl": two, "root/repro.sh": "x\n", "root/sub/inner.sh": "x\n",
+                 "outside.sh": "x\n", "outside.jsonl": two, "root-evil/x.sh": "x\n", "root-evil/x.jsonl": two}
+        for rel, body in files.items():
+            with open(os.path.join(base, rel), "w") as fh:
+                fh.write(body)
+        links = {"root/link-out.sh": "../outside.sh", "root/link-out.jsonl": "../outside.jsonl",
+                 "root/link-dir": "..", "root/link-in.sh": "repro.sh", "root/link-sub": "sub",
+                 "root/link-evil": "../root-evil", "rootlink": "root"}
+        for name, target in links.items():
+            os.symlink(target, os.path.join(base, name))
+        before = snapshot(base)
+
+        def script(p):
+            return setd(CREVIEWER, ["scripts", 0, "path"], p)
+
+        def corpus(p):
+            return setd(CREVIEWER, ["corpora", 0, "file"], p)
+
+        outside = (("relative traversal", "../outside.sh", "../outside.jsonl"),
+                   ("sibling with the root name as prefix", "../root-evil/x.sh", "../root-evil/x.jsonl"),
+                   ("absolute outside", os.path.join(base, "outside.sh"), os.path.join(base, "outside.jsonl")),
+                   ("absolute sibling", os.path.join(base, "root-evil", "x.sh"), os.path.join(base, "root-evil", "x.jsonl")),
+                   ("absolute outside, absent", os.path.join(base, "gone.sh"), os.path.join(base, "gone.jsonl")),
+                   ("traversal that returns outside", "sub/../../outside.sh", "sub/../../outside.jsonl"),
+                   ("symlinked file outside", "link-out.sh", "link-out.jsonl"),
+                   ("through a symlinked directory", "link-dir/outside.sh", "link-dir/outside.jsonl"),
+                   ("through a symlink to a sibling", "link-evil/x.sh", "link-evil/x.jsonl"),
+                   ("the filesystem root", "/", "/"))
+        for name, sp, cp in outside:
+            check("current root outside: script %s" % name,
+                  cbad(script(sp), "scripts[0].path", root=root) and cbad(script(sp), "outside the root", root=root))
+            check("current root outside: corpus %s" % name,
+                  cbad(corpus(cp), "corpora[0].file", root=root) and cbad(corpus(cp), "outside the root", root=root))
+            check("current root outside: corpus %s is not read" % name,
+                  not cbad(setd(corpus(cp), ["corpora", 0, "cases"], 7), "does not match", root=root))
+        inside = (("traversal that stays inside", "sub/../repro.sh", "sub/../corpus-cases.jsonl"),
+                  ("symlink inside the root", "link-in.sh", "corpus-cases.jsonl"),
+                  ("through a symlinked directory inside", "link-sub/inner.sh", "corpus-cases.jsonl"),
+                  ("absolute inside", os.path.join(root, "repro.sh"), os.path.join(root, "corpus-cases.jsonl")))
+        for name, sp, cp in inside:
+            check("current root inside: script %s ok" % name, cok(script(sp), root=root))
+            check("current root inside: corpus %s ok" % name, cok(corpus(cp), root=root))
+        check("current root inside: root given as a symlink ok", cok(CREVIEWER, root=os.path.join(base, "rootlink")))
+        check("current root inside: absolute path through a symlinked root ok",
+              cok(script(os.path.join(base, "rootlink", "repro.sh")), root=root))
+        check("current root inside: absent file keeps its own message",
+              cbad(script("sub/gone.sh"), "does not exist as a file", root=root))
+        report = os.path.join(base, "report.json")
+        with open(report, "w") as fh:
+            json.dump(script("../outside.sh"), fh)
+        rc, out = cli([report, "--contract", "current", "--root", root])
+        check("current root cli: outside path exit 1", rc == 1 and out.startswith("REJECTED:") and "outside the root" in out)
+        with open(report, "w") as fh:
+            json.dump(CREVIEWER, fh)
+        rc, out = cli([report, "--contract", "current", "--root", root])
+        check("current root cli: inside paths exit 0", rc == 0 and out.startswith("OK:"))
+        os.unlink(report)
+        check("current root: validation left every file and link unchanged", snapshot(base) == before)
+
+
+def test_json_robustness():
+    """Duplicate keys, non-finite numbers, deep nesting, size and encoding are report errors."""
+    good = json.dumps(CBUILDER)
+    check("json robustness: baseline text ok", runc(good)[0] == [])
+    dup = good.replace('"status": "ready"', '"status": "blocked", "status": "ready"', 1)
+    check("json: top-level duplicate key rejected", dup != good and cbad_text(dup, "duplicate"))
+    nested = good.replace('"exit_code": 0', '"exit_code": 1, "exit_code": 0', 1)
+    check("json: nested duplicate key rejected", nested != good and cbad_text(nested, "duplicate"))
+    check("json: duplicate key inside a marker block rejected",
+          cbad_text("prose\n===RESULT_JSON===\n" + dup + "\n===END_RESULT_JSON===\n", "duplicate"))
+    check("json: duplicate key in a reviewer report rejected",
+          cbad_text(json.dumps(CREVIEWER).replace('"stage": "S1"', '"stage": "S2", "stage": "S1"', 1), "duplicate"))
+    meas = '{"metric": "m", "method": "m", "baseline_commit": "abc1234", "base": %s, "after": 1, "runs": 1, ' \
+           '"spread": "s", "within_noise": false}'
+    for token in ("NaN", "Infinity", "-Infinity", "1e999", "-1e999"):
+        text = good.replace('"measurements": []', '"measurements": [' + meas % token + ']', 1)
+        check("json: %s rejected" % token, text != good and cbad_text(text, "non-finite"))
+    check("json: finite measurement still ok",
+          runc(good.replace('"measurements": []', '"measurements": [' + meas % "1.5e3" + ']', 1))[0] == [])
+
+    def deep(levels):
+        return dict(CBUILDER, extra=json.loads("[" * (levels - 1) + "0" + "]" * (levels - 1))) if levels > 1 else CBUILDER
+
+    check("json: nesting at 32 levels ok", cok(deep(32)))
+    check("json: nesting at 33 levels rejected", cbad(deep(33), "nested deeper than"))
+    check("json: 1800-deep nesting rejected", cbad_text("[" * 1800 + "0" + "]" * 1800, "nested deeper than"))
+    check("json: 200000-deep arrays rejected, no crash", cbad_text("[" * 200000 + "0" + "]" * 200000, "nested deeper than"))
+    check("json: 200000-deep objects rejected, no crash",
+          cbad_text('{"a":' * 200000 + "0" + "}" * 200000, "nested deeper than"))
+    check("json: deep nesting inside a marker block rejected",
+          cbad_text("===RESULT_JSON===\n" + "[" * 200000 + "0" + "]" * 200000 + "\n===END_RESULT_JSON===", "nested deeper than"))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        def put(name, body):
+            p = os.path.join(tmp, name)
+            with open(p, "wb") as fh:
+                fh.write(body)
+            return p
+
+        args = ["--contract", "current"]
+        mib = 1024 * 1024
+        exact = good.encode() + b" " * (mib - len(good.encode()))
+        over = good.encode() + b" " * (mib + 1 - len(good.encode()))
+        check("json size: fixture lengths", len(exact) == mib and len(over) == mib + 1)
+        p = put("exact.json", exact)
+        rc, out = cli([p] + args)
+        check("json size: exactly 1 MiB ok", rc == 0 and out.startswith("OK:"))
+        p = put("over.json", over)
+        rc, out = cli([p] + args)
+        check("json size: 1 MiB + 1 byte rejected", rc == 1 and out.startswith("REJECTED:") and "1 MiB" in out)
+        check("json size: refusal left the report unchanged", open(p, "rb").read() == over)
+        huge = put("huge.json", good.encode()[:-1] + b', "padding": "' + b"x" * (16 * mib) + b'"}')
+        rc, out = cli([huge] + args)
+        check("json size: 16 MiB rejected", rc == 1 and out.startswith("REJECTED:") and "1 MiB" in out)
+        rc, out = cli_stdin(["-"] + args, over)
+        check("json size: stdin over 1 MiB rejected", rc == 1 and out.startswith("REJECTED:") and "1 MiB" in out)
+        rc, out = cli_stdin(["-"] + args, exact)
+        check("json size: stdin exactly 1 MiB ok", rc == 0 and out.startswith("OK:"))
+        # the cap counts bytes: 600000 two-byte characters are 1.2 MB but fewer than 1 MiB of characters
+        two_byte = good.encode()[:-1] + b', "padding": "' + "é".encode() * 600000 + b'"}'
+        rc, out = cli([put("bytes.json", two_byte)] + args)
+        check("json size: counts bytes, not characters", rc == 1 and "1 MiB" in out)
+
+        for name, body in (("lead byte", b"\xff\xfe\x00bad"), ("truncated sequence", good.encode()[:-1] + b'\xe2\x82"}'),
+                           ("latin-1", good.replace("S1", "Sé").encode("latin-1"))):
+            p = put("enc.json", body)
+            rc, out = cli([p] + args)
+            check("json encoding: %s is a report error" % name,
+                  rc == 1 and out.startswith("REJECTED:") and "UTF-8" in out and "Traceback" not in out)
+            check("json encoding: %s left the report unchanged" % name, open(p, "rb").read() == body)
+            rc, out = cli_stdin(["-"] + args, body)
+            check("json encoding: %s on stdin is a report error" % name, rc == 1 and "UTF-8" in out)
+        rc, out = cli([put("bom.json", b"\xef\xbb\xbf" + good.encode())] + args)
+        check("json encoding: byte order mark still rejected", rc == 1 and out.startswith("REJECTED:"))
+        rc, out = cli([put("dup.json", dup.encode())] + args)
+        check("json cli: duplicate key exit 1 with a reason", rc == 1 and "duplicate" in out)
+        rc, out = cli([put("deep.json", b"[" * 200000 + b"0" + b"]" * 200000)] + args)
+        check("json cli: deep nesting exit 1, no crash", rc == 1 and "nested deeper than" in out)
+        rc, out = cli_stdin(["-"] + args, good.encode())
+        check("json cli: stdin report ok", rc == 0 and out.startswith("OK:"))
+        rc, out = cli([put("ok.json", good.encode())] + args)
+        check("json cli: ordinary report still ok", rc == 0)
+        legacy = put("legacy.txt", ("===RESULT_JSON===\n" + json.dumps(BUILDER) + "\n===END_RESULT_JSON===\n").encode()
+                     + b" " * (2 * mib))
+        rc, out = cli([legacy])
+        check("json cli: legacy mode has no size cap", rc == 0 and "builder S1" in out)
+
+
+def test_full_sha_identity():
+    """Current mode compares full 40-character ids for --expect-head and for the tip export."""
+    other_tail = DEF[:-1] + "1"
+    check("sha: builder full equality ok", cok(CBUILDER, expect_head=DEF))
+    for name, value in (("7-character prefix", DEF[:7]), ("39-character prefix", DEF[:39]),
+                        ("41 characters", DEF + "0"), ("same 39, last differs", other_tail), ("empty-ish", "d")):
+        check("sha: builder --expect-head %s rejected" % name,
+              cbad(CBUILDER, "40-character", expect_head=value) and cbad(CBUILDER, "head_commit", expect_head=value))
+        check("sha: reviewer --expect-head %s rejected" % name,
+              cbad(CREVIEWER, "40-character", expect_head=value) and cbad(CREVIEWER, "reviewed_commit", expect_head=value))
+    check("sha: builder short head_commit vs full --expect-head rejected",
+          cbad(mutated(CBUILDER, head_commit=DEF[:7]), "40-character", expect_head=DEF))
+    check("sha: builder short head_commit vs equal short --expect-head rejected",
+          cbad(mutated(CBUILDER, head_commit=DEF[:7]), "40-character", expect_head=DEF[:7]))
+    check("sha: reviewer short reviewed_commit vs full --expect-head rejected",
+          cbad(mutated(CREVIEWER, reviewed_commit=DEF[:7]), "40-character", expect_head=DEF))
+    check("sha: reviewer short reviewed_commit vs equal short --expect-head rejected",
+          cbad(setd(mutated(CREVIEWER, reviewed_commit=DEF[:7]), ["reviewed_exports", 0, "sha"], DEF[:7]),
+               "40-character", expect_head=DEF[:7]))
+    check("sha: no --expect-head, short builder head_commit unchanged and ok",
+          cok(mutated(CBUILDER, head_commit=DEF[:7])))
+    check("sha: no --expect-head, short reviewed_commit in SPEC (no tip needed) ok",
+          cok(mutated(CREVIEWER, mode="SPEC", reviewed_commit=DEF[:7], reviewed_exports=[],
+                      findings=[], verdict="READY", evidence_minimums=dict(CREVIEWER["evidence_minimums"], E3="not_required",
+                      E5="not_required", E6="not_required"), scripts=[])))
+    check("sha: reviewer full --expect-head and full tip ok", cok(CREVIEWER, expect_head=DEF))
+    for name, tip in (("short", DEF[:7]), ("39-character prefix", DEF[:39]), ("last character differs", other_tail),
+                      ("41 characters", DEF + "0")):
+        check("sha: tip export %s rejected" % name,
+              cbad(setd(CREVIEWER, ["reviewed_exports", 0, "sha"], tip), "tip export sha"))
+    check("sha: short reviewed_commit with equal short tip export rejected",
+          cbad(setd(mutated(CREVIEWER, reviewed_commit=DEF[:7]), ["reviewed_exports", 0, "sha"], DEF[:7]), "tip export sha"))
+    check("sha: a short base export is not an identity claim and stays ok",
+          cok(setd(CREVIEWER, ["reviewed_exports", 1, "sha"], "abc1234")))
+    check("sha: a full-length base export differing from the tip stays ok",
+          cok(setd(CREVIEWER, ["reviewed_exports", 1, "sha"], other_tail)))
+    with tempfile.TemporaryDirectory() as tmp:
+        good = os.path.join(tmp, "good.json")
+        with open(good, "w") as fh:
+            json.dump(CBUILDER, fh)
+        rc, out = cli([good, "--contract", "current", "--expect-head", DEF])
+        check("sha cli: full --expect-head exit 0", rc == 0)
+        rc, out = cli([good, "--contract", "current", "--expect-head", DEF[:7]])
+        check("sha cli: prefix --expect-head exit 1", rc == 1 and "40-character" in out)
+    # legacy mode keeps its prefix matching
+    check("sha legacy: prefix --expect-head still accepted", ok(BUILDER, expect_head="def5678abcdef"))
+    check("sha legacy: reviewer prefix --expect-head still accepted", ok(REVIEWER, expect_head="def56789"))
+
+
+def test_failed_validator_status():
+    """validator.status failed is allowed only in an incomplete report that lists what was not checked."""
+    failed = {"status": "failed", "command": "python v.py r.json", "exit_code": 1, "output": "four checks remain"}
+    notes = ["unfinished checks: effort limit reached"]
+
+    def rep(**kw):
+        return mutated(CREVIEWER, validator=kw.pop("validator", failed), **kw)
+
+    check("failed validator: incomplete with not_checked ok", cok(rep(status="incomplete", not_checked=notes)))
+    check("failed validator: incomplete with several not_checked ok",
+          cok(rep(status="incomplete", not_checked=notes + ["second item"])))
+    check("failed validator: incomplete with a large exit code ok",
+          cok(rep(status="incomplete", not_checked=notes, validator=dict(failed, exit_code=127))))
+    check("failed validator: incomplete with an empty output string ok",
+          cok(rep(status="incomplete", not_checked=notes, validator=dict(failed, output=""))))
+    for status in ("complete", "blocked"):
+        check("failed validator: %s report rejected" % status,
+              cbad(rep(status=status, not_checked=notes), "validator status is failed"))
+    check("failed validator: incomplete without not_checked rejected",
+          cbad(rep(status="incomplete", not_checked=[]), "validator status is failed"))
+    check("failed validator: complete without not_checked rejected (as before)",
+          cbad(rep(status="complete", not_checked=[]), "validator status is failed"))
+    for name, bad_validator in (("exit_code 0", dict(failed, exit_code=0)), ("exit_code null", dict(failed, exit_code=None)),
+                                ("exit_code bool", dict(failed, exit_code=True)), ("empty command", dict(failed, command="")),
+                                ("null command", dict(failed, command=None)), ("null output", dict(failed, output=None))):
+        check("failed validator: incomplete with %s rejected" % name,
+              cbad(rep(status="incomplete", not_checked=notes, validator=bad_validator), "validator"))
+    check("failed validator: other problems are still reported",
+          cbad(rep(status="incomplete", not_checked=notes, repository_unchanged=False), "repository_unchanged"))
+    check("failed validator: passed status unchanged",
+          cok(rep(status="complete", validator=CREVIEWER["validator"])))
+    check("failed validator: incomplete with a passed validator ok",
+          cok(rep(status="incomplete", validator=CREVIEWER["validator"])))
+    with tempfile.TemporaryDirectory() as tmp:
+        p = os.path.join(tmp, "r.json")
+        with open(p, "w") as fh:
+            json.dump(rep(status="incomplete", not_checked=notes), fh)
+        rc, out = cli([p, "--contract", "current"])
+        check("failed validator cli: incomplete report exit 0", rc == 0 and out.startswith("OK:"))
+        with open(p, "w") as fh:
+            json.dump(rep(status="complete", not_checked=notes), fh)
+        rc, out = cli([p, "--contract", "current"])
+        check("failed validator cli: complete report exit 1", rc == 1 and "validator status is failed" in out)
 
 
 def main():
@@ -640,6 +915,10 @@ def main():
     check("tally builder", "9 red before code" in v.tally(block, role))
 
     test_current_mode()
+    test_path_containment()
+    test_json_robustness()
+    test_full_sha_identity()
+    test_failed_validator_status()
 
     print("\n%d passed, %d failed" % (len(PASSED), len(FAILED)))
     return 1 if FAILED else 0
