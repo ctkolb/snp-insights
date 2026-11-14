@@ -2,7 +2,7 @@
 
 This page explains where the knowledge in a report comes from, what each public
 source is, and how to get the files if you want to rebuild or extend the panel.
-If you only want to run v0.1.0 on a raw file, you can skip all of it: see
+If you only want to run v0.2.0 on a raw file, you can skip all of it: see
 [getting-started.md](getting-started.md).
 
 Nothing here is medical advice.
@@ -45,7 +45,7 @@ is never auto-fetched or redistributed. OMIM is not downloaded (link-only).
 
 | What you want to do | Fetch needed? |
 | --- | --- |
-| Run v0.1.0 on your own file | **No.** The built release panel, `data/targets.release-panel.json`, is already in the repository. |
+| Run v0.2.0 on your own file | **No.** The built release panel, `data/targets.release-panel.json`, is already in the repository. |
 | Try the tool on synthetic data | No. |
 | Rebuild `data/panel.sample.json` from the tiny samples | No. See [The synthetic samples](#the-synthetic-samples). |
 | Rebuild or extend the release panel, or add variants | Yes, by one of the three ways below. |
@@ -239,7 +239,7 @@ its curated per-condition ClinVar record instead of the aggregate row. The
 command above shows the shape only; it is not the recorded rebuild command and
 needs real reference files.
 
-You do not need to rebuild the release panel to run v0.1.0:
+You do not need to rebuild the release panel to run v0.2.0:
 `data/targets.release-panel.json` is already built and tracked. A rebuild is
 optional, needs the network or the full files, and is mainly for contributors. The
 recorded curation method, the exact rebuild command and the evidence behind each

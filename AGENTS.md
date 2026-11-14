@@ -119,9 +119,9 @@ tests/    test_pipeline.py + test_evidence.py, test_category.py, test_cli.py,
   validator) and the guard all pass; `data/panel.sample.json` reproduces exactly
   from the ETL.
 
-## Current state (v0.1.0 release run)
+## Current state (v0.2.0 release run)
 
-The release branch carries the reviewed v0.1.0 work: a curated eight-entry
+The release branch carries the reviewed v0.2.0 work: a curated eight-entry
 panel (seven health entries, one trait entry), the template report, the owner-checkpoint procedure
 (docs/owner-checkpoint.md) and the accepted-limits register
 (docs/accepted-limits.md). The remaining steps are owner-only: the private
