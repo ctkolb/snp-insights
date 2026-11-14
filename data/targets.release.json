@@ -1,6 +1,6 @@
 {
   "_note": "The curated release targets of ticket 1B-B; source-backed from the frozen evidence pack, not a clinical panel",
-  "panel_version": "0.1.0",
+  "panel_version": "0.2.0",
   "genome_build": "GRCh37",
   "strand": "forward",
   "variants": [

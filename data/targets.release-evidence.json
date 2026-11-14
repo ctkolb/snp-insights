@@ -1,6 +1,6 @@
 {
   "_note": "Curated ClinVar evidence for the release carrier targets; each entry mirrors the attributing per-condition RCV cited in docs/panel-curation.md, read from the frozen evidence pack, not a clinical panel",
-  "panel_version": "0.1.0",
+  "panel_version": "0.2.0",
   "entries": [
     {
       "rsid": "rs1800562",
