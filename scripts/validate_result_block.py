@@ -32,8 +32,15 @@ shape. The role comes from --role, a "role" key, or the shape of the keys.
 --max-calls applies to builder reports (calls_used); --root is the directory
 that relative paths in "scripts" and "corpora" resolve against, and with it the
 files named there must exist and a corpus must have as many non-empty lines as
-the cases it claims. Where the contract text is ambiguous the stricter reading
-is enforced.
+the cases it claims. A named path must resolve (symlinks included) to a place
+inside --root; a path outside it is a report error and is not opened. In this
+mode --expect-head and the tip export must equal the reported commit as full
+40-character ids (no prefix match), and the report is rejected, with exit status
+1, when it is larger than 1 MiB, is not UTF-8, repeats a JSON key, holds NaN,
+Infinity or a number that overflows to infinity, or nests deeper than 32 levels.
+A validator.status of failed is accepted only in an incomplete report that lists
+not_checked. Where the contract text is ambiguous the stricter reading is
+enforced.
 
 Text in the report is treated as data. Nothing in it is executed.
 """
@@ -47,6 +54,8 @@ import sys
 START = "===RESULT_JSON==="
 END = "===END_RESULT_JSON==="
 HEX = re.compile(r"^[0-9a-f]{7,40}$")
+MAX_REPORT_BYTES = 1024 * 1024  # current mode: larger reports are rejected unread
+MAX_JSON_DEPTH = 32  # current mode: deeper JSON is rejected
 SEVERITIES = ("CRITICAL", "HIGH", "MEDIUM", "LOW")
 
 BUILDER_FIELDS = (
@@ -90,6 +99,11 @@ def is_commit(value):
 def same_commit(a, b):
     """True if two hex commit ids refer to the same commit (prefix match)."""
     return a.startswith(b) or b.startswith(a)
+
+
+def full_commit_equal(a, b):
+    """True if two commit ids are the same full 40-character id (current mode: no prefix match)."""
+    return a == b and len(a) == 40
 
 
 def check_builder(block, args):
@@ -403,8 +417,9 @@ def check_current_builder(block, args):
         problems.append("calls_used (%d) exceeds calls_limit (%d)" % (block["calls_used"], block["calls_limit"]))
     if args.max_calls is not None and block["calls_used"] > args.max_calls:
         problems.append("calls_used (%d) exceeds --max-calls (%d)" % (block["calls_used"], args.max_calls))
-    if args.expect_head and not same_commit(block["head_commit"], args.expect_head):
-        problems.append("head_commit %s does not match expected %s" % (block["head_commit"], args.expect_head))
+    if args.expect_head and not full_commit_equal(block["head_commit"], args.expect_head):
+        problems.append("head_commit %s does not match expected %s (current mode compares full 40-character commit ids)"
+                        % (block["head_commit"], args.expect_head))
     if block["plan_first"] and not _nes(block["sheet_path"]):
         problems.append("plan_first is true but sheet_path is not a non-empty string")
     if block["status"] == "blocked" and not (block["blockers"] or block["remaining_work"]):
@@ -439,14 +454,29 @@ def corpus_lines(path):
 
 
 def check_named_files(problems, block, root):
-    """Files named in scripts and corpora must exist under root; a corpus line count must match."""
+    """Files named in scripts and corpora must exist under root; a corpus line count must match.
+
+    A path is resolved with symlinks first and must land inside root before anything
+    is opened; None means it is outside (or not a usable path)."""
+    real_root = os.path.realpath(root)
+
     def resolve(path):
-        return path if os.path.isabs(path) else os.path.join(root, path)
+        try:
+            resolved = os.path.realpath(path if os.path.isabs(path) else os.path.join(real_root, path))
+            return resolved if os.path.commonpath((real_root, resolved)) == real_root else None
+        except (OSError, ValueError):
+            return None
     for i, row in enumerate(block["scripts"]):
-        if not os.path.isfile(resolve(row["path"])):
+        path = resolve(row["path"])
+        if path is None:
+            problems.append("scripts[%d].path %r is outside the root" % (i, row["path"]))
+        elif not os.path.isfile(path):
             problems.append("scripts[%d].path %r does not exist as a file under the root" % (i, row["path"]))
     for i, row in enumerate(block["corpora"]):
         path = resolve(row["file"])
+        if path is None:
+            problems.append("corpora[%d].file %r is outside the root" % (i, row["file"]))
+            continue
         if not os.path.isfile(path):
             problems.append("corpora[%d].file %r does not exist as a file under the root" % (i, row["file"]))
             continue
@@ -513,16 +543,18 @@ def check_current_reviewer(block, args):
     mode = block["mode"]
     if args.max_calls is not None:
         problems.append("--max-calls cannot be checked: the current reviewer report has no call counter")
-    if args.expect_head and not same_commit(block["reviewed_commit"], args.expect_head):
-        problems.append("reviewed_commit %s does not match expected %s" % (block["reviewed_commit"], args.expect_head))
+    if args.expect_head and not full_commit_equal(block["reviewed_commit"], args.expect_head):
+        problems.append("reviewed_commit %s does not match expected %s (current mode compares full 40-character commit ids)"
+                        % (block["reviewed_commit"], args.expect_head))
     if block["repository_unchanged"] is False:
         problems.append("repository_unchanged is false (the reviewer modified the repository)")
     tips = [e for e in block["reviewed_exports"] if e["role"] == "tip"]
     if mode in ("CODE", "CONFIRM_FIX") and not tips:
         problems.append("reviewed_exports needs a tip export in %s" % mode)
     for e in tips:
-        if not same_commit(e["sha"], block["reviewed_commit"]):
-            problems.append("tip export sha %s does not match reviewed_commit %s" % (e["sha"], block["reviewed_commit"]))
+        if not full_commit_equal(e["sha"], block["reviewed_commit"]):
+            problems.append("tip export sha %s does not match reviewed_commit %s (current mode compares full 40-character commit ids)"
+                            % (e["sha"], block["reviewed_commit"]))
     if mode != "DIGEST" and not block["coverage"]:
         problems.append("coverage must not be empty in %s" % mode)
 
@@ -592,18 +624,69 @@ def check_current_reviewer(block, args):
             problems.append("validator.exit_code must be 0 when status is passed")
         if not isinstance(validator["output"], str):
             problems.append("validator.output must be a string when status is passed")
+    elif block["status"] == "incomplete" and block["not_checked"]:
+        if not _nes(validator["command"]):
+            problems.append("validator.command must be a non-empty string when status is failed")
+        if not is_int(validator["exit_code"]) or validator["exit_code"] == 0:
+            problems.append("validator.exit_code must be a non-zero integer when status is failed")
+        if not isinstance(validator["output"], str):
+            problems.append("validator.output must be a string when status is failed")
     else:
-        problems.append("validator status is failed; fix the report and rerun the validator")
+        problems.append("validator status is failed; fix the report and rerun the validator "
+                        "(a failed validator is accepted only in an incomplete report that lists not_checked)")
 
     if args.root:
         check_named_files(problems, block, args.root)
     return problems
 
 
+def _reject_duplicates(pairs):
+    out = {}
+    for key, value in pairs:
+        if key in out:
+            raise ValueError("duplicate JSON key %r" % key)
+        out[key] = value
+    return out
+
+
+def _reject_nonfinite(token):
+    raise ValueError("non-finite JSON number %s" % token)
+
+
+def _finite_float(token):
+    value = float(token)
+    if value in (float("inf"), float("-inf")):
+        raise ValueError("non-finite JSON number %s" % token)
+    return value
+
+
+def _too_deep(node):
+    stack = [(node, 1)]
+    while stack:
+        item, depth = stack.pop()
+        if isinstance(item, (dict, list)):
+            if depth > MAX_JSON_DEPTH:
+                return True
+            stack.extend((child, depth + 1) for child in (item.values() if isinstance(item, dict) else item))
+    return False
+
+
+def load_report_json(text):
+    """json.loads for a current-mode report; every refusal is a ValueError."""
+    try:
+        block = json.loads(text, object_pairs_hook=_reject_duplicates, parse_constant=_reject_nonfinite,
+                           parse_float=_finite_float)
+    except RecursionError:
+        raise ValueError("JSON is nested deeper than %d levels" % MAX_JSON_DEPTH) from None
+    if _too_deep(block):
+        raise ValueError("JSON is nested deeper than %d levels" % MAX_JSON_DEPTH)
+    return block
+
+
 def validate_current(text, args):
     """Return (problems, block, role) for a bare report JSON or a marker block."""
     try:
-        block = json.loads(text)
+        block = load_report_json(text)
     except ValueError as exc:
         if START not in text:
             return ["report is not valid JSON and has no %s block: %s" % (START, exc)], None, None
@@ -611,7 +694,7 @@ def validate_current(text, args):
         if body is None:
             return problems, None, None
         try:
-            block = json.loads(body)
+            block = load_report_json(body)
         except ValueError as inner:
             return ["block is not valid JSON: %s" % inner], None, None
     if not isinstance(block, dict):
@@ -687,12 +770,28 @@ def tally(block, role):
                counts["MEDIUM"], counts["LOW"], len(block["surviving_mutations"])))
 
 
+def read_current_text(source):
+    """Return (text, problem). Bytes are read up to the cap, so size and encoding are checked on bytes."""
+    if source == "-":
+        data = sys.stdin.buffer.read(MAX_REPORT_BYTES + 1)
+    else:
+        with open(source, "rb") as fh:
+            data = fh.read(MAX_REPORT_BYTES + 1)
+    if len(data) > MAX_REPORT_BYTES:
+        return None, "report is larger than 1 MiB (%d bytes); it was not parsed" % MAX_REPORT_BYTES
+    try:
+        return data.decode("utf-8"), None
+    except UnicodeDecodeError as exc:
+        return None, "report is not valid UTF-8 text: %s" % exc
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("report", help="report file, or - for stdin")
     parser.add_argument("--role", choices=("builder", "reviewer"))
     parser.add_argument("--stage", help="expected stage label, for example S1")
-    parser.add_argument("--expect-head", help="commit id the block must name (prefix match)")
+    parser.add_argument("--expect-head", help="commit id the block must name (prefix match; "
+                        "the full 40-character id with --contract current)")
     parser.add_argument("--max-calls", type=int, help="tool-call cap (legacy reviewer; current builder)")
     parser.add_argument("--contract", choices=("legacy", "current"), default="legacy",
                         help="report contract to check (default: legacy)")
@@ -706,16 +805,18 @@ def main(argv=None):
         print("error: --root is not a directory: %s" % args.root, file=sys.stderr)
         return 2
     try:
-        text = sys.stdin.read() if args.report == "-" else open(args.report, "r", encoding="utf-8").read()
+        if current:
+            text, unreadable = read_current_text(args.report)
+        else:
+            text = sys.stdin.read() if args.report == "-" else open(args.report, "r", encoding="utf-8").read()
+            unreadable = None
     except OSError as exc:
         print("error: %s" % exc, file=sys.stderr)
         return 2
-    except UnicodeDecodeError as exc:
-        if not current:
-            raise
-        print("error: report is not UTF-8 text: %s" % exc, file=sys.stderr)
-        return 2
-    problems, block, role = validate(text, args)
+    if unreadable:
+        problems, block, role = [unreadable], None, None
+    else:
+        problems, block, role = validate(text, args)
     if problems:
         print("REJECTED: result block invalid; re-request the report")
         for line in problems:

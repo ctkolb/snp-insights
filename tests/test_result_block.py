@@ -653,6 +653,8 @@ def test_path_containment():
         check("current root inside: root given as a symlink ok", cok(CREVIEWER, root=os.path.join(base, "rootlink")))
         check("current root inside: absolute path through a symlinked root ok",
               cok(script(os.path.join(base, "rootlink", "repro.sh")), root=root))
+        check("current root outside: a path with a NUL byte is rejected, no crash",
+              cbad(script("a\x00b.sh"), "scripts[0].path", root=root) and cbad(corpus("a\x00b.jsonl"), "corpora[0].file", root=root))
         check("current root inside: absent file keeps its own message",
               cbad(script("sub/gone.sh"), "does not exist as a file", root=root))
         report = os.path.join(base, "report.json")
@@ -693,6 +695,15 @@ def test_json_robustness():
 
     check("json: nesting at 32 levels ok", cok(deep(32)))
     check("json: nesting at 33 levels rejected", cbad(deep(33), "nested deeper than"))
+
+    def deep_objects(levels):
+        return dict(CBUILDER, extra=json.loads('{"a":' * (levels - 1) + "0" + "}" * (levels - 1)))
+
+    check("json: object nesting at 32 levels ok", cok(deep_objects(32)))
+    check("json: object nesting at 33 levels rejected", cbad(deep_objects(33), "nested deeper than"))
+    mixed = dict(CBUILDER, extra=json.loads('[{"a":' * 16 + "0" + "}]" * 16))
+    check("json: mixed list and object nesting counts both (33 levels) rejected", cbad(mixed, "nested deeper than"))
+    check("json: wide but shallow JSON ok", cok(dict(CBUILDER, extra=[[0] * 1000] * 1000)))
     check("json: 1800-deep nesting rejected", cbad_text("[" * 1800 + "0" + "]" * 1800, "nested deeper than"))
     check("json: 200000-deep arrays rejected, no crash", cbad_text("[" * 200000 + "0" + "]" * 200000, "nested deeper than"))
     check("json: 200000-deep objects rejected, no crash",
@@ -782,10 +793,11 @@ def test_full_sha_identity():
                       findings=[], verdict="READY", evidence_minimums=dict(CREVIEWER["evidence_minimums"], E3="not_required",
                       E5="not_required", E6="not_required"), scripts=[])))
     check("sha: reviewer full --expect-head and full tip ok", cok(CREVIEWER, expect_head=DEF))
-    for name, tip in (("short", DEF[:7]), ("39-character prefix", DEF[:39]), ("last character differs", other_tail),
-                      ("41 characters", DEF + "0")):
+    for name, tip in (("short", DEF[:7]), ("39-character prefix", DEF[:39]), ("last character differs", other_tail)):
         check("sha: tip export %s rejected" % name,
               cbad(setd(CREVIEWER, ["reviewed_exports", 0, "sha"], tip), "tip export sha"))
+    check("sha: tip export of 41 characters rejected by the export row type",
+          cbad(setd(CREVIEWER, ["reviewed_exports", 0, "sha"], DEF + "0"), "reviewed_exports[0]"))
     check("sha: short reviewed_commit with equal short tip export rejected",
           cbad(setd(mutated(CREVIEWER, reviewed_commit=DEF[:7]), ["reviewed_exports", 0, "sha"], DEF[:7]), "tip export sha"))
     check("sha: a short base export is not an identity claim and stays ok",
