@@ -98,8 +98,8 @@ glossary and troubleshooting are in [docs/getting-started.md](docs/getting-start
 
 ## Release panel and your own file
 
-v0.1.0 ships a small public panel of three health-related entries and no trait
-entries, built reproducibly from public references. The curation record is
+v0.2.0 ships a small public panel of seven health-related entries and one trait
+entry, built reproducibly from public references. The curation record is
 [docs/panel-curation.md](docs/panel-curation.md), the curated evidence file is
 `data/targets.release-evidence.json`, and the built panel is
 `data/targets.release-panel.json`.
@@ -312,12 +312,12 @@ step into a local cache outside the repository. For v0.1.0 you do not need it.
 small fetch versus `--full`, the cache, the `build-panel` flags, the manual
 downloads and the SNPedia path.
 
-## Known limitations (v0.1.0)
+## Known limitations (v0.2.0)
 
 - The array covers about 0.02% of the genome.
 - Array presence of each marker is not verified: no public array manifest is
   available, so a marker may not be on your array version.
-- The release panel has three health entries and no trait entries.
+- The release panel has seven health entries and one trait entry.
 - The panel is small and public: it is a reproducible starting point, not a
   screening panel.
 - Only template-only narration is verified in this release; the skeleton and full
@@ -386,11 +386,11 @@ inventory, and [SECURITY.md](SECURITY.md) to report an issue.
 
 ## Status
 
-Release candidate v0.1.0. The pipeline runs end to end on synthetic fixtures:
-parse, annotate, a curated three-entry release panel, and a deterministic
+Release candidate v0.2.0. The pipeline runs end to end on synthetic fixtures:
+parse, annotate, a curated eight-entry release panel, and a deterministic
 template report. The first real-file run is the owner's local checkpoint
 (docs/owner-checkpoint.md). Model narration (skeleton and full modes) and the
-online path exist but are not part of the verified v0.1.0 scope. Known gaps and
+online path exist but are not part of the verified v0.2.0 scope. Known gaps and
 accepted limits are listed in docs/accepted-limits.md and DESIGN.md.
 
 ## Contributing

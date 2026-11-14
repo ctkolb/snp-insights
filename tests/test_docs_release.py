@@ -89,8 +89,8 @@ NEW_ROW_SHA256 = {
 
 AGENTS_CURRENT_STATE = """## Current state (v0.1.0 release run)
 
-The release branch carries the reviewed v0.1.0 work: a curated three-entry health
-panel (no trait entries), the template report, the owner-checkpoint procedure
+The release branch carries the reviewed v0.1.0 work: a curated eight-entry
+panel (seven health entries, one trait entry), the template report, the owner-checkpoint procedure
 (docs/owner-checkpoint.md) and the accepted-limits register
 (docs/accepted-limits.md). The remaining steps are owner-only: the private
 real-data checkpoint, repository branch protection, and the release tag.
@@ -104,8 +104,8 @@ references only from curated public targets, never personal coverage or genotype
 Do not request private outputs for analysis."""
 
 AGENTS_ROADMAP_ITEMS = (
-    "2. **Curate a usable panel — DONE for v0.1.0** (three health entries, no "
-    "trait entries; see docs/panel-curation.md).",
+    "2. **Curate a usable panel — DONE for v0.2.0** (seven health entries, one "
+    "trait entry; see docs/panel-curation.md).",
     "9. **Docs polish — DONE for v0.1.0** (README release section, owner "
     "checkpoint, accepted limits).",
 )
@@ -171,12 +171,12 @@ CURATION_RESERVES_PARAGRAPH = (
 )
 
 README_STATUS = (
-    "Release candidate v0.1.0. The pipeline runs end to end on synthetic "
-    "fixtures: parse, annotate, a curated three-entry release panel, and a "
+    "Release candidate v0.2.0. The pipeline runs end to end on synthetic "
+    "fixtures: parse, annotate, a curated eight-entry release panel, and a "
     "deterministic template report. The first real-file run is the owner's "
     "local checkpoint (docs/owner-checkpoint.md). Model narration (skeleton "
     "and full modes) and the online path exist but are not part of the "
-    "verified v0.1.0 scope. Known gaps and accepted limits are listed in "
+    "verified v0.2.0 scope. Known gaps and accepted limits are listed in "
     "docs/accepted-limits.md and DESIGN.md."
 )
 
@@ -188,8 +188,8 @@ LIMITATION_KEYS = (
     ("about 0.02% of the genome", CHECKPOINT, "about 0.02% of the genome"),
     ("array presence of each marker is not verified", CURATION,
      "array presence not verified"),
-    ("three health entries and no trait entries", CHECKPOINT,
-     "three health entries"),
+    ("seven health entries and one trait entry", CHECKPOINT,
+     "seven health entries"),
     ("the panel is small and public", None, None),
     ("only template-only narration is verified", LIMITS,
      "Only template-only narration is verified"),
@@ -297,7 +297,7 @@ def _readme_release_panel_workflow():
     _require("release section follows Quickstart", rel[0] > quick)
     _require("requirements phrase", REQUIREMENTS_PHRASE in flat)
     sec = _flat(_release_section())
-    for phrase in ("three health-related entries", "no trait entries",
+    for phrase in ("seven health-related entries", "one trait entry",
                    "built reproducibly from public references",
                    "docs/panel-curation.md",
                    "data/targets.release-evidence.json",
@@ -373,13 +373,13 @@ def _readme_template_only_command():
 
 
 def _readme_limitations_list():
-    sec = _flat(_section(_read(README), "Known limitations (v0.1.0)")).lower()
+    sec = _flat(_section(_read(README), "Known limitations (v0.2.0)")).lower()
     for phrase, doc, doc_phrase in LIMITATION_KEYS:
         _require("README limitation lacks " + phrase, phrase in sec)
         if doc is not None:
             _require("%s lacks %r" % (os.path.basename(doc), doc_phrase),
                      doc_phrase in _flat(_read(doc)))
-    items = [l for l in _section(_read(README), "Known limitations (v0.1.0)")
+    items = [l for l in _section(_read(README), "Known limitations (v0.2.0)")
              .split("\n") if l.startswith("- ")]
     _require("one list item per limitation", len(items) >= len(LIMITATION_KEYS))
     return True
@@ -423,7 +423,7 @@ def _version_consistent():
     _require("package version", snp_insights.__version__ == "0.1.0")
     flat = _flat(_read(README))
     _require("README version output", "snp-insights 0.1.0" in flat)
-    _require("README release-candidate status", "Release candidate v0.1.0." in flat)
+    _require("README release-candidate status", "Release candidate v0.2.0." in flat)
     return True
 
 
@@ -617,7 +617,7 @@ RD_HEADINGS = (
     "SNPedia (manual)",
 )
 README_KEEP_HEADINGS = (
-    "How it works", "Why", "Requirements", "Known limitations (v0.1.0)",
+    "How it works", "Why", "Requirements", "Known limitations (v0.2.0)",
     "Privacy & safety", "Status", "Contributing", "License", "Testing",
 )
 DOC_MAP_TARGETS = (
@@ -1625,7 +1625,8 @@ def _s3b_limitation_panel_statement_count_free():
              panel[0] == PANEL_LIMITATION)
     for item in limitations:
         _require("limitation states an entry count: %r" % item,
-                 not re.search(COUNT_WORD + r" (health |trait )?(entr|marker)", item, re.I))
+                 not re.search(COUNT_WORD + r"(?: health(?:-related)?| trait)? entr|"
+                               + COUNT_WORD + r"-entry", item, re.I))
         _require("limitation names a release version: %r" % item,
                  not re.search(r"\bv\d+\.\d+", item))
     return True

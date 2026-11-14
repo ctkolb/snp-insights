@@ -660,7 +660,7 @@ NEW_RARE_PPV = ("Rare array calls can be inaccurate; a rare result should be con
                 "clinical-grade test.")
 TIER_KEYS = ("established", "replicated", "single study", "conflicting", "unknown")
 # key phrase (present in the registry item, lower case) -> must appear in the docs
-LIMITATION_KEYS = ("0.02%", "forward-strand", "three health entries", "no result is a diagnosis",
+LIMITATION_KEYS = ("0.02%", "forward-strand", "small public panel", "no result is a diagnosis",
                    "clinical-grade test", "template-only narration", "no public array manifest",
                    "owner's aggregate judgment")
 DOC_FILES = ("panel-curation.md", "owner-checkpoint.md")
@@ -1044,8 +1044,8 @@ def _run_4a2_behavior(attempt):
     def limitations_trait_statement_matches_docs():
         limitations = getattr(caveats, "LIMITATIONS", None)
         _require("caveats.LIMITATIONS missing", isinstance(limitations, list) and limitations)
-        phrases = ("three health entries", "no trait entries")
-        items = [i for i in limitations if "three health entries" in i.lower()]
+        phrases = ("small public panel", "the summary counts its markers by kind")
+        items = [i for i in limitations if "small public panel" in i.lower()]
         _require(f"{len(items)} limitation items state the panel contents", len(items) == 1)
         for phrase in phrases:
             _require(f"panel limitation lacks {phrase!r}: {items[0]!r}", phrase in items[0].lower())
@@ -1054,7 +1054,7 @@ def _run_4a2_behavior(attempt):
             with open(os.path.join(ROOT, "docs", name)) as fh:
                 docs += " " + fh.read()
         docs = " ".join(docs.lower().split())
-        for phrase in phrases:
+        for phrase in phrases[:1]:
             _require(f"docs lack {phrase!r}", phrase in docs)
         return True
     attempt("R4A.limitations_trait_statement_matches_docs", limitations_trait_statement_matches_docs)

@@ -55,10 +55,10 @@ TIER_DEFINITIONS = {
 LIMITATIONS = [
     "The array covers about 0.02% of the genome.",
     "Genotypes are reported on the forward-strand against build GRCh37.",
-    "The release uses a small public panel of three health entries and no trait entries.",
+    "The release uses a small public panel; the Summary counts its markers by kind.",
     "This report is not medical advice, and no result is a diagnosis.",
     "A rare array call should be confirmed by a clinical-grade test.",
-    "Only template-only narration is verified in v0.1.0.",
+    "Only template-only narration is verified in this release.",
     "No marker's presence on the array was verified, because no public array manifest is available.",
     "Whether the panel covers enough is the owner's aggregate judgment.",
 ]
