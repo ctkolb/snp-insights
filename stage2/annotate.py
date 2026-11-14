@@ -286,8 +286,9 @@ def annotate_variant(variant, raw, merges=None, sex="unknown", panel_build=SUPPO
     else:
         rc = rarity_class(af)
     ppv = None
+    from evidence import significance_group  # the shared G-1 rule (S-3)
     if (state == "detected" and call.get("zygosity") in ("het", "hom_alt")
-            and sig in ("Pathogenic", "Likely pathogenic") and rc in ("rare", "ultra_rare")):
+            and significance_group(sig) == "P" and rc in ("rare", "ultra_rare")):
         ppv = CAVEAT_REGISTRY["rare_ppv"]
 
     caveat_keys = ["array_limits"]

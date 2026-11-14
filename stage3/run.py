@@ -217,11 +217,18 @@ def _detected_core(f):
             f"number of copies for this call.")
 
 
+def _tier_clinvar(f):
+    """The ClinVar block behind a tier; a trait's tier never comes from ClinVar (P-5)."""
+    if f.get("result_type") == "trait":
+        return None
+    return (f.get("evidence") or {}).get("clinvar")
+
+
 def evidence_clause(f):
     """A3 wording for the evidence tier, attributed to its source."""
     evidence = f.get("evidence") or {}
     association = evidence.get("association")
-    clinvar = evidence.get("clinvar")
+    clinvar = _tier_clinvar(f)
     if clinvar:
         tier = TIER_WORDS.get(association, association or "unknown")
         stars = clinvar.get("review_stars")
@@ -240,8 +247,11 @@ def evidence_clause(f):
 
 def association_sentence(f):
     """A4: every detected risk_association/trait ends with this exact sentence."""
-    return (f"This is an association with {f.get('condition') or _label(f)}; this report does "
-            f"not diagnose the condition.")
+    condition = f.get("condition") or _label(f)
+    if f.get("result_type") == "trait":
+        return (f"This is a statistical association with {condition} in published studies; it is "
+                f"not a measurement of {condition} and not a diagnosis.")
+    return f"This is an association with {condition}; this report does not diagnose the condition."
 
 
 def _detected_citations(f):
@@ -253,7 +263,7 @@ def _detected_citations(f):
     evidence = f.get("evidence") or {}
     if evidence.get("association") is not None:
         paths.append("evidence.association")
-    clinvar = evidence.get("clinvar")
+    clinvar = _tier_clinvar(f)
     if clinvar:
         for key in ("significance", "review_stars", "review_status_text"):
             if key in clinvar:
@@ -461,7 +471,7 @@ def skeleton_prompt(findings, ir, findings_hash):
             "condition": f.get("condition"),
             "state": f["state"],
             "zygosity": f.get("call", {}).get("zygosity"),
-            "clinvar": f.get("evidence", {}).get("clinvar"),
+            "clinvar": _tier_clinvar(f),
             "association": f.get("evidence", {}).get("association"),
         })
     user = "\n".join([
