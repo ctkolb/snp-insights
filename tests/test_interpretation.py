@@ -1092,7 +1092,11 @@ def _run_r61_char(attempt):
         old_ppv = ("Rare heterozygous array calls have low positive predictive value and "
                    "warrant clinical-grade confirmation.")
         for label, doc, want in cases:
-            got = _r61_canonical_hash(json.loads(json.dumps(doc).replace(CAVEAT_REGISTRY["rare_ppv"], old_ppv)))
+            legacy = json.loads(json.dumps(doc).replace(CAVEAT_REGISTRY["rare_ppv"], old_ppv))
+            # The pipeline version is pinned to the value the hashes were taken with,
+            # so this characterization stays independent of the release version.
+            legacy["provenance"]["pipeline_version"] = "0.1.0"
+            got = _r61_canonical_hash(legacy)
             _require(f"{label}: legacy findings hash changed, got {got}, want {want}", got == want)
             _require(f"{label}: schema_version is 1.1.0, got {doc['schema_version']!r}",
                      doc["schema_version"] == "1.1.0")
