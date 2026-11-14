@@ -592,7 +592,8 @@ Until then each value is a placeholder.
 
 - Evidence pack ids: N0a (netpack-N0-review), N0b (netpack-N0b-review), N0c (netpack-N0c-review), N0d (netpack-N0d-review)
 - Pack manifest sha256: N0a 0f14e7ae0e18b3ccbaf8914c951033aa4d2742a0e394b5e2857ee99fed15e908; N0b 13e94d7a39f38b148e821cc4ed692bb4b75fcb90f5445ffe05d37f63d34069dd; N0c bc47ad43c6a2ad1b3622df65a17a93a0335455485fe951d8e3d75a88148c4b48; N0d 2a69bcfbbabb2b10da5882f2c914ca62528352783e1f7aaf6b6dcad75b1dbb77
-- Retrieval dates (UTC, ISO): 2026-11-09
+- Retrieval dates (UTC, ISO): 2026-11-09; v0.2.0 pack 2026-11-14
+- v0.2.0 evidence pack: evidence/v0.2.0 (outside the repository), frozen manifest MANIFEST.sha256 sha256 0966f825ba9dcb7a9eb01761bd1f77c731ceca70a05dbb9d1ca47425ff04c4f0 (62 entries); captured 2026-11-14 (UTC); used for the five v0.2.0 candidates
 - Source release identifiers: dbSNP GRCh37 placements and full refsnp allele sets (N0d), ClinVar variant_summary + VCV/RCV records, GWAS Catalog associations and study records, GeneReviews chapters and MedGen concepts, all captured 2026-11-09
 
 ## Curated evidence file
@@ -608,26 +609,37 @@ with a carrier entry refuses to build without the flag.
 
 ## Release panel build
 
-The v0.1.0 release panel is the reproducible build of the curated targets
-`data/targets.release.json` against the frozen public-evidence pack of step N1,
-committed byte-for-byte as `data/targets.release-panel.json`. The file is a built
+The release panel is the reproducible build of the curated targets
+`data/targets.release.json` against frozen public-evidence packs, committed
+byte-for-byte as `data/targets.release-panel.json`. The file is a built
 artifact, not a hand-edited curation record; its `targets.*`-style name is a
 documented limitation (it shares the curated-targets naming pattern only).
 
-- Evidence pack: N1 (public-reference request list approved 2026-11-11; the pack stays outside the repository)
-- Pack manifest sha256: 63a702401febcb722ef9795e0a27ab2dc26ad3aaedf04c3e9f9dba721865cab0
-- Capture time (UTC, ISO): 2026-11-11T19:57:14Z
-- Built from the clean export of commit: 81c53e9a8418da764fbe27957cbf29da2f4a7224
-- Build command (run from that export, no network; `<N1>` is the pack root):
+The v0.1.0 build had three entries (pack N1). The v0.2.0 build has eight: the
+three v0.1.0 entries (rs1800562, rs1799963, rs6025) reuse the N1 cache rows
+unchanged, and the five new entries (rs1799807, rs121908529, rs185803104,
+rs180177314, rs11591147) take their data from the v0.2.0 evidence pack. The
+three v0.1.0 entries are identical to the v0.1.0 panel.
+
+- Evidence packs: N1 (public-reference request list approved 2026-11-11; the pack stays outside the repository) for the three v0.1.0 entries; the v0.2.0 evidence pack (`evidence/v0.2.0`, outside the repository) for the five new entries
+- Pack manifest sha256: N1 63a702401febcb722ef9795e0a27ab2dc26ad3aaedf04c3e9f9dba721865cab0; v0.2.0 0966f825ba9dcb7a9eb01761bd1f77c731ceca70a05dbb9d1ca47425ff04c4f0
+- Capture time (UTC, ISO): N1 2026-11-11T19:57:14Z; v0.2.0 dbSNP records 2026-11-14T04:43:29Z, GWAS Catalog associations 2026-11-14T04:50:49Z, ClinVar variant_summary 2026-11-14T00:30:32Z, gnomAD and Open Targets answers 2026-11-14T14:16:36Z to 2026-11-14T14:16:47Z (from file times, converted with the owner's -06:00 offset; the owner confirms). The build `--retrieved-at` is the latest, 2026-11-14T14:16:47Z.
+- Built from the clean export of commit: b087a2c71cee8adc2baf2b06f3268ce3b7ca8254 with the `panel_version` edit of this change (tools and alias file unchanged)
+- Sources for the five new entries: dbSNP placements parsed from the pack's variation-API records with the repo's own parser (`fetch_dbsnp_small`); ClinVar from the pack's `variant_summary.txt.gz` (carrier entries use the curated evidence file instead); gnomAD allele frequency of the effect allele, genome frequency else exome frequency, from the captured answers (rs180177314 has an exome frequency only); Open Targets GWAS rows for the four carriers exactly as captured (rs1799807 8 rows, rs185803104 2 rows, rs121908529 and rs180177314 returned none and are recorded as absent); for rs11591147, rows from the pack's GWAS Catalog REST associations, one row per accession and reported trait (741 rows), because the captured Open Targets answer (25 rows) matches no LDL-level trait
+- Cache assembly (offline, no network): dbSNP, gnomAD and GWAS rows of the three v0.1.0 entries are copied from the N1 cache without change; the other rows are appended as described above
+- Source labels in the panel name both capture dates: dbSNP "variation-api-2026-11-11 (3 entries) and 2026-11-14 (5 entries)"; ClinVar "variant_summary-2026-11-14"; gnomAD "graphql-2026-11-11 (3 entries) and 2026-11-14 (5 entries)"; GWAS Catalog "opentargets-2026-11-11 (3 entries); opentargets-2026-11-14 (4 carriers); gwas-catalog-rest-2026-11-14 (rs11591147)"
+- Build command (run from that export, no network; `<CACHE>` is the assembled cache directory):
 
 ```
 python3.12 -B tools/build_panel.py --targets data/targets.release.json \
-  --curated-evidence data/targets.release-evidence.json --cache <N1>/run/cache \
-  --retrieved-at 2026-11-11T19:57:14Z --dbsnp-release variation-api-2026-11-11 \
-  --clinvar-release variant_summary-2026-11-11 --gnomad-release graphql-2026-11-11 \
-  --gwas-release opentargets-2026-11-11 -o panel.release-panel.labeled.json
+  --curated-evidence data/targets.release-evidence.json --cache <CACHE> \
+  --retrieved-at 2026-11-14T14:16:47Z \
+  --dbsnp-release "variation-api-2026-11-11 (3 entries) and 2026-11-14 (5 entries)" \
+  --clinvar-release "variant_summary-2026-11-14" \
+  --gnomad-release "graphql-2026-11-11 (3 entries) and 2026-11-14 (5 entries)" \
+  --gwas-release "opentargets-2026-11-11 (3 entries); opentargets-2026-11-14 (4 carriers); gwas-catalog-rest-2026-11-14 (rs11591147)" \
+  -o data/targets.release-panel.json
 ```
 
-- Determinism: two independent builds from the same frozen cache were byte-identical (`cmp`).
-- Panel file sha256: 36b597d137e5f8f7431bbb289f5a1eac68ec161f380781db08bb45b0e6581024
-
+- Determinism: two builds from the same cache were byte-identical (`cmp`).
+- Panel file sha256: 7acfdde8e216a97e2d245c324af9a2f588b3578a5b3bf3bd32f025a94469c6d7

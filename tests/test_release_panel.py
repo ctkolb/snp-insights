@@ -484,7 +484,7 @@ def check_targets_shape(obj):
         return _result(["shape: top level is not an object"], 0)
     if not isinstance(obj.get("_note"), str):
         errors.append("shape: _note missing")
-    if obj.get("panel_version") != "0.1.0":
+    if obj.get("panel_version") != "0.2.0":
         errors.append(f"shape: panel_version {obj.get('panel_version')!r}")
     variants = obj.get("variants")
     if not isinstance(variants, list):
@@ -1412,17 +1412,17 @@ def _run_invariants(attempt):
         ("allele_differs", _set_row("rs9000003", allele="I"), "row-field-differs"),
     ])
     _syn(attempt, "targets_shape", lambda w: check_targets_shape(
-        {"_note": "x", "panel_version": "0.1.0", "genome_build": "GRCh37", "strand": "forward",
+        {"_note": "x", "panel_version": "0.2.0", "genome_build": "GRCh37", "strand": "forward",
          "variants": w["entries"]}), [
         ("entry_missing_field", lambda w: w["entries"][0].pop("effect_allele"), "shape"),
         ("entry_bad_rsid", _set_entry("rs9000001", rsid="9000001"), "shape"),
     ])
 
     def targets_shape_top_level():
-        base = {"_note": "x", "panel_version": "0.1.0", "variants": []}
+        base = {"_note": "x", "panel_version": "0.2.0", "variants": []}
         _clean(check_targets_shape(base), "shape/empty")
-        for defect, obj in (("not an object", []), ("wrong version", dict(base, panel_version="0.2.0")),
-                            ("variants not a list", dict(base, variants={})), ("no note", {"panel_version": "0.1.0", "variants": []})):
+        for defect, obj in (("not an object", []), ("wrong version", dict(base, panel_version="0.1.0")),
+                            ("variants not a list", dict(base, variants={})), ("no note", {"panel_version": "0.2.0", "variants": []})):
             _has(check_targets_shape(obj), "shape", f"shape/{defect}")
         return True
     attempt("R1B.syn_targets_shape_top_level", targets_shape_top_level)
@@ -2775,7 +2775,7 @@ def _target_entry(**kw):
 
 
 def _targets_obj(*entries):
-    return {"_note": "invented", "panel_version": "0.1.0", "genome_build": "GRCh37",
+    return {"_note": "invented", "panel_version": "0.2.0", "genome_build": "GRCh37",
             "strand": "forward", "variants": list(entries)}
 
 
@@ -2838,7 +2838,8 @@ def _run_r50(attempt):
 # Ticket 1B-B (snp-REL-B-BUILD-r51): the release data-completeness section.
 # ADD-ONLY: a new section appended after the 1B-A sections; no existing line is
 # edited. The pool is the 23 DRAFT rsIDs of data/targets.carrier.json and
-# data/targets.traits.json (read-only), in ticket order.
+# data/targets.traits.json (read-only), in ticket order, followed by the 11 v0.2.0
+# candidates (added by the v0.2.0 curation ticket).
 # =============================================================================
 POOL_RSIDS = (
     "rs334", "rs33930165", "rs113993960", "rs1800562", "rs1799945", "rs6025",
@@ -3355,7 +3356,7 @@ def check_evidence_file(evidence, targets, t1, t2, t5):
         errors.append(f"top_level_unknown_key: {key}")
     if not isinstance(evidence.get("_note"), str):
         errors.append("shape: _note missing")
-    if evidence.get("panel_version") != "0.1.0":
+    if evidence.get("panel_version") != "0.2.0":
         errors.append(f"shape: panel_version {evidence.get('panel_version')!r}")
     entries = evidence.get("entries")
     if not isinstance(entries, list):
@@ -3420,7 +3421,7 @@ def _evidence_world():
     target = {"rsid": "rs9000002", "gene": "GENEB", "condition": "Example condition one",
               "category": "carrier", "result_type": "carrier_status",
               "effect_allele": "G", "assayability": "snp", "strand": "forward"}
-    targets = {"_note": "invented", "panel_version": "0.1.0", "genome_build": "GRCh37",
+    targets = {"_note": "invented", "panel_version": "0.2.0", "genome_build": "GRCh37",
                "strand": "forward", "variants": [target]}
     t1 = {"rs9000002": {"rsID": "rs9000002", "label used in report": "Example condition one",
                         "sources (typed ids)":
@@ -3429,7 +3430,7 @@ def _evidence_world():
                         "matched review status": "criteria provided, multiple submitters, no conflicts"}}
     t5 = {"rs9000002": {"pack file index id":
                         "dbsnp:rs9000002;clinvar:vcv:9001001;clinvar:rcv:RCV900000001"}}
-    evidence = {"_note": "invented", "panel_version": "0.1.0", "entries": [
+    evidence = {"_note": "invented", "panel_version": "0.2.0", "entries": [
         {"rsid": "rs9000002", "condition": "Example condition one",
          "clinvar_record": "clinvar:rcv:RCV900000001", "significance": "Pathogenic",
          "review_status": "criteria provided, multiple submitters, no conflicts", "review_stars": 2}]}
@@ -3922,11 +3923,21 @@ R2E_EXPECTED = {
         "rs1800562": ("detected", "het"),
         "rs1799963": ("detected", "hom_alt"),
         "rs6025": ("covered_reference", "hom_ref"),
+        "rs1799807": ("detected", "het"),
+        "rs121908529": ("covered_reference", "hom_ref"),
+        "rs185803104": ("detected", "hom_alt"),
+        "rs180177314": ("detected", "het"),
+        "rs11591147": ("detected", "het"),
     },
     "raw.release.synthetic.states.txt": {
         "rs1800562": ("covered_nocall", "unknown"),
         "rs1799963": ("covered_uninterpretable", "unknown"),
         "rs6025": ("not_covered", None),
+        "rs1799807": ("covered_nocall", "unknown"),
+        "rs121908529": ("not_covered", None),
+        "rs185803104": ("covered_uninterpretable", "unknown"),
+        "rs180177314": ("covered_reference", "hom_ref"),
+        "rs11591147": ("detected", "hom_alt"),
     },
 }
 
@@ -4212,7 +4223,7 @@ def _run_r65(attempt):
 # compared against literal values from the reviewed N1 dbSNP capture, and the
 # curated ClinVar blocks and source labels are literals from the committed panel.
 # =============================================================================
-REVIEWED_PANEL_SHA256 = "36b597d137e5f8f7431bbb289f5a1eac68ec161f380781db08bb45b0e6581024"
+REVIEWED_PANEL_SHA256 = "7acfdde8e216a97e2d245c324af9a2f588b3578a5b3bf3bd32f025a94469c6d7"
 N1_DBSNP_ORACLE = {
     "rs1800562": {"chromosome": "6", "position": 26093141,
                   "reference_allele": "G", "alternate_alleles": ["A", "T"]},
@@ -4220,6 +4231,16 @@ N1_DBSNP_ORACLE = {
                   "reference_allele": "G", "alternate_alleles": ["A"]},
     "rs6025": {"chromosome": "1", "position": 169519049,
                "reference_allele": "T", "alternate_alleles": ["C", "A", "G"]},
+    "rs1799807": {"chromosome": "3", "position": 165548529,
+               "reference_allele": "T", "alternate_alleles": ["A", "C"]},
+    "rs121908529": {"chromosome": "2", "position": 241810850,
+               "reference_allele": "G", "alternate_alleles": ["A", "C", "T"]},
+    "rs185803104": {"chromosome": "10", "position": 99359925,
+               "reference_allele": "G", "alternate_alleles": ["T"]},
+    "rs180177314": {"chromosome": "9", "position": 37429729,
+               "reference_allele": "G", "alternate_alleles": ["A"]},
+    "rs11591147": {"chromosome": "1", "position": 55505647,
+               "reference_allele": "G", "alternate_alleles": ["A", "T"]},
 }
 R67_PANEL_CURATED = {
     "rs1800562": {
@@ -4237,12 +4258,32 @@ R67_PANEL_CURATED = {
         "clinvar": {"significance": "Pathogenic/Pathogenic, low penetrance", "review_stars": 2,
                     "review_status_text": "criteria provided, multiple submitters, no conflicts",
                     "source_version": "curated clinvar:rcv:RCV000454249"}},
+    "rs1799807": {
+        "effect_allele": "C", "category": "carrier", "result_type": "carrier_status",
+        "clinvar": {"significance": "Pathogenic/Likely pathogenic", "review_stars": 2,
+                    "review_status_text": "criteria provided, multiple submitters, no conflicts",
+                    "source_version": "curated clinvar:rcv:RCV000277104"}},
+    "rs121908529": {
+        "effect_allele": "A", "category": "carrier", "result_type": "carrier_status",
+        "clinvar": {"significance": "Pathogenic/Likely pathogenic", "review_stars": 2,
+                    "review_status_text": "criteria provided, multiple submitters, no conflicts",
+                    "source_version": "curated clinvar:rcv:RCV000032681"}},
+    "rs185803104": {
+        "effect_allele": "T", "category": "carrier", "result_type": "carrier_status",
+        "clinvar": {"significance": "Pathogenic", "review_stars": 2,
+                    "review_status_text": "criteria provided, multiple submitters, no conflicts",
+                    "source_version": "curated clinvar:rcv:RCV000186492"}},
+    "rs180177314": {
+        "effect_allele": "A", "category": "carrier", "result_type": "carrier_status",
+        "clinvar": {"significance": "Pathogenic/Likely pathogenic", "review_stars": 2,
+                    "review_status_text": "criteria provided, multiple submitters, no conflicts",
+                    "source_version": "curated clinvar:rcv:RCV000186442"}},
 }
 R67_PANEL_SOURCES = {
-    "dbSNP": {"release": "variation-api-2026-11-11", "retrieved_at": "2026-11-11T19:57:14Z"},
-    "ClinVar": {"release": "variant_summary-2026-11-11", "retrieved_at": "2026-11-11T19:57:14Z"},
-    "gnomAD": {"release": "graphql-2026-11-11", "retrieved_at": "2026-11-11T19:57:14Z"},
-    "GWAS Catalog": {"release": "opentargets-2026-11-11", "retrieved_at": "2026-11-11T19:57:14Z"},
+    "dbSNP": {"release": "variation-api-2026-11-11 (3 entries) and 2026-11-14 (5 entries)", "retrieved_at": "2026-11-14T14:16:47Z"},
+    "ClinVar": {"release": "variant_summary-2026-11-14", "retrieved_at": "2026-11-14T14:16:47Z"},
+    "gnomAD": {"release": "graphql-2026-11-11 (3 entries) and 2026-11-14 (5 entries)", "retrieved_at": "2026-11-14T14:16:47Z"},
+    "GWAS Catalog": {"release": "opentargets-2026-11-11 (3 entries); opentargets-2026-11-14 (4 carriers); gwas-catalog-rest-2026-11-14 (rs11591147)", "retrieved_at": "2026-11-14T14:16:47Z"},
 }
 
 

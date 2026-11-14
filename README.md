@@ -73,7 +73,7 @@ nothing about you. A piece of the report:
 ...
 ## Summary
 ...
-- three curated markers were examined: three were measured, zero were not measured, and zero returned no call or an uninterpretable result. [f_065a9790e8ec · state] [f_b7dae4647a6b · state] [f_bfc3a4f653bb · state]
+- eight curated markers were examined: eight were measured, zero were not measured, and zero returned no call or an uninterpretable result. [f_065a9790e8ec · state] [f_b7dae4647a6b · state] [f_bfc3a4f653bb · state] [f_a96ae54fd3b4 · state] [f_45738a4169e2 · state] [f_267e6220ca25 · state] [f_9c828d9896e4 · state] [f_1d985d06c208 · state]
 ```
 
 `python -m snp_insights <command>` works when the repository is the current

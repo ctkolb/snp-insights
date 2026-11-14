@@ -171,7 +171,7 @@ synthetic fixture (`...` marks skipped lines). Its genotypes are invented:
 
 ```report
 ## Summary
-- one carrier status marker was examined: one was measured, zero were not measured, and zero returned no call or an uninterpretable result. [f_065a9790e8ec · state]
+- five carrier status markers were examined: five were measured, zero were not measured, and zero returned no call or an uninterpretable result. [f_065a9790e8ec · state] [f_a96ae54fd3b4 · state] [f_45738a4169e2 · state] [f_267e6220ca25 · state] [f_9c828d9896e4 · state]
 ...
 - Prothrombin thrombophilia (F2): two copies of the effect allele A were detected. Evidence tier: replicated, from ClinVar's review level: ClinVar lists this record as Pathogenic with two review stars (criteria provided, multiple submitters, no conflicts); this is a review level, not a count of independent studies. This is an association with Prothrombin thrombophilia; this report does not diagnose the condition. [f_b7dae4647a6b · state] [f_b7dae4647a6b · call.zygosity] [f_b7dae4647a6b · result_type] [f_b7dae4647a6b · effect_allele] [f_b7dae4647a6b · condition] [f_b7dae4647a6b · evidence.association] [f_b7dae4647a6b · evidence.clinvar.significance] [f_b7dae4647a6b · evidence.clinvar.review_stars] [f_b7dae4647a6b · evidence.clinvar.review_status_text]
 ...
