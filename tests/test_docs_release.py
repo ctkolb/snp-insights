@@ -1518,6 +1518,178 @@ def _r6_accepted_limits_al031_al032_verbatim():
     return True
 
 
+# ------------------------------------- S3B: panel counts, multi-allelic, Rev 4
+
+RELEASE_PANEL = os.path.join(ROOT, "data", "targets.release-panel.json")
+LOOP_SPEC = os.path.join(DOCS, "loop-spec.md")
+# Pins computed on the base commit 6f8c478 (before ticket S3-B); Rev 4 is appended.
+LOOP_SPEC_BASE_BYTES = 37065
+LOOP_SPEC_BASE_SHA256 = "866725cc1423704b7a1debe046c324dc33d60f7ca225ead5c9f14c1088502a95"
+# Owner decision D-1 (r103): the Limitations panel sentence carries no count.
+PANEL_LIMITATION = ("The release uses a small public panel; the Summary counts "
+                    "its markers by kind.")
+COUNT_WORD = (r"\b(no|zero|one|two|three|four|five|six|seven|eight|nine|ten|"
+              r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|"
+              r"eighteen|nineteen|twenty|\d+)")
+MULTI_ALLELIC_NOTE = ("; multi-allelic site (dbSNP alternates {alts}): criteria 1 "
+                      "and 4 are read for the reference/effect pair (D8)")
+
+
+def _release_panel_variants():
+    import json
+    with open(RELEASE_PANEL, encoding="utf-8") as fh:
+        return json.load(fh)["variants"]
+
+
+def _panel_counts():
+    """Entries in the release panel, by kind, as the docs must state them."""
+    kinds = [v["result_type"] for v in _release_panel_variants()]
+    counts = {
+        "total": len(kinds),
+        "carrier": kinds.count("carrier_status"),
+        "risk": kinds.count("risk_association"),
+        "trait": kinds.count("trait"),
+    }
+    counts["health"] = counts["carrier"] + counts["risk"]
+    _require("panel has an entry of an unknown kind",
+             counts["health"] + counts["trait"] == counts["total"])
+    return counts
+
+
+def _entries(n):
+    return "entry" if n == 1 else "entries"
+
+
+def _expected_count_phrases():
+    """(document, phrase) pairs every count statement must match."""
+    import snp_insights.cli as cli
+    w = cli._tool_module("run").words
+    c = _panel_counts()
+    _require("release panel is empty", c["total"] > 0)
+    h, t = w(c["health"]), w(c["trait"]) + " trait " + _entries(c["trait"])
+    traits = ", ".join(v["rsid"] for v in _release_panel_variants()
+                       if v["result_type"] == "trait")
+    return (
+        (CHECKPOINT, "This release has %s, so a trait-count cutoff" % t),
+        (CHECKPOINT, "%s health %s (%s carrier status, %s risk association) and %s."
+         % (h, _entries(c["health"]), w(c["carrier"]), w(c["risk"]), t)),
+        (README, "small public panel of %s health-related %s and %s,"
+         % (h, _entries(c["health"]), t)),
+        (README, "- The release panel has %s health %s and %s."
+         % (h, _entries(c["health"]), t)),
+        (README, "a curated %s-entry release panel" % w(c["total"])),
+        (GETTING_STARTED, "panel has %s health %s and %s," % (h, _entries(c["health"]), t)),
+        (REFERENCE_DATA, "The release panel has %s (%s)" % (t, traits)),
+        (AGENTS, "a curated %s-entry panel (%s health %s, %s)"
+         % (w(c["total"]), h, _entries(c["health"]), t)),
+        (AGENTS, "(%s health %s, %s; see docs/panel-curation.md)"
+         % (h, _entries(c["health"]), t)),
+    )
+
+
+def _s3b_docs_panel_counts_match_panel():
+    phrases = _expected_count_phrases()
+    import snp_insights.cli as cli
+    w = cli._tool_module("run").words
+    c = _panel_counts()
+    want = {"health": w(c["health"]), "health-related": w(c["health"]),
+            "trait": w(c["trait"])}
+    for path, phrase in phrases:
+        _require("%s lacks the panel count %r" % (os.path.basename(path), phrase),
+                 phrase in _flat(_read(path)))
+    stated = 0
+    for path in sorted({p for p, _ in phrases}):
+        flat = _flat(_read(path))
+        for m in re.finditer(COUNT_WORD + r" (health|health-related|trait) entr(?:y|ies)\b",
+                             flat, re.I):
+            stated += 1
+            _require("%s states %r; the panel has %s" % (
+                os.path.basename(path), m.group(0), want[m.group(2).lower()]),
+                m.group(1).lower() == want[m.group(2).lower()])
+        for m in re.finditer(COUNT_WORD + r"-entry (?:health |release )?panel\b", flat, re.I):
+            stated += 1
+            _require("%s states %r; the panel has %s entries" % (
+                os.path.basename(path), m.group(0), w(c["total"])),
+                m.group(1).lower() == w(c["total"]))
+    _require("no count statement checked", stated >= len(phrases))
+    return True
+
+
+def _s3b_limitation_panel_statement_count_free():
+    import snp_insights.cli as cli
+    limitations = cli._tool_module("caveats").LIMITATIONS
+    _require("no limitations", limitations)
+    panel = [i for i in limitations if "public panel" in i.lower()]
+    _require("%d limitation items describe the panel" % len(panel), len(panel) == 1)
+    _require("panel limitation is not the approved sentence: %r" % panel[0],
+             panel[0] == PANEL_LIMITATION)
+    for item in limitations:
+        _require("limitation states an entry count: %r" % item,
+                 not re.search(COUNT_WORD + r" (health |trait )?(entr|marker)", item, re.I))
+        _require("limitation names a release version: %r" % item,
+                 not re.search(r"\bv\d+\.\d+", item))
+    return True
+
+
+def _t1_rows():
+    """(rsID, limitations cell, decision) of every T1 data row."""
+    text = _read(CURATION)
+    lines = text.split("\n")
+    start = lines.index("### T1 Decision table")
+    header = None
+    rows = []
+    for line in lines[start + 1:]:
+        if line.startswith("### ") or line.startswith("## "):
+            break
+        if not line.startswith("| "):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split(" | ")]
+        if header is None:
+            header = cells
+            continue
+        if set(line) <= set("|- "):
+            continue
+        _require("T1 row has %d cells" % len(cells), len(cells) == len(header))
+        row = dict(zip(header, cells))
+        rows.append((row["rsID"], row["limitations"], row["decision"]))
+    _require("T1 has no data rows", rows)
+    return rows
+
+
+def _s3b_multi_allelic_rows_have_note():
+    multi = {v["rsid"]: v["alternate_alleles"] for v in _release_panel_variants()
+             if len(v.get("alternate_alleles") or []) > 1}
+    _require("no multi-allelic entry in the release panel", multi)
+    included = {rs: lim for rs, lim, dec in _t1_rows() if dec == "included"}
+    for rsid, alts in sorted(multi.items()):
+        _require("%s has no included T1 row" % rsid, rsid in included)
+        note = MULTI_ALLELIC_NOTE.format(alts=", ".join(alts))
+        _require("%s limitations lack the multi-allelic note %r" % (rsid, note),
+                 included[rsid].endswith(note) and included[rsid].count(note) == 1)
+    for rsid, lim in included.items():
+        if rsid not in multi:
+            _require("%s is not multi-allelic but carries the note" % rsid,
+                     "(D8)" not in lim)
+    return True
+
+
+def _s3b_loop_spec_records_d8():
+    raw = open(LOOP_SPEC, "rb").read()
+    _require("existing bytes unchanged (prefix)",
+             hashlib.sha256(raw[:LOOP_SPEC_BASE_BYTES]).hexdigest() == LOOP_SPEC_BASE_SHA256)
+    tail = raw[LOOP_SPEC_BASE_BYTES:].decode("utf-8")
+    _require("Rev 4 is appended after the last line", tail.startswith("\n### Rev 4 "))
+    _require("one Rev 4 heading", raw.decode("utf-8").count("### Rev 4 ") == 1)
+    flat = _flat(tail)
+    for phrase in ("**D8 (pair reading", "criteria 1 and 4 apply to the reference/effect",
+                   "multi-allelic", "T1 limitation note", "2026-11-13",
+                   "**D9 (stage 2 capture", "STAGE=2",
+                   "**D3 superseded", "bump to 0.2.0", "2026-11-14",
+                   "r96", "r97", "r100", "r105"):
+        _require("Rev 4 lacks %r" % phrase, phrase in flat)
+    return True
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -1588,6 +1760,11 @@ def run(check):
     attempt("R6.getting_started_template_failure_troubleshooting", _r6_template_failure_troubleshooting)
     attempt("R6.template_failure_example_is_real", _r6_template_failure_example_is_real)
     attempt("R6.accepted_limits_al031_al032_verbatim", _r6_accepted_limits_al031_al032_verbatim)
+    attempt("S3B.docs_panel_counts_match_panel", _s3b_docs_panel_counts_match_panel)
+    attempt("S3B.limitation_panel_statement_count_free",
+            _s3b_limitation_panel_statement_count_free)
+    attempt("S3B.multi_allelic_rows_have_note", _s3b_multi_allelic_rows_have_note)
+    attempt("S3B.loop_spec_records_d8", _s3b_loop_spec_records_d8)
 
 
 def main():
