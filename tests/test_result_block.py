@@ -247,6 +247,8 @@ def test_current_mode():
               cbad(mutated(CSURVEY, candidates=[dict(CANDIDATE, **{field: value})]), "candidates[0]"))
     check("current survey candidate missing key",
           cbad(mutated(CSURVEY, candidates=[dropped(CANDIDATE, "reproduction")]), "candidates[0]"))
+    check("current survey REPRODUCED needs reproduction",
+          cbad(mutated(CSURVEY, candidates=[dict(CANDIDATE, reproduction=None)]), "needs a non-empty reproduction"))
     check("current survey needs coverage", cbad(mutated(CSURVEY, coverage=[]), "coverage"))
     check("current survey candidate SUSPECTED ok",
           cok(mutated(CSURVEY, candidates=[dict(CANDIDATE, evidence="SUSPECTED")])))
@@ -335,10 +337,21 @@ def test_current_mode():
     src = dict(FINDING, confidence="source_supported", reproduction=None, reproduction_output=None,
                proposed_test=None, proposed_fix=None, base_commit_result=None)
     ev = dict(CREVIEWER["evidence_minimums"], E3="not_required", E5="not_required", E6="not_required")
-    check("current reviewer source_supported ok",
-          cok(mutated(CREVIEWER, findings=[src], evidence_minimums=ev, scripts=[])))
+    scope = dict(src, type="scope_issue")
+    check("current reviewer source_supported scope_issue ok",
+          cok(mutated(CREVIEWER, findings=[scope], evidence_minimums=ev, scripts=[])))
+    check("current reviewer CODE defect cannot be source_supported",
+          cbad(mutated(CREVIEWER, findings=[src], evidence_minimums=ev, scripts=[]), "must have confidence reproduced"))
+    check("current reviewer AUDIT defect may be source_supported",
+          cok(mutated(dict(CREVIEWER, mode="AUDIT"), findings=[src], verdict="READY", evidence_minimums=ev, scripts=[])))
+    check("current reviewer defect needs file",
+          cbad(setd(CREVIEWER, ["findings"], [dict(FINDING, file=None)]), "needs a file and a line"))
+    check("current reviewer defect needs line",
+          cbad(setd(CREVIEWER, ["findings"], [dict(FINDING, line=None)]), "needs a file and a line"))
     check("current reviewer source_supported must not claim reproduction",
-          cbad(mutated(CREVIEWER, findings=[dict(src, reproduction="sh x")], evidence_minimums=ev, scripts=[]), "source_supported"))
+          cbad(mutated(CREVIEWER, findings=[dict(scope, reproduction="sh x")], evidence_minimums=ev, scripts=[]), "must be null"))
+    check("current reviewer source_supported must not carry output",
+          cbad(mutated(CREVIEWER, findings=[dict(scope, reproduction_output="o.txt")], evidence_minimums=ev, scripts=[]), "must be null"))
     check("current reviewer CODE defect cannot be suspected",
           cbad(setd(CREVIEWER, ["findings"], [dict(src, confidence="suspected")]), "suspected"))
     audit = dict(CREVIEWER, mode="AUDIT", verdict="READY_WITH_CHANGES")
