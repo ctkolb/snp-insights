@@ -1764,6 +1764,104 @@ def _s3b_loop_spec_records_d8():
     return True
 
 
+# Version-independent method statements of the curation paragraph, kept verbatim
+# (ticket r108, R107-F1).
+CURATION_METHOD_SENTENCES = (
+    "The health rows keep carrier or association wording only, and no entry "
+    "states a diagnosis or an absolute risk.",
+    "Effect alleles were re-derived from the complete dbSNP GRCh37 allele set in "
+    "N0d; the curated condition is attributed through a per-condition ClinVar "
+    "record (RCV) whose condition names the curated label by the alias-file "
+    "semantics, and that record's significance and stars are used, never the VCV "
+    "aggregate (D-54-3); the strict other-condition outcome applies when no RCV "
+    "names it.",
+    "The alias file was extended with three reviewed synonyms and two aliases that "
+    "named a different, bleeding disorder were removed (D-54-2).",
+    "Palindromic reference/effect pairs (A/T or C/G) are excluded by default with "
+    "reason code `palindromic` (D-54-1).",
+    "Whether the resulting panel is adequate is the owner's aggregate coverage "
+    "judgment (counts only).",
+)
+
+
+def _t1_dicts():
+    """Every T1 data row as a dict keyed by the header cells."""
+    lines = _read(CURATION).split("\n")
+    start = lines.index("### T1 Decision table")
+    header, rows = None, []
+    for line in lines[start + 1:]:
+        if line.startswith("### ") or line.startswith("## "):
+            break
+        if not line.startswith("| "):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split(" | ")]
+        if header is None:
+            header = cells
+        elif not set(line) <= set("|- "):
+            rows.append(dict(zip(header, cells)))
+    _require("T1 has no data rows", rows)
+    return rows
+
+
+def _curation_release_paragraph():
+    paras = [p for p in re.split(r"\n\s*\n", _section(_read(CURATION), "Limitations"))
+             if "DRAFT rsIDs" in p]
+    _require("%d Limitations paragraphs name the DRAFT pool" % len(paras), len(paras) == 1)
+    _require("the pool paragraph is empty", paras[0].strip())
+    return _flat(paras[0])
+
+
+def _s3b_curation_release_paragraph_matches_tables():
+    import json
+    import snp_insights.cli as cli
+    w = cli._tool_module("run").words
+    para = _curation_release_paragraph()
+    sentences = re.split(r"(?<=\.)\s+(?=[A-Z])", para)
+    _require("the paragraph still says 'For this release'", "For this release" not in para)
+    for sentence in CURATION_METHOD_SENTENCES:
+        _require("method statement changed or missing: %r" % sentence[:40], sentence in para)
+    _require("the paragraph does not end with the adequacy sentence",
+             para.endswith(CURATION_METHOD_SENTENCES[-1]))
+    draft = []
+    for name in ("targets.carrier.json", "targets.traits.json"):
+        with open(os.path.join(ROOT, "data", name), encoding="utf-8") as fh:
+            draft += [v["rsid"] for v in json.load(fh)["variants"]]
+    for phrase in ("the %d DRAFT rsIDs" % len(draft), "no marker was added",
+                   "every trait row was excluded"):
+        hits = [s for s in sentences if phrase in s.lower()]
+        _require("the v0.1.0 statement %r is missing" % phrase, hits)
+        for s in hits:
+            _require("%r is not scoped to v0.1.0: %r" % (phrase, s), "v0.1.0" in s)
+    rows = _t1_dicts()
+    new = [r for r in rows if r["rsID"] not in draft]
+    inc = [r for r in new if r["decision"] == "included"]
+    exc = [r for r in new if r["decision"] == "excluded"]
+    _require("T1 adds no candidate beyond the DRAFT pool", new)
+    _require("pool growth is not stated from T1",
+             "grew by %s candidates to %d T1 rows, of which %s were included and %s excluded"
+             % (w(len(new)), len(rows), w(len(inc)), w(len(exc))) in para)
+    _require("the paragraph names an rsID other than the added T1 candidates",
+             set(re.findall(r"\brs\d+\b", para)) == {r["rsID"] for r in new})
+    for r in new:
+        named = [s for s in sentences if re.search(r"\b%s\b" % r["rsID"], s)]
+        _require("%s is named in %d sentences" % (r["rsID"], len(named)), len(named) == 1)
+        s = named[0]
+        if r["decision"] == "included":
+            _require("%s: sentence lacks `%s` (category `%s`)" % (
+                r["rsID"], r["result type"], r["category"]),
+                s.startswith("Included as `%s` (category `%s`)" % (r["result type"], r["category"])))
+            if r["result type"] == "trait":
+                for phrase in ("Replication rule", "T4", "not ancestry-informative",
+                               "criterion 8"):
+                    _require("%s: trait sentence lacks %r" % (r["rsID"], phrase), phrase in s)
+        else:
+            _require("%s: sentence lacks reason code `%s`" % (r["rsID"], r["reason code"]),
+                     s.startswith("Excluded with reason code `%s`" % r["reason code"]))
+    _require("T1 has a reserve row", not any(r["decision"] == "reserve" for r in rows))
+    _require("no-reserves statement for v0.2.0 missing", "No reserves exist for v0.2.0" in para)
+    return True
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -1839,6 +1937,8 @@ def run(check):
             _s3b_limitation_panel_statement_count_free)
     attempt("S3B.multi_allelic_rows_have_note", _s3b_multi_allelic_rows_have_note)
     attempt("S3B.loop_spec_records_d8", _s3b_loop_spec_records_d8)
+    attempt("S3B.curation_release_paragraph_matches_tables",
+            _s3b_curation_release_paragraph_matches_tables)
 
 
 def main():
