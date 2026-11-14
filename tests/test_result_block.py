@@ -9,7 +9,7 @@ import os
 import sys
 import tempfile
 import types
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
@@ -102,16 +102,18 @@ def cok(block, **kw):
 
 def cbad(block, needle, **kw):
     problems = runc(json.dumps(block), **kw)[0]
-    return any(needle in p for p in problems)
+    return any(needle in p for p in problems if not p.startswith("EXC"))
 
 
 def cli(argv):
     out = io.StringIO()
     try:
-        with redirect_stdout(out):
+        with redirect_stdout(out), redirect_stderr(io.StringIO()):
             rc = v.main(argv)
     except SystemExit as exc:
         rc = exc.code
+    except Exception as exc:  # a crash is a failed check, not a pass
+        rc = "EXC %r" % exc
     return rc, out.getvalue()
 
 
@@ -179,7 +181,9 @@ def test_current_mode():
     check("current: reviewer bare json ok", cok(CREVIEWER))
     check("current: survey builder ok", cok(CSURVEY))
     check("current: block inside text ok", runc(wrap(CBUILDER))[0] == [])
-    check("current: not json rejected", cbad_text("just prose", "JSON"))
+    check("current: not json rejected", cbad_text("just prose", "not valid JSON"))
+    check("current: broken block rejected", cbad_text("===RESULT_JSON===\n{nope\n===END_RESULT_JSON===", "block is not valid JSON"))
+    check("current: two blocks rejected", cbad_text(wrap(CBUILDER) + wrap(CBUILDER), "exactly one"))
     check("current: json array rejected", cbad_text("[1]", "object"))
     check("current: role key used", cok(dict(CBUILDER, role="builder")))
     check("current: role key vs --role conflict", cbad(dict(CBUILDER, role="reviewer"), "role", role="builder"))
@@ -261,7 +265,7 @@ def test_current_mode():
     meas = {"metric": "t", "method": "m", "baseline_commit": "abc1234", "base": 1.5, "after": 1, "runs": 5,
             "spread": "s", "within_noise": False}
     check("current builder measurement ok", cok(mutated(CBUILDER, measurements=[meas])))
-    for field, value in (("within_noise", "no"), ("runs", "5"), ("base", "1"), ("metric", "")):
+    for field, value in (("within_noise", "no"), ("runs", "5"), ("base", "1"), ("base", True), ("after", False), ("metric", "")):
         check("current builder measurement bad %s=%r" % (field, value),
               cbad(mutated(CBUILDER, measurements=[dict(meas, **{field: value})]), "measurements[0]"))
     adj = {"title": "t", "file": "a.py", "line": 2, "severity": "LOW", "evidence": "e"}
@@ -287,6 +291,13 @@ def test_current_mode():
         check("current reviewer verdict ok " + verdict, cok(base) if verdict != "NOT_READY" else cok(base))
     for mode in ("SPEC", "CODE", "AUDIT", "CONFIRM_FIX", "DIGEST"):
         check("current reviewer mode ok " + mode, "mode" not in " ".join(runc(json.dumps(mutated(CREVIEWER, mode=mode)))[0]))
+    digest = mutated(CREVIEWER, mode="DIGEST", verdict="READY", findings=[], coverage=[], mutations=[],
+                     builder_mutants=[], corpora=[], scripts=[], versions={"language": "p", "tests_run": 0},
+                     evidence_minimums=dict(CREVIEWER["evidence_minimums"], E1="not_required", E2="not_required",
+                                            E3="not_required", E5="not_required", E6="not_required"))
+    check("current reviewer DIGEST READY ok", cok(digest))
+    check("current reviewer DIGEST NOT_READY ok", cok(dict(digest, verdict="NOT_READY")))
+    check("current reviewer DIGEST READY_WITH_CHANGES rejected", cbad(dict(digest, verdict="READY_WITH_CHANGES"), "DIGEST"))
     check("current reviewer expect-head mismatch", cbad(CREVIEWER, "reviewed_commit", expect_head="9999999"))
     check("current reviewer expect-head prefix ok", cok(CREVIEWER, expect_head="def5678abcdef"))
     check("current reviewer tip sha differs from reviewed_commit",
@@ -484,14 +495,20 @@ def test_current_mode():
             with open(os.path.join(root, name), "w") as fh:
                 fh.write("".join('{"n": %d}\n' % i for i in range(lines)))
         check("current root: files present ok", cok(CREVIEWER, root=root))
-        check("current root: absent script", cbad(setd(CREVIEWER, ["scripts", 0, "path"], "gone.sh"), "gone.sh", root=root))
-        check("current root: absent corpus", cbad(setd(CREVIEWER, ["corpora", 0, "file"], "gone.jsonl"), "gone.jsonl", root=root))
+        check("current root: absent script", cbad(setd(CREVIEWER, ["scripts", 0, "path"], "gone.sh"), "scripts[0].path 'gone.sh' does not exist", root=root))
+        check("current root: absent corpus", cbad(setd(CREVIEWER, ["corpora", 0, "file"], "gone.jsonl"), "corpora[0].file 'gone.jsonl' does not exist", root=root))
         check("current root: corpus line count mismatch",
               cbad(setd(CREVIEWER, ["corpora", 0, "cases"], 3), "cases", root=root))
         check("current root: absolute path inside root ok",
               cok(setd(CREVIEWER, ["scripts", 0, "path"], os.path.join(root, "repro.sh")), root=root))
         check("current root: absolute path absent",
-              cbad(setd(CREVIEWER, ["scripts", 0, "path"], os.path.join(root, "nope.sh")), "nope.sh", root=root))
+              cbad(setd(CREVIEWER, ["scripts", 0, "path"], os.path.join(root, "nope.sh")), "does not exist", root=root))
+        with open(os.path.join(root, "blank.jsonl"), "w") as fh:
+            fh.write('{"n": 1}\n\n   \n{"n": 2}\n')
+        check("current root: blank lines are not cases",
+              cok(setd(CREVIEWER, ["corpora", 0, "file"], "blank.jsonl"), root=root))
+        check("current root: unreadable corpus",
+              cbad(setd(CREVIEWER, ["corpora", 0, "file"], "."), "does not exist", root=root))
         check("current root: directory is not a file",
               cbad(setd(CREVIEWER, ["scripts", 0, "path"], "."), "scripts[0]", root=root))
         check("current no root: absent files not checked",
@@ -537,18 +554,24 @@ def test_current_mode():
             fh.write(b"\xff\xfe\x00bad")
         rc, out = cli([os.path.join(tmp, "bin.json"), "--contract", "current"])
         check("current cli: undecodable file exit 2", rc == 2)
+        rc, out = cli([os.path.join(tmp, "bin.json")])
+        check("current cli: legacy undecodable file is not swallowed", isinstance(rc, str) and "UnicodeDecodeError" in rc)
+        rc, out = cli([os.path.join(tmp, "bin.json"), "--role", "builder"])
+        check("current cli: legacy undecodable with role is not swallowed", isinstance(rc, str) and "UnicodeDecodeError" in rc)
 
     # tally in current mode
     problems, block, role = runc(json.dumps(CREVIEWER))
-    tally = v.tally_current(block, role) if hasattr(v, "tally_current") else ""
+    check("current role detected: reviewer", role == "reviewer" and problems == [])
+    tally = v.tally_current(block, role) if role == "reviewer" else ""
     check("current tally reviewer", "READY_WITH_CHANGES" in tally and "0/0/1/0" in tally)
     problems, block, role = runc(json.dumps(CBUILDER))
-    tally = v.tally_current(block, role) if hasattr(v, "tally_current") else ""
+    check("current role detected: builder", role == "builder" and problems == [])
+    tally = v.tally_current(block, role) if role == "builder" else ""
     check("current tally builder", "40/90" in tally)
 
 
 def cbad_text(text, needle, **kw):
-    return any(needle in p for p in runc(text, **kw)[0])
+    return any(needle in p for p in runc(text, **kw)[0] if not p.startswith("EXC"))
 
 
 
