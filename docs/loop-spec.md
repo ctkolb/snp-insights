@@ -564,3 +564,37 @@ identifiers only (rsIDs, gene names); no machine paths.
   the choice. The T2 grammar is VCV-scoped, so the checker cannot see RCV-level
   stars. This is a verification note for the S2 "verified against the criteria"
   statement, not a new defect; S2 re-affirms it in the records.
+
+### Rev 3 (2026-11-13): scope widened with added survey candidates
+
+- **Supersession.** Rev 3 widens the scope of Rev 1 (objective, Definition of
+  done) by adding the candidates below. It supersedes no Rev 1 or Rev 2 text,
+  which stays as written. Rev 1 and Rev 2 settled decisions, D1 to D7 and the
+  survey facts still bind.
+- **Added candidates.** Found by a bounded survey from captured public records
+  only; no rsID is asserted from memory.
+  - MEFV (familial Mediterranean fever): health, category `carrier`.
+  - Oxalates: metabolic and hyperoxaluria-related variants; candidates come from
+    the survey.
+  - PCSK9 (cholesterol regulation): the survey proposes the category (trait or
+    health/risk) and the owner decides. The criterion 7 wording constraint
+    applies.
+  - BCHE (butyrylcholinesterase): candidates come from the survey. A response or
+    drug-sensitivity marker that fits no existing category is excluded; no new
+    categories are added.
+  - SERPINA1: re-evaluate the existing excluded row rs28929474 (reason
+    `inheritance-unresolved`; ClinVar pair eligible; T3 UNRESOLVED) against
+    captured GeneReviews and MedGen text. The survey may also name other
+    SERPINA1 candidates.
+- **Verify-only (no new rows).** F5 (rs6025) and F2 (rs1799963) are already
+  included; the survey verifies them against the criteria and adds no row.
+- **Survey rules.** Candidates only; no table rows are added. Each candidate
+  records its identity (SNP or indel), allele and strand status, category, array
+  assayability if a public source says so, and a proposed disposition. A
+  candidate lacking clean identity, effect allele or strand is recorded as
+  excluded with a reason code. An all-excluded outcome is acceptable.
+- **Unchanged.** S65C (rs1800730) stays excluded as palindromic; rs3798220
+  stays a candidate only; the D3 version rule applies as written; no safety-layer
+  or guard changes.
+- **Cost note.** The fixed overhead (rebuild, pin updates, wording change,
+  reviews) is shared across all included markers.
