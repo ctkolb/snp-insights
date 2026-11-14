@@ -481,3 +481,86 @@ Free checks only: tests, guard, doc link check by the owner.
 - ClinVar `api` mode has no phenotype, so trait fallback from ClinVar is
   unavailable in that mode (carrier derivation is unaffected).
 - Alias files remain hand-maintained; unlisted synonyms do not match.
+
+---
+
+## v0.2.0 run: panel expansion (decisions log)
+
+This run is separate from the roadmap items 3 to 5 loop above. It appends to
+the same decisions file; no existing entry is changed. Invented or public
+identifiers only (rsIDs, gene names); no machine paths.
+
+### Rev 1 (2026-11-13): confirmed brief
+
+- **Objective.** v0.2.0 panel expansion. Evaluate rs1801133 (MTHFR C677T),
+  rs1801131 (MTHFR A1298C), rs10455872 (Lp(a)) and rs1799945 (HFE H63D) against
+  `docs/panel-curation.md` criteria 1 to 12. Include the markers that pass;
+  record the rest as excluded rows with reason codes. Verify the existing HFE
+  C282Y entry (rs1800562) and do not duplicate it.
+- **Settled decisions.** An excluded-with-reason outcome is acceptable for any
+  marker; no positive finding is required. Palindromic sites follow criterion
+  4's default exclusion, with no owner exception. MTHFR is a health marker
+  (category `carrier`) and Lp(a) is a trait; each is judged against its own
+  criteria. No new categories, no ancestry exceptions, no safety-layer or guard
+  changes.
+- **Definition of done.**
+  1. Each of rs1801133, rs1801131, rs10455872 and rs1799945 has a T1 row,
+     included or excluded with a reason code; rs1800562 is verified against the
+     criteria and any discrepancy recorded.
+  2. Each included marker has the supporting rows the curation doc requires
+     (ClinVar pair, inheritance and inventory rows for health entries; evidence
+     rows for traits).
+  3. `python tests/test_pipeline.py`, `python scripts/guard.py --full` and
+     `python -B tests/test_release_panel.py` pass at the final commit.
+  4. New report wording for included entries implies no diagnosis, no absolute
+     risk and no recommendation (criterion 7).
+  5. Panel version bumped; tracked content stays generic (public identifiers
+     only). See Rev 2 D3 for the meaning of "bumped".
+- **Exclusions.** Safety layer and guards; `ROADMAP.md`; the generated
+  `data/panel.*.json` files; real data of any kind.
+- **Autonomy.** The run may fix reproduced CRITICAL and HIGH defects. Inclusion
+  decisions, severity disputes and scope changes go to the owner.
+- **Risk tiers.** HIGH for inclusion, exclusion and wording decisions (health
+  interpretation); STANDARD for mechanical data, test and doc edits.
+- **Stages.** S1 evidence capture and survey; S2 curation records and targets
+  entries; S3 report wording and tests. Each stage is reviewed on its own and
+  HIGH work is never bundled. Fix rounds: 3 per stage, then the owner decides.
+- **Rules.** Synthetic fixtures only in coding and review sessions; no network
+  for tests or reproductions; no installs; never push; never commit on `main`.
+
+### Rev 2 (2026-11-13): owner decisions after the S1 survey
+
+- **D1 (capture method).** Raw capture (dbSNP refsnp JSON, ClinVar
+  `variant_summary` plus VCV XML, GWAS REST, PubMed/MedGen) is used instead of
+  the fetch tool alone. The owner runs the captures; agent sessions stay
+  offline.
+- **D2 (reserves).** rs1800730 (S65C) is recorded as excluded: palindromic, not
+  a reserve. rs3798220 is a named candidate only: no capture now, no reserve
+  row, and the reserve text in `docs/panel-curation.md` stays unchanged.
+- **D3 (panel version).** "Panel version bumped" means `panel_version` in
+  `data/targets.release.json`, `data/targets.release-evidence.json` and
+  `data/targets.release-panel.json` is set to `0.2.0` if, and only if, a marker
+  is included. The package and pipeline version stays `0.1.0`.
+- **D4 (rebuild).** If a marker is included, a later stage may request a
+  network rebuild of `data/targets.release-panel.json` and re-pin the sha
+  literals, gated by the owner's approval of a request list.
+- **D5 (alias pin).** A later stage may update the `condition_aliases.json`
+  hash pin if a captured label needs an alias, with the reason recorded.
+- **D6 (validator).** A validator tooling ticket (current report contract mode)
+  follows as its own reviewed ticket.
+- **D7 (review exports).** Review exports use an export that carries `tests/`
+  plus a clone with a named branch and a `main` ref for `guard --full`.
+
+### Survey facts that bind later stages
+
+- **rs1799945 is verify-only.** It already has T1, T2, T3 and T5 rows from
+  earlier curation packs (excluded `palindromic`; the T1 `retrieved` cell is
+  `-`). DoD 1 is met for it already, and a second row fails the consistency
+  checks. S2 verifies the row and may fill `retrieved`; it adds no new row.
+- **rs1800562 attribution (survey S-7).** The attribution rests on an
+  alias-matched 2-star RCV ("Hemochromatosis type 1", multiple submitters, no
+  conflicts, Pathogenic). The exact-label RCV ("Hereditary hemochromatosis") is
+  single-submitter, 1 star, "Pathogenic, low penetrance". The T1 row records
+  the choice. The T2 grammar is VCV-scoped, so the checker cannot see RCV-level
+  stars. This is a verification note for the S2 "verified against the criteria"
+  statement, not a new defect; S2 re-affirms it in the records.
