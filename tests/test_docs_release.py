@@ -87,9 +87,9 @@ NEW_ROW_SHA256 = {
     "AL-027": "febfaee03490fa6dcdcf28a9771bf4805110a29b287af7a40cd51bac3305e20f",
 }
 
-AGENTS_CURRENT_STATE = """## Current state (v0.1.0 release run)
+AGENTS_CURRENT_STATE = """## Current state (v0.2.0 release run)
 
-The release branch carries the reviewed v0.1.0 work: a curated eight-entry
+The release branch carries the reviewed v0.2.0 work: a curated eight-entry
 panel (seven health entries, one trait entry), the template report, the owner-checkpoint procedure
 (docs/owner-checkpoint.md) and the accepted-limits register
 (docs/accepted-limits.md). The remaining steps are owner-only: the private
@@ -169,6 +169,9 @@ CURATION_RESERVES_PARAGRAPH = (
     "so the record holds no reserve rows; the reserve rules above apply to "
     "later panels."
 )
+
+# The package, console script and pipeline version of this release (ticket B).
+EXPECTED_VERSION = "0.2.0"
 
 README_STATUS = (
     "Release candidate v0.2.0. The pipeline runs end to end on synthetic "
@@ -418,12 +421,18 @@ def _readme_no_real_paths_or_names():
 def _version_consistent():
     with open(os.path.join(ROOT, "pyproject.toml"), "rb") as fh:
         meta = tomllib.load(fh)
-    _require("pyproject version", meta["project"]["version"] == "0.1.0")
+    _require("pyproject version", meta["project"]["version"] == EXPECTED_VERSION)
     import snp_insights
-    _require("package version", snp_insights.__version__ == "0.1.0")
+    _require("package version", snp_insights.__version__ == EXPECTED_VERSION)
+    import snp_insights.cli as cli
+    _require("pipeline version",
+             cli._tool_module("annotate").PIPELINE_VERSION == EXPECTED_VERSION)
     flat = _flat(_read(README))
-    _require("README version output", "snp-insights 0.1.0" in flat)
-    _require("README release-candidate status", "Release candidate v0.2.0." in flat)
+    _require("README version output", "snp-insights %s" % EXPECTED_VERSION in flat)
+    _require("getting-started version output",
+             "snp-insights %s" % EXPECTED_VERSION in _flat(_read(GETTING_STARTED)))
+    _require("README release-candidate status",
+             "Release candidate v%s." % EXPECTED_VERSION in flat)
     return True
 
 
@@ -467,7 +476,7 @@ def _agents_md_current_state():
              "Complete independent review of the initial CI/support stage"
              not in text)
     _require("Current state heading present",
-             re.search(r"^## Current state \(v0\.1\.0 release run\)$", text, re.M))
+             re.search(r"^## Current state \(v0\.2\.0 release run\)$", text, re.M))
     _require("current state block is exact", AGENTS_CURRENT_STATE in text)
     _require("current state precedes the roadmap",
              text.index("## Current state") < text.index("## Roadmap to beta"))
@@ -1015,8 +1024,8 @@ def _new_docs_content_pins():
                    "data/targets.release-panel.json"):
         _require("reference-data lacks " + phrase, phrase in rflat)
     decision = _flat(_section(ref, "Do you need to fetch anything"))
-    _require("decision section answers no for v0.1.0",
-             "v0.1.0" in decision and "no" in decision.lower())
+    _require("decision section answers no for v%s" % EXPECTED_VERSION,
+             "v" + EXPECTED_VERSION in decision and "no" in decision.lower())
     for path in NEW_DOCS:
         sizes = set(re.findall(r"\d+(?:\.\d+)? ?(?:GB|MB|GiB)\b", _read(path)))
         _require("%s: sizes beyond the known figures: %s" % (
@@ -1879,7 +1888,7 @@ def run(check):
     attempt("R4B.readme_template_only_command", _readme_template_only_command)
     attempt("R4B.readme_limitations_list", _readme_limitations_list)
     attempt("R4B.readme_no_real_paths_or_names", _readme_no_real_paths_or_names)
-    attempt("R4B.version_0_1_0_consistent", _version_consistent)
+    attempt("R4B.version_consistent", _version_consistent)
     attempt("R4B.runtime_dependencies_empty", _runtime_dependencies_empty)
     attempt("R4B.readme_status_exact", _readme_status_exact)
     attempt("R4B.readme_testing_section_complete", _readme_testing_section_complete)

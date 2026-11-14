@@ -692,7 +692,7 @@ def run(check):
         env["PYTHONPATH"] = ROOT + os.pathsep + env.get("PYTHONPATH", "")
         proc = subprocess.run([sys.executable, "-m", "snp_insights", "--version"],
                               cwd=d, capture_output=True, text=True, env=env)
-        return proc.returncode == 0 and proc.stdout.strip() == "snp-insights 0.1.0"
+        return proc.returncode == 0 and proc.stdout.strip() == "snp-insights 0.2.0"
     attempt("S4.cwd_independent", s4_cwd_independent)
 
     # --- S4.build_panel_stdout_mode -------------------------------------
