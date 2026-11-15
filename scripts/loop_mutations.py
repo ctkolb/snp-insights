@@ -100,7 +100,7 @@ MUTATIONS = [
     ("S2 carrier: returns None not unknown", E_, "        return cv_tier or \"unknown\"\n    if category == \"trait\":", "        return cv_tier\n    if category == \"trait\":"),
     ("S2 legacy: order swapped", E_, "    return cv_tier or gwas_tier(n) or \"unknown\"", "    return gwas_tier(n) or cv_tier or \"unknown\""),
     ("S2 gwas_n None crashes", E_, "    n = gwas_n or 0", "    n = gwas_n"),
-    ("S2 cv None crashes", E_, "cv_tier = clinvar_tier(cv.get(\"significance\"), cv.get(\"review_stars\")) if cv else None", "cv_tier = clinvar_tier(cv.get(\"significance\"), cv.get(\"review_stars\"))"),
+    ("S2 cv None crashes", E_, "cv_tier = clinvar_tier(cv.get(\"significance\"), cv.get(\"review_stars\"), result_type) if cv else None", "cv_tier = clinvar_tier(cv.get(\"significance\"), cv.get(\"review_stars\"), result_type)"),
     ("S2 validation skipped when association set", B, "category not in (\"carrier\", \"trait\"):\n            label", "category not in (\"carrier\", \"trait\") and not t.get(\"association\"):\n            label"),
     ("S2 validation case-insensitive", B, "if category is not None and category not in (\"carrier\", \"trait\"):", "if category is not None and str(category).lower() not in (\"carrier\", \"trait\"):"),
     ("S2 validation accepts empty string", B, "if category is not None and category not in", "if category and category not in"),
