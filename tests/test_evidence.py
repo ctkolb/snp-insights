@@ -740,6 +740,16 @@ def run(check):
                 and "rs9000003" in err and "skipped" in err)
     attempt("T.gnomad_direct_skip_note", gnomad_direct_skip_note)
 
+    def gnomad_writer_drops_unusable_effect_row():
+        # An AF from another lookup is never written under an unusable effect allele.
+        _, fetch_reference, _ = _mods()
+        out = os.path.join(tempfile.mkdtemp(), "gnomad.vcf")
+        fetch_reference.write_gnomad_vcf(out, {"rs9000003": ("1", 303, "A", ["C", "G"])},
+                                         {"rs9000003": 0.25}, effect_alleles={"rs9000003": "T"})
+        with open(out) as fh:
+            return _rows(fh.read()) == []
+    attempt("T.gnomad_writer_drops_unusable_effect_row", gnomad_writer_drops_unusable_effect_row)
+
     def gnomad_target_effect_alleles_first_wins():
         _, fetch_reference, _ = _mods()
         d = tempfile.mkdtemp()
