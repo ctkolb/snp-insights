@@ -117,6 +117,21 @@ def load_target_entries(paths):
     return entries
 
 
+def load_target_effect_alleles(paths):
+    """Return {rsid: effect_allele} for targets that curate one (first target per rsid wins)."""
+    out, seen = {}, set()
+    for p in paths:
+        with open(p) as fh:
+            data = json.load(fh)
+        for v in data.get("variants", []):
+            rsid = v.get("rsid")
+            if rsid and rsid not in seen:
+                seen.add(rsid)
+                if v.get("effect_allele"):
+                    out[rsid] = v["effect_allele"]
+    return out
+
+
 load_condition_aliases = evidence.load_aliases
 
 
@@ -342,12 +357,39 @@ def fetch_clinvar_summary(entries, email, cache):
     return out
 
 
-def fetch_gnomad_small(coords, email):
-    """Return {rsid: af} via the gnomAD GraphQL API, keyed on coordinates."""
+def _gnomad_allele(rsid, ref, alts, effect_alleles):
+    """Return (allele to look up in gnomAD, skip reason or None).
+
+    Without a curated effect allele for `rsid`, the first dbSNP alternate is
+    used, as before. With one, only that allele is used, and only when it is a
+    single A/C/G/T among the alternates at a single-base reference; otherwise
+    the allele is None and the site is skipped, never answered for another
+    allele.
+    """
+    effect = (effect_alleles or {}).get(rsid)
+    if not effect:
+        return (alts[0] if isinstance(alts, (list, tuple)) else alts), None
+    listed = list(alts) if isinstance(alts, (list, tuple)) else [alts]
+    if (len(ref) != 1 or ref not in "ACGT" or len(effect) != 1 or effect not in "ACGT"
+            or effect not in listed):
+        return None, (f"effect allele {effect!r} is not a single-nucleotide alternate "
+                      f"of {ref}/{','.join(listed)}")
+    return effect, None
+
+
+def fetch_gnomad_small(coords, email, effect_alleles=None):
+    """Return {rsid: af} via the gnomAD GraphQL API, keyed on coordinates.
+
+    `effect_alleles` ({rsid: allele}, optional) names the curated effect allele
+    to look up; rsIDs without one use the first dbSNP alternate.
+    """
     out = {}
     for rsid, rec in coords.items():
         chrom, pos, ref, alts = rec
-        alt = alts[0] if isinstance(alts, (list, tuple)) else alts
+        alt, skip = _gnomad_allele(rsid, ref, alts, effect_alleles)
+        if skip:
+            print(f"  gnomad {rsid}: skipped, {skip}", file=sys.stderr)
+            continue
         if len(ref) != 1 or len(alt) != 1 or ref not in "ACGT" or alt not in "ACGT":
             continue
         variant_id = f"{chrom}-{pos}-{ref}-{alt}"
@@ -545,13 +587,16 @@ def write_snpedia_tsv(path, snpedia):
             fh.write(f"{rsid}\t{mag}\n")
 
 
-def write_gnomad_vcf(path, coords, afs):
+def write_gnomad_vcf(path, coords, afs, effect_alleles=None):
+    """Write one row per rsID; ALT is the allele fetch_gnomad_small looked up."""
     with open(path, "w") as fh:
         fh.write("##fileformat=VCFv4.2\n")
         fh.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
         for rsid, af in sorted(afs.items()):
             chrom, pos, ref, alts = coords[rsid]
-            alt = alts[0] if isinstance(alts, (list, tuple)) else alts
+            alt, skip = _gnomad_allele(rsid, ref, alts, effect_alleles)
+            if skip:
+                continue
             fh.write(f"{chrom}\t{pos}\t{rsid}\t{ref}\t{alt}\t.\tPASS\tAF={af}\n")
 
 
@@ -691,8 +736,9 @@ def main(argv=None):
     write_clinvar_tsv(os.path.join(args.cache, "clinvar.tsv"), clinvar)
     manifest["files"]["clinvar"] = {"path": "clinvar.tsv", "records": len(clinvar)}
 
-    afs = fetch_gnomad_small(coords, args.email)
-    write_gnomad_vcf(os.path.join(args.cache, "gnomad.small.vcf"), coords, afs)
+    effect_alleles = load_target_effect_alleles(args.targets)
+    afs = fetch_gnomad_small(coords, args.email, effect_alleles)
+    write_gnomad_vcf(os.path.join(args.cache, "gnomad.small.vcf"), coords, afs, effect_alleles)
     manifest["files"]["gnomad"] = {"path": "gnomad.small.vcf", "records": len(afs)}
 
     if not args.no_gwas:
