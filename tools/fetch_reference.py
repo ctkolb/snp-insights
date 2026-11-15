@@ -367,7 +367,7 @@ def _gnomad_allele(rsid, ref, alts, effect_alleles):
     allele.
     """
     effect = (effect_alleles or {}).get(rsid)
-    if not effect:
+    if effect is None:
         return (alts[0] if isinstance(alts, (list, tuple)) else alts), None
     listed = list(alts) if isinstance(alts, (list, tuple)) else [alts]
     if (len(ref) != 1 or ref not in "ACGT" or len(effect) != 1 or effect not in "ACGT"
