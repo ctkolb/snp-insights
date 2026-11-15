@@ -8,8 +8,9 @@ bug at a time, and runs the test suites. A mutation is KILLED when it makes a
 check fail that passes on the unmutated copy; it SURVIVES otherwise. Surviving
 mutations mean the tests do not pin that behavior.
 
-The unmutated copy is run first as a baseline because the copy has no .git
-directory, so a guard self-test always fails there. Only NEW failures count.
+The unmutated copy runs first to record baseline failures. The copy has no
+.git directory, so the pipeline's history fixtures cannot get a tracked-file
+manifest and the pipeline suite reports CRASH. Only NEW failures count.
 Your working tree is never modified; the temp directory is removed at the end.
 
     python scripts/loop_mutations.py            # run all mutations, exit 1 on any survivor
@@ -30,7 +31,29 @@ I_ = "snp_insights/__init__.py"
 F = "tools/fetch_reference.py"
 SUITES = ("tests/test_evidence.py", "tests/test_category.py", "tests/test_cli.py", "tests/test_pipeline.py")
 COPY_DIRS = ("tools", "tests", "data", "fixtures", "stage2", "stage3", "schema", "scripts", "snp_insights")
-COPY_FILES = ("pyproject.toml", "README.md")
+COPY_FILES = (
+    "pyproject.toml",
+    "README.md",
+    # CLI checkpoint checks and the pipeline's release documentation checks.
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "DESIGN.md",
+    "LICENSE",
+    "SECURITY.md",
+    "docs/accepted-limits.md",
+    "docs/getting-started.md",
+    "docs/loop-spec.md",
+    "docs/owner-checkpoint.md",
+    "docs/panel-curation.md",
+    "docs/reference-data.md",
+    "docs/release-v0.1.0.md",
+    # The pipeline's guard, hook, and CI checks.
+    ".gitignore",
+    ".github/workflows/ci.yml",
+    "docs/security.md",
+    "hooks/gitleaks-version.sh",
+    "hooks/pre-push",
+)
 
 # (name, file, text to find, replacement). Each is a single plausible bug.
 MUTATIONS = [
@@ -139,7 +162,9 @@ def fresh(tmp):
         shutil.rmtree(dest, ignore_errors=True)
         shutil.copytree(os.path.join(ROOT, d), dest, ignore=shutil.ignore_patterns("__pycache__"))
     for f in COPY_FILES:
-        shutil.copy(os.path.join(ROOT, f), os.path.join(tmp, f))
+        dest = os.path.join(tmp, f)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.copy(os.path.join(ROOT, f), dest)
 
 
 def failing_checks(tmp):
