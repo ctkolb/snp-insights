@@ -424,9 +424,20 @@ def _version_consistent():
     _require("pyproject version", meta["project"]["version"] == EXPECTED_VERSION)
     import snp_insights
     _require("package version", snp_insights.__version__ == EXPECTED_VERSION)
+    import json
     import snp_insights.cli as cli
     _require("pipeline version",
              cli._tool_module("annotate").PIPELINE_VERSION == EXPECTED_VERSION)
+    # The version the annotator actually writes into findings.json, not only
+    # the constant: run the real CLI on the synthetic fixture and release panel.
+    with tempfile.TemporaryDirectory() as tmp:
+        findings = os.path.join(tmp, "findings.json")
+        panel = os.path.join(ROOT, "data", "targets.release-panel.json")
+        code, _, _ = _cli(["annotate", RAW_FIXTURE, panel, "-o", findings])
+        _require("synthetic annotation exits 0", code == 0)
+        provenance = json.loads(_read(findings))["provenance"]
+        _require("generated pipeline version",
+                 provenance["pipeline_version"] == EXPECTED_VERSION)
     flat = _flat(_read(README))
     _require("README version output", "snp-insights %s" % EXPECTED_VERSION in flat)
     _require("getting-started version output",
