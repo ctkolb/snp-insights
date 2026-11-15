@@ -9,8 +9,8 @@ check fail that passes on the unmutated copy; it SURVIVES otherwise. Surviving
 mutations mean the tests do not pin that behavior.
 
 The unmutated copy runs first to record baseline failures. The copy has no
-.git directory, so the pipeline's history fixtures cannot get a tracked-file
-manifest and the pipeline suite reports CRASH. Only NEW failures count.
+.git directory. Its tracked-file manifest comes from the source Git index
+and is used by the pipeline's history fixtures. Only NEW failures count.
 Your working tree is never modified; the temp directory is removed at the end.
 
     python scripts/loop_mutations.py            # run all mutations, exit 1 on any survivor
@@ -165,6 +165,11 @@ def fresh(tmp):
         dest = os.path.join(tmp, f)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         shutil.copy(os.path.join(ROOT, f), dest)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    listing = subprocess.run(("git", "ls-files", "-z"), cwd=ROOT, env=env,
+                             capture_output=True, check=True).stdout
+    with open(os.path.join(tmp, ".tracked-files"), "wb") as fh:
+        fh.write(listing)
 
 
 def failing_checks(tmp):
