@@ -652,6 +652,36 @@ def run(check):
         return True
     attempt("S4.tool_integrity_inner_module", s4_tool_integrity_inner_module)
 
+    def s4_tool_integrity_imported_module():
+        import types
+        from unittest import mock
+
+        cli = _cli()
+        saved = sys.modules.pop("annotate", None)
+        saved_path = sys.path[:]
+        try:
+            with tempfile.TemporaryDirectory() as outside:
+                for path in (None, os.path.join(outside, "annotate.py")):
+                    stub = types.ModuleType("annotate")
+                    stub.__file__ = path
+                    stub.main = mock.Mock(return_value=42)
+                    with mock.patch.object(cli.importlib, "import_module",
+                                           return_value=stub) as importer:
+                        code, _, err = _invoke(["annotate", RAW, PANEL])
+                    expected = ("refusing module annotate loaded from outside "
+                                f"the repository: {path or '<no __file__>'}")
+                    if (importer.call_args_list != [mock.call("annotate")]
+                            or code != 1 or expected not in err or stub.main.called):
+                        return False
+        finally:
+            sys.path[:] = saved_path
+            if saved is not None:
+                sys.modules["annotate"] = saved
+            else:
+                sys.modules.pop("annotate", None)
+        return True
+    attempt("S4.tool_integrity_imported_module", s4_tool_integrity_imported_module)
+
     def s4_within_root_unit():
         cli = _cli()
         base = os.path.realpath(tempfile.mkdtemp())
