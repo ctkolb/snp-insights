@@ -447,6 +447,32 @@ def run(check):
             return os.listdir(d) == ["afile"] and _read_bytes(f) == b"x"
     attempt("S4.run_out_dir_is_file", s4_run_out_dir_is_file)
 
+    def s4_run_makedirs_error():
+        import annotate
+        import run as narrate
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as parent:
+            out_dir = os.path.join(parent, "missing")
+            makedirs = os.makedirs
+
+            def deny_output_dir(path, *args, **kwargs):
+                if path == out_dir:
+                    raise PermissionError("synthetic directory creation failure")
+                return makedirs(path, *args, **kwargs)
+
+            with (mock.patch.object(os, "makedirs", side_effect=deny_output_dir),
+                  mock.patch.object(annotate, "main") as annot,
+                  mock.patch.object(narrate, "main") as narr):
+                code, _, err = _invoke(["run", RAW, PANEL, "--out-dir", out_dir,
+                                        "--template-only"])
+            return (code == 1
+                    and f"cannot create output directory {out_dir}:" in err
+                    and "Traceback" not in err
+                    and not annot.called and not narr.called
+                    and os.listdir(parent) == [])
+    attempt("S4.run_makedirs_error", s4_run_makedirs_error)
+
     def s4_run_out_dir_equals_form():
         d = tempfile.mkdtemp()
         with _no_network():
