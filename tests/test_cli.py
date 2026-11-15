@@ -435,14 +435,16 @@ def run(check):
     attempt("S4.run_no_clobber_symlink", s4_run_no_clobber_symlink)
 
     def s4_run_out_dir_is_file():
-        d = tempfile.mkdtemp()
-        f = os.path.join(d, "afile")
-        with open(f, "wb") as fh:
-            fh.write(b"x")
-        code, _, err = _invoke(["run", RAW, PANEL, "--out-dir", f, "--template-only"])
-        if code != 1 or "afile" not in err or "Traceback" in err:
-            return False
-        return os.listdir(d) == ["afile"]
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "afile")
+            with open(f, "wb") as fh:
+                fh.write(b"x")
+            code, _, err = _invoke(["run", RAW, PANEL, "--out-dir", f,
+                                    "--template-only"])
+            if (code != 1 or "afile" not in err or "Traceback" in err
+                    or "--out-dir is not a directory" not in err):
+                return False
+            return os.listdir(d) == ["afile"] and _read_bytes(f) == b"x"
     attempt("S4.run_out_dir_is_file", s4_run_out_dir_is_file)
 
     def s4_run_out_dir_equals_form():
