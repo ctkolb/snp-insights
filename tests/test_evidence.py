@@ -750,6 +750,36 @@ def run(check):
             return _rows(fh.read()) == []
     attempt("T.gnomad_writer_drops_unusable_effect_row", gnomad_writer_drops_unusable_effect_row)
 
+    def gnomad_direct_empty_effect_skipped_with_note():
+        coords = {"rs9000991": ("1", 991, "A", ["C", "G"])}
+        requested, afs, _, err = _direct(coords, effect_alleles={"rs9000991": ""})
+        return (requested == [] and afs == {}
+                and err == "  gnomad rs9000991: skipped, effect allele '' is not a single-nucleotide alternate of A/C,G\n")
+    attempt("T.gnomad_direct_empty_effect_skipped_with_note", gnomad_direct_empty_effect_skipped_with_note)
+
+    def gnomad_writer_drops_empty_effect_row():
+        # Supply an AF so the writer must make its own skip decision.
+        _, fetch_reference, _ = _mods()
+        coords = {"rs9000991": ("1", 991, "A", ["C", "G"])}
+        with tempfile.TemporaryDirectory() as directory:
+            out = os.path.join(directory, "gnomad.vcf")
+            fetch_reference.write_gnomad_vcf(out, coords, {"rs9000991": 0.25},
+                                             effect_alleles={"rs9000991": ""})
+            with open(out, "rb") as fh:
+                return fh.read() == (b"##fileformat=VCFv4.2\n"
+                                     b"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
+    attempt("T.gnomad_writer_drops_empty_effect_row", gnomad_writer_drops_empty_effect_row)
+
+    def gnomad_absent_entry_with_other_empty_effect_keeps_first_alternate():
+        for alts in (["C", "G"], "C"):
+            coords = {"rs9000001": ("1", 101, "A", alts)}
+            got = _direct(coords, effect_alleles={"rs9000991": ""})
+            if got != (["1-101-A-C"], {"rs9000001": 0.25}, legacy_vcf, ""):
+                return False
+        return True
+    attempt("T.gnomad_absent_entry_with_other_empty_effect_keeps_first_alternate",
+            gnomad_absent_entry_with_other_empty_effect_keeps_first_alternate)
+
     def gnomad_target_effect_alleles_first_wins():
         _, fetch_reference, _ = _mods()
         d = tempfile.mkdtemp()
