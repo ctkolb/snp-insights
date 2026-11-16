@@ -1882,6 +1882,17 @@ def _s3b_curation_release_paragraph_matches_tables():
     return True
 
 
+def _runner_copies_guard_selftest_files():
+    from guard import SELFTEST_MUST_BE_TRACKED
+    from loop_mutations import COPY_DIRS, COPY_FILES
+
+    missing = sorted(path for path in SELFTEST_MUST_BE_TRACKED
+                     if path not in COPY_FILES
+                     and not any(path.startswith(directory + "/") for directory in COPY_DIRS))
+    _require(f"runner copy inventory omits guard self-test files: {missing}", not missing)
+    return True
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -1959,6 +1970,7 @@ def run(check):
     attempt("S3B.loop_spec_records_d8", _s3b_loop_spec_records_d8)
     attempt("S3B.curation_release_paragraph_matches_tables",
             _s3b_curation_release_paragraph_matches_tables)
+    attempt("L.runner_copies_guard_selftest_files", _runner_copies_guard_selftest_files)
 
 
 def main():
