@@ -520,7 +520,7 @@ def _accepted_limits_rows_append_only():
         _require("%s differs from the approved text" % rid, _sha(new[rid]) == digest)
     appended = raw[LIMITS_BASE_BYTES:].decode("utf-8").split("\n")
     appended = [l for l in appended if l.strip()]
-    _require("only the approved rows AL-014..AL-038 were appended",
+    _require("only the approved rows AL-014..AL-040 were appended",
              [l[2:8] for l in appended]
              == sorted(NEW_ROW_SHA256) + sorted(CLOSURE_ROWS) + sorted(APPENDED_ROWS))
     return True
@@ -1463,13 +1463,45 @@ AL_038_ROW = (
     "panel with a trait entry. |"
 )
 
+AL_039_ROW = (
+    "| AL-039 | REL | The mutation runner's Git-free copy takes its "
+    "file list from a manifest written by git ls-files in the source "
+    "tree, and the pipeline's full-tree fixture trusts that manifest "
+    "when the copy has no .git. Nothing checks that the manifest "
+    "covers every tracked file, so a manifest that silently misses a "
+    "file no guard self-test requires would change the fixture without "
+    "a failing check. | LOW | Found by review r121 (R121-F2). The "
+    "runner writes the manifest verbatim from the Git index, the "
+    "fixture fails loudly when the manifest is empty or lacks the "
+    "pipeline suite, and the guard self-test fails loudly when a file "
+    "it requires is missing. | 2026-11-16 | The runner's manifest "
+    "writing changes, or a mutation in the guard, hook, or history "
+    "area survives. |"
+)
+
+AL_040_ROW = (
+    "| AL-040 | REL | In a Git-free checkout that holds a hand-written "
+    "tracked-file manifest, an entry with \"..\" components or an "
+    "absolute path is joined without normalization, so the full-tree "
+    "fixture can read a file outside the checkout and write a copy "
+    "outside its own temporary repository before it fails at the first "
+    "Git step. | LOW | Found by review r121 (R121-F3). The runner "
+    "cannot produce such a path, because git ls-files never lists one "
+    "and the runner rewrites the manifest in its own temporary copy; a "
+    "manifest in a Git-free checkout is trusted by design. | "
+    "2026-11-16 | Someone writes a manifest by hand, or the manifest "
+    "source changes. |"
+)
+
 APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
                  "AL-033": AL_033_ROW,
                  "AL-034": AL_034_ROW,
                  "AL-035": AL_035_ROW,
                  "AL-036": AL_036_ROW,
                  "AL-037": AL_037_ROW,
-                 "AL-038": AL_038_ROW}
+                 "AL-038": AL_038_ROW,
+                 "AL-039": AL_039_ROW,
+                 "AL-040": AL_040_ROW}
 NARRATION_NOT_VERIFIED = "not verified against a live model"
 FAILURE_EXAMPLE = (
     "template IR failed validation (bug):",
