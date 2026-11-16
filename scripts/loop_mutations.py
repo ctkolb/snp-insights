@@ -49,6 +49,7 @@ COPY_FILES = (
     "docs/release-v0.1.0.md",
     # The pipeline's guard, hook, and CI checks.
     ".gitignore",
+    ".gitleaks.toml",
     ".github/workflows/ci.yml",
     "docs/security.md",
     "hooks/gitleaks-version.sh",
