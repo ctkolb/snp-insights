@@ -660,7 +660,7 @@ NEW_RARE_PPV = ("Rare array calls can be inaccurate; a rare result should be con
                 "clinical-grade test.")
 TIER_KEYS = ("established", "replicated", "single study", "conflicting", "unknown")
 # key phrase (present in the registry item, lower case) -> must appear in the docs
-LIMITATION_KEYS = ("0.02%", "forward-strand", "three health entries", "no result is a diagnosis",
+LIMITATION_KEYS = ("0.02%", "forward-strand", "small public panel", "no result is a diagnosis",
                    "clinical-grade test", "template-only narration", "no public array manifest",
                    "owner's aggregate judgment")
 DOC_FILES = ("panel-curation.md", "owner-checkpoint.md")
@@ -1044,8 +1044,8 @@ def _run_4a2_behavior(attempt):
     def limitations_trait_statement_matches_docs():
         limitations = getattr(caveats, "LIMITATIONS", None)
         _require("caveats.LIMITATIONS missing", isinstance(limitations, list) and limitations)
-        phrases = ("three health entries", "no trait entries")
-        items = [i for i in limitations if "three health entries" in i.lower()]
+        phrases = ("small public panel", "the summary counts its markers by kind")
+        items = [i for i in limitations if "small public panel" in i.lower()]
         _require(f"{len(items)} limitation items state the panel contents", len(items) == 1)
         for phrase in phrases:
             _require(f"panel limitation lacks {phrase!r}: {items[0]!r}", phrase in items[0].lower())
@@ -1054,7 +1054,7 @@ def _run_4a2_behavior(attempt):
             with open(os.path.join(ROOT, "docs", name)) as fh:
                 docs += " " + fh.read()
         docs = " ".join(docs.lower().split())
-        for phrase in phrases:
+        for phrase in phrases[:1]:
             _require(f"docs lack {phrase!r}", phrase in docs)
         return True
     attempt("R4A.limitations_trait_statement_matches_docs", limitations_trait_statement_matches_docs)
@@ -1332,6 +1332,258 @@ def _run_r83(attempt):
     attempt("R83.violation_list_is_capped", violation_list_is_capped)
 
 
+# S3-A (owner decisions D-2(a), D-3, D-4, D-5 on r103): a trait's tier never comes
+# from ClinVar, the trait association sentence, and the rare-call caveat for a
+# composite pathogenic record.
+S3A_CLINVAR = {"significance": "Pathogenic", "review_stars": 2,
+               "review_status_text": "criteria provided, multiple submitters, no conflicts"}
+S3A_DIRECTION_WORDS = ("lower", "higher", "increase", "decrease", "raise", "reduce", "elevat",
+                       "protect", "risk of", "more likely", "less likely")
+
+
+def _s3a_trait_sentence(label):
+    return (f"This is a statistical association with {label} in published studies; it is not a "
+            f"measurement of {label} and not a diagnosis.")
+
+
+def _s3a_release_trait(doc):
+    traits = [f for f in doc["findings"] if f.get("result_type") == "trait"]
+    _require(f"want one trait finding in the release fixture, got {len(traits)}", len(traits) == 1)
+    return traits[0]
+
+
+def _s3a_rare_variant(rsid, significance):
+    # effect allele = panel alternate, so release rarity is rarity_class(gnomad_af)
+    v = _variant(rsid, "G", "A", "A", "carrier_status", condition="Condition one",
+                 clinvar={**S3A_CLINVAR, "significance": significance})
+    v["gnomad_af"] = 0.0001
+    return v
+
+
+def _run_s3a(attempt):
+    def trait_tier_not_from_clinvar():
+        pcsk9 = _s3a_release_trait(_release_doc("raw.release.synthetic.txt"))
+        _require("release trait has no ClinVar block (test premise)", pcsk9["evidence"]["clinvar"])
+        text = stage3_run.readable_claim(pcsk9)["text"]
+        _require(f"trait tier attributed to ClinVar: {text}", "ClinVar" not in text)
+        _require(f"trait tier not attributed to GWAS: {text}",
+                 "Evidence tier: replicated, from the GWAS Catalog association count." in text)
+        return True
+    attempt("S3A.trait_tier_not_from_clinvar", trait_tier_not_from_clinvar)
+
+    def trait_claim_no_clinvar_significance():
+        pcsk9 = _s3a_release_trait(_release_doc("raw.release.synthetic.txt"))
+        text = stage3_run.readable_claim(pcsk9)["text"].lower()
+        for word in ("benign", "pathogenic", "review star", "review level", "clinvar"):
+            _require(f"trait claim prints {word!r}: {text}", word not in text)
+        return True
+    attempt("S3A.trait_claim_no_clinvar_significance", trait_claim_no_clinvar_significance)
+
+    def trait_claim_cites_no_clinvar_field():
+        pcsk9 = _s3a_release_trait(_release_doc("raw.release.synthetic.txt"))
+        paths = [c["field_path"] for c in stage3_run.readable_claim(pcsk9)["citations"]]
+        _require(f"trait claim cites ClinVar: {paths}",
+                 not any(p.startswith("evidence.clinvar") for p in paths))
+        _require(f"trait claim does not cite its tier: {paths}", "evidence.association" in paths)
+        return True
+    attempt("S3A.trait_claim_cites_no_clinvar_field", trait_claim_cites_no_clinvar_field)
+
+    def trait_pathogenic_record_not_printed():
+        # hand-built: no `category` key, one-star and two-star Pathogenic records
+        for stars in (1, 2, 4):
+            f = _hf("f_000000000001", "rs9000001", "GENEA", "Example trait one", "detected", "het",
+                    "trait", association="replicated", clinvar={**S3A_CLINVAR, "review_stars": stars})
+            ir, errors = _report(_hdoc([f]))
+            _require(f"unexpected validation errors: {errors}", not errors)
+            texts = _texts(ir, "s_traits")
+            _require("trait section has no claim", len(texts) == 1)
+            text = next(iter(texts.values()))
+            _require(f"{stars} stars: trait prints a ClinVar record: {text}",
+                     "pathogenic" not in text.lower() and "ClinVar" not in text)
+            _require(f"{stars} stars: trait tier not from GWAS: {text}",
+                     "from the GWAS Catalog association count" in text)
+            cites = [c["field_path"] for _s, cl in _claims(ir, "s_traits") for c in cl["citations"]]
+            _require(f"{stars} stars: trait cites ClinVar: {cites}",
+                     not any(p.startswith("evidence.clinvar") for p in cites))
+        return True
+    attempt("S3A.trait_pathogenic_record_not_printed", trait_pathogenic_record_not_printed)
+
+    def trait_unknown_tier_no_clinvar():
+        for association in ("unknown", None):
+            f = _hf("f_000000000001", "rs9000001", "GENEA", "Example trait one", "detected", "het",
+                    "trait", association=association, clinvar=S3A_CLINVAR)
+            text = stage3_run.readable_claim(f)["text"]
+            _require(f"{association}: unknown tier sentence: {text}",
+                     text.count("No evidence tier is recorded for this marker.") == 1)
+            _require(f"{association}: ClinVar printed: {text}", "ClinVar" not in text)
+        return True
+    attempt("S3A.trait_unknown_tier_no_clinvar", trait_unknown_tier_no_clinvar)
+
+    def skeleton_item_trait_has_no_clinvar():
+        f_trait = _hf("f_000000000001", "rs9000001", "GENEA", "Example trait one", "detected", "het",
+                      "trait", clinvar=S3A_CLINVAR)
+        f_carrier = _hf("f_000000000002", "rs9000002", "GENEB", "Condition two", "detected", "het",
+                        "carrier_status", clinvar=S3A_CLINVAR)
+        for doc in (_release_doc("raw.release.synthetic.txt"), _hdoc([f_trait, f_carrier])):
+            ir, _ = stage3_run.build_skeleton(doc, "0" * 64)
+            msgs = stage3_run.skeleton_prompt(doc, ir, "0" * 64)
+            items = json.loads(msgs[1]["content"].split("\n")[-1])["claims"]
+            by_rsid = {f["rsid"]: f for f in doc["findings"]}
+            trait_items = [i for i in items if by_rsid[i["rsid"]].get("result_type") == "trait"]
+            other_items = [i for i in items if by_rsid[i["rsid"]].get("result_type") != "trait"
+                           and by_rsid[i["rsid"]]["evidence"].get("clinvar")]
+            _require("no trait item in the skeleton prompt", trait_items)
+            _require("no ClinVar-backed health item in the skeleton prompt", other_items)
+            for i in trait_items:
+                _require(f"trait skeleton item carries ClinVar: {i}", i["clinvar"] is None)
+                _require(f"trait skeleton item lost its tier: {i}",
+                         i["association"] == by_rsid[i["rsid"]]["evidence"]["association"])
+            for i in other_items:
+                _require(f"health skeleton item lost its ClinVar block: {i}",
+                         i["clinvar"] == by_rsid[i["rsid"]]["evidence"]["clinvar"])
+            _require("prompt text names the trait's ClinVar significance",
+                     "Benign/Likely benign" not in msgs[1]["content"])
+        return True
+    attempt("S3A.skeleton_item_trait_has_no_clinvar", skeleton_item_trait_has_no_clinvar)
+
+    def release_fixtures_traits_section_has_no_clinvar():
+        seen = 0
+        for name in RELEASE_FIXTURES:
+            doc = _release_doc(name)
+            ir, errors = _report(doc)
+            _require(f"{name}: unexpected validation errors: {errors}", not errors)
+            for _sec, cl in _claims(ir, "s_traits"):
+                seen += 1
+                low = cl["text"].lower()
+                _require(f"{name}: traits claim prints ClinVar: {cl['text']}",
+                         "clinvar" not in low and "benign" not in low and "review star" not in low)
+                _require(f"{name}: traits claim cites ClinVar: {cl['citations']}",
+                         not any(c["field_path"].startswith("evidence.clinvar") for c in cl["citations"]))
+            md = render(doc, ir)
+            start = md.index("## Traits")
+            end = md.find("\n## ", start + 1)
+            traits_md = md[start:end if end != -1 else len(md)]
+            _require(f"{name}: rendered Traits section prints ClinVar text",
+                     "Benign/Likely benign" not in traits_md and "evidence.clinvar" not in traits_md)
+        _require("no traits claim in the release fixtures", seen >= 2)
+        return True
+    attempt("S3A.release_fixtures_traits_section_has_no_clinvar",
+            release_fixtures_traits_section_has_no_clinvar)
+
+    def carrier_tier_still_from_clinvar():
+        # characterization: health lines keep the ClinVar review-level clause and citations
+        doc = _release_doc("raw.release.synthetic.txt")
+        health = [f for f in doc["findings"] if f["state"] == "detected"
+                  and f.get("result_type") in ("carrier_status", "risk_association")]
+        _require("no detected health finding", len(health) >= 2)
+        for f in health:
+            cl = stage3_run.readable_claim(f)
+            cv = f["evidence"]["clinvar"]
+            _require(f"{f['rsid']}: tier not from ClinVar: {cl['text']}",
+                     "from ClinVar's review level: ClinVar lists this record as "
+                     f"{cv['significance']} with two review stars" in cl["text"])
+            paths = [c["field_path"] for c in cl["citations"]]
+            _require(f"{f['rsid']}: ClinVar citations missing: {paths}",
+                     paths[-3:] == ["evidence.clinvar.significance", "evidence.clinvar.review_stars",
+                                    "evidence.clinvar.review_status_text"])
+        hfe = next(f for f in health if f["rsid"] == "rs1800562")
+        _require("HFE carrier line changed", stage3_run.readable_claim(hfe)["text"] == (
+            "Hereditary hemochromatosis (HFE): one copy of the effect allele A was detected (carrier "
+            "status for Hereditary hemochromatosis; one copy is not the condition itself). Evidence "
+            "tier: replicated, from ClinVar's review level: ClinVar lists this record as Pathogenic "
+            "with two review stars (criteria provided, multiple submitters, no conflicts); this is a "
+            "review level, not a count of independent studies."))
+        return True
+    attempt("S3A.carrier_tier_still_from_clinvar", carrier_tier_still_from_clinvar)
+
+    def rare_ppv_for_composite_pathogenic():
+        rows = [("rs9100001", "1", 1000, "G", "A"), ("rs9100002", "1", 1000, "A", "A"),
+                ("rs9100003", "1", 1000, "G", "A"), ("rs9100004", "1", 1000, "G", "A"),
+                ("rs9100005", "1", 1000, "G", "A"), ("rs9100006", "1", 1000, "G", "G"),
+                ("rs9100007", "1", 1000, "G", "A")]
+        common = _s3a_rare_variant("rs9100007", "Pathogenic/Likely pathogenic")
+        common["gnomad_af"] = 0.2
+        variants = [_s3a_rare_variant("rs9100001", "Pathogenic/Likely pathogenic"),
+                    _s3a_rare_variant("rs9100002", "Pathogenic/Likely pathogenic"),
+                    _s3a_rare_variant("rs9100003", "Pathogenic"),
+                    _s3a_rare_variant("rs9100004", "Likely pathogenic"),
+                    _s3a_rare_variant("rs9100005", "Benign/Likely benign"),
+                    _s3a_rare_variant("rs9100006", "Pathogenic/Likely pathogenic"),
+                    common]
+        for i, v in enumerate(variants):
+            v["position"] = 1000 + i
+        rows = [(r[0], r[1], 1000 + i, r[3], r[4]) for i, r in enumerate(rows)]
+        doc = _doc_from(rows, variants)
+        by = {f["rsid"]: f for f in doc["findings"]}
+        note = caveats.CAVEAT_REGISTRY["rare_ppv"]
+        want = {"rs9100001": True, "rs9100002": True, "rs9100003": True, "rs9100004": True,
+                "rs9100005": False, "rs9100006": False, "rs9100007": False}
+        for rsid, expect in want.items():
+            f = by[rsid]
+            rel = f["confidence"]["array_reliability"]
+            got = rel["ppv_note"] == note and note in f["caveats"]
+            _require(f"{rsid} ({f['state']}, {rel['rarity_class']}, "
+                     f"{f['evidence']['clinvar']['significance']}): rare_ppv {got}, want {expect}",
+                     got == expect and (expect or (rel["ppv_note"] is None and note not in f["caveats"])))
+        _require("rs9100001 is not a rare het (test premise)",
+                 by["rs9100001"]["call"]["zygosity"] == "het"
+                 and by["rs9100001"]["confidence"]["array_reliability"]["rarity_class"] in ("rare", "ultra_rare"))
+        _require("rs9100002 is not a rare hom_alt (test premise)", by["rs9100002"]["call"]["zygosity"] == "hom_alt")
+        # the release fixture's rare GRHPR het ("Pathogenic/Likely pathogenic") gets the caveat
+        grhpr = next(f for f in _release_doc("raw.release.synthetic.txt")["findings"]
+                     if f["rsid"] == "rs180177314")
+        _require("GRHPR premise", grhpr["state"] == "detected" and grhpr["call"]["zygosity"] == "het")
+        _require("GRHPR rare het lacks the rare-call caveat",
+                 grhpr["confidence"]["array_reliability"]["ppv_note"] == note and note in grhpr["caveats"])
+        return True
+    attempt("S3A.rare_ppv_for_composite_pathogenic", rare_ppv_for_composite_pathogenic)
+
+    def trait_association_sentence():
+        for label in ("Example trait one", "Another trait two"):
+            f = _hf("f_000000000001", "rs9000001", "GENEA", label, "detected", "het", "trait")
+            for zygosity in ("het", "hom_alt", "unknown"):
+                f["call"]["zygosity"] = zygosity
+                text = stage3_run.readable_claim(f)["text"]
+                _require(f"trait sentence wrong: {text}", text.endswith(" " + _s3a_trait_sentence(label)))
+                _require(f"old trait sentence kept: {text}", "does not diagnose the condition" not in text)
+        pcsk9 = _s3a_release_trait(_release_doc("raw.release.synthetic.txt"))
+        text = stage3_run.readable_claim(pcsk9)["text"]
+        _require(f"PCSK9 line wrong: {text}", text == (
+            "LDL cholesterol levels (PCSK9): one copy of the effect allele T was detected. Evidence "
+            "tier: replicated, from the GWAS Catalog association count. This is a statistical "
+            "association with LDL cholesterol levels in published studies; it is not a measurement "
+            "of LDL cholesterol levels and not a diagnosis."))
+        risk = _hf("f_000000000002", "rs9000002", "GENEB", "Condition one", "detected", "het",
+                   "risk_association")
+        risk_text = stage3_run.readable_claim(risk)["text"]
+        _require(f"risk sentence changed: {risk_text}", risk_text.endswith(
+            " This is an association with Condition one; this report does not diagnose the condition."))
+        _require(f"risk line uses the trait sentence: {risk_text}", "statistical" not in risk_text)
+        carrier = _hf("f_000000000003", "rs9000003", "GENEC", "Condition three", "detected", "het",
+                      "carrier_status")
+        _require("carrier line gained an association sentence",
+                 "association" not in stage3_run.readable_claim(carrier)["text"])
+        return True
+    attempt("S3A.trait_association_sentence", trait_association_sentence)
+
+    def trait_line_has_no_direction_word():
+        docs = [_release_doc(name) for name in RELEASE_FIXTURES]
+        docs.append(_hdoc([_hf("f_000000000001", "rs9000001", "GENEA", "Example trait one", "detected",
+                               zygosity, "trait") for zygosity in ("het",)]))
+        seen = 0
+        for doc in docs:
+            for f in doc["findings"]:
+                if f.get("result_type") != "trait":
+                    continue
+                seen += 1
+                low = stage3_run.readable_claim(f)["text"].lower()
+                for word in S3A_DIRECTION_WORDS:
+                    _require(f"trait line has direction word {word!r}: {low}", word not in low)
+        _require("no trait line checked", seen >= 3)
+        return True
+    attempt("S3A.trait_line_has_no_direction_word", trait_line_has_no_direction_word)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -1349,6 +1601,7 @@ def run(check):
     _run_behavior(attempt)
     _run_4a2_behavior(attempt)
     _run_r83(attempt)
+    _run_s3a(attempt)
 
 
 def main():

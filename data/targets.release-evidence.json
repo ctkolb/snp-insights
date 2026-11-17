@@ -1,6 +1,6 @@
 {
   "_note": "Curated ClinVar evidence for the release carrier targets; each entry mirrors the attributing per-condition RCV cited in docs/panel-curation.md, read from the frozen evidence pack, not a clinical panel",
-  "panel_version": "0.1.0",
+  "panel_version": "0.2.0",
   "entries": [
     {
       "rsid": "rs1800562",
@@ -23,6 +23,38 @@
       "condition": "Factor V Leiden thrombophilia",
       "clinvar_record": "clinvar:rcv:RCV000454249",
       "significance": "Pathogenic/Pathogenic, low penetrance",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "review_stars": 2
+    },
+    {
+      "rsid": "rs1799807",
+      "condition": "Deficiency of butyrylcholinesterase",
+      "clinvar_record": "clinvar:rcv:RCV000277104",
+      "significance": "Pathogenic/Likely pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "review_stars": 2
+    },
+    {
+      "rsid": "rs121908529",
+      "condition": "Primary hyperoxaluria, type I",
+      "clinvar_record": "clinvar:rcv:RCV000032681",
+      "significance": "Pathogenic/Likely pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "review_stars": 2
+    },
+    {
+      "rsid": "rs185803104",
+      "condition": "Primary hyperoxaluria type 3",
+      "clinvar_record": "clinvar:rcv:RCV000186492",
+      "significance": "Pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "review_stars": 2
+    },
+    {
+      "rsid": "rs180177314",
+      "condition": "Primary hyperoxaluria, type II",
+      "clinvar_record": "clinvar:rcv:RCV000186442",
+      "significance": "Pathogenic/Likely pathogenic",
       "review_status": "criteria provided, multiple submitters, no conflicts",
       "review_stars": 2
     }

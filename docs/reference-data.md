@@ -2,7 +2,7 @@
 
 This page explains where the knowledge in a report comes from, what each public
 source is, and how to get the files if you want to rebuild or extend the panel.
-If you only want to run v0.1.0 on a raw file, you can skip all of it: see
+If you only want to run v0.2.0 on a raw file, you can skip all of it: see
 [getting-started.md](getting-started.md).
 
 Nothing here is medical advice.
@@ -36,7 +36,7 @@ is never auto-fetched or redistributed. OMIM is not downloaded (link-only).
 | **dbSNP** (NCBI) | The catalog of known variants and their rsIDs. | Coordinates and alleles on GRCh37 (the genome build the panel uses). Its RsMergeArch file maps retired rsIDs to current ones so an older ID in a file still matches. | Yes: the variation API (small fetch) or the full VCF (`fetch --full`). |
 | **ClinVar** (NCBI) | A public archive of reports on how variants relate to health conditions, with a review level shown as stars. | The clinical significance and review stars for the health entries (carrier and risk). | Yes: `variant_summary` is downloaded by default (about 0.5 GB, once); `--clinvar-mode api` uses the lighter E-utilities instead. |
 | **gnomAD** (Broad Institute) | Allele frequencies from a large set of sequenced people. | How common the effect allele is in the population. | Yes: the GraphQL API (small fetch) or the full VCF (`fetch --full`). |
-| **GWAS Catalog** (EMBL-EBI), via **Open Targets** or the full file | A catalog of published genome-wide association studies. | Counting matching studies for trait entries. v0.1.0 has no trait entries. | Yes: Open Targets per rsID by default (`--gwas-mode ot`, no big download), or the full associations zip with `--gwas-mode full` (about 70 MB). |
+| **GWAS Catalog** (EMBL-EBI), via **Open Targets** or the full file | A catalog of published genome-wide association studies. | Counting matching studies for trait entries. The release panel has one trait entry (rs11591147); its study rows come from the GWAS Catalog. | Yes: Open Targets per rsID by default (`--gwas-mode ot`, no big download), or the full associations zip with `--gwas-mode full` (about 70 MB). |
 | **SNPedia** | A community wiki that scores variants by "magnitude" (noteworthiness). | An optional extra score. | No. Its site blocks programmatic access. See [SNPedia (manual)](#snpedia-manual). |
 | **OMIM** | A catalog of genes and genetic conditions. | Link-only: each finding links to an OMIM search. | No. |
 | **MedlinePlus Genetics** and **GeneReviews** | Plain-language and clinician-written gene summaries. | Link-only: the report's "Read more" lines link to them; the code writes the links, never the model. | No. |
@@ -45,7 +45,7 @@ is never auto-fetched or redistributed. OMIM is not downloaded (link-only).
 
 | What you want to do | Fetch needed? |
 | --- | --- |
-| Run v0.1.0 on your own file | **No.** The built release panel, `data/targets.release-panel.json`, is already in the repository. |
+| Run v0.2.0 on your own file | **No.** The built release panel, `data/targets.release-panel.json`, is already in the repository. |
 | Try the tool on synthetic data | No. |
 | Rebuild `data/panel.sample.json` from the tiny samples | No. See [The synthetic samples](#the-synthetic-samples). |
 | Rebuild or extend the release panel, or add variants | Yes, by one of the three ways below. |
@@ -239,7 +239,7 @@ its curated per-condition ClinVar record instead of the aggregate row. The
 command above shows the shape only; it is not the recorded rebuild command and
 needs real reference files.
 
-You do not need to rebuild the release panel to run v0.1.0:
+You do not need to rebuild the release panel to run v0.2.0:
 `data/targets.release-panel.json` is already built and tracked. A rebuild is
 optional, needs the network or the full files, and is mainly for contributors. The
 recorded curation method, the exact rebuild command and the evidence behind each

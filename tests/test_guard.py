@@ -548,10 +548,15 @@ def _full_fixture(messages=("clean synthetic message",), base=None):
     base = base or tempfile.mkdtemp(prefix="snp-insights-full-")
     repo = os.path.join(base, "work")
     os.makedirs(os.path.join(repo, ".home"))
-    listing = subprocess.run(
-        ("git", "ls-files", "-z"), cwd=ROOT, env=_fixture_env(base),
-        capture_output=True, check=True).stdout.decode().split("\0")
-    paths = [p for p in listing if p and os.path.exists(os.path.join(ROOT, p))]
+    manifest = os.path.join(ROOT, ".tracked-files")
+    if os.path.lexists(os.path.join(ROOT, ".git")) or not os.path.isfile(manifest):
+        listing = subprocess.run(
+            ("git", "ls-files", "-z"), cwd=ROOT, env=_fixture_env(base),
+            capture_output=True, check=True).stdout
+    else:
+        with open(manifest, "rb") as fh:
+            listing = fh.read()
+    paths = [p for p in listing.decode().split("\0") if p and os.path.exists(os.path.join(ROOT, p))]
     for rel in paths:
         dst = os.path.join(repo, rel)
         os.makedirs(os.path.dirname(dst), exist_ok=True)

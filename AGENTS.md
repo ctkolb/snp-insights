@@ -119,10 +119,10 @@ tests/    test_pipeline.py + test_evidence.py, test_category.py, test_cli.py,
   validator) and the guard all pass; `data/panel.sample.json` reproduces exactly
   from the ETL.
 
-## Current state (v0.1.0 release run)
+## Current state (v0.2.0 release run)
 
-The release branch carries the reviewed v0.1.0 work: a curated three-entry health
-panel (no trait entries), the template report, the owner-checkpoint procedure
+The release branch carries the reviewed v0.2.0 work: a curated eight-entry
+panel (seven health entries, one trait entry), the template report, the owner-checkpoint procedure
 (docs/owner-checkpoint.md) and the accepted-limits register
 (docs/accepted-limits.md). The remaining steps are owner-only: the private
 real-data checkpoint, repository branch protection, and the release tag.
@@ -146,7 +146,7 @@ Priority order (rough):
 1. **Real-data validation** (after reviewed CI/local integration and release
    planning). The owner performs the private checkpoint described above; coding
    sessions validate parser and call-state behavior with synthetic fixtures.
-2. **Curate a usable panel — DONE for v0.1.0** (three health entries, no trait entries; see docs/panel-curation.md).
+2. **Curate a usable panel — DONE for v0.2.0** (seven health entries, one trait entry; see docs/panel-curation.md).
 3. **Single entrypoint CLI — DONE.** `python -m snp_insights` and a
    `snp-insights` console script wrap `fetch`, `build-panel`, `check-raw`,
    `annotate`, `narrate`, and `run` (annotate → narrate); `pyproject.toml` and

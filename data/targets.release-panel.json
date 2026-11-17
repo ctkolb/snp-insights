@@ -1,30 +1,30 @@
 {
-  "panel_version": "0.1.0",
+  "panel_version": "0.2.0",
   "genome_build": "GRCh37",
   "strand": "forward",
   "sources": [
     {
       "source": "dbSNP",
-      "release": "variation-api-2026-11-11",
-      "retrieved_at": "2026-11-11T19:57:14Z",
+      "release": "variation-api-2026-11-11 (3 entries) and 2026-11-14 (5 entries)",
+      "retrieved_at": "2026-11-14T14:16:47Z",
       "license": "public domain (NCBI)"
     },
     {
       "source": "ClinVar",
-      "release": "variant_summary-2026-11-11",
-      "retrieved_at": "2026-11-11T19:57:14Z",
+      "release": "variant_summary-2026-11-14",
+      "retrieved_at": "2026-11-14T14:16:47Z",
       "license": "public domain (NCBI)"
     },
     {
       "source": "gnomAD",
-      "release": "graphql-2026-11-11",
-      "retrieved_at": "2026-11-11T19:57:14Z",
+      "release": "graphql-2026-11-11 (3 entries) and 2026-11-14 (5 entries)",
+      "retrieved_at": "2026-11-14T14:16:47Z",
       "license": "free (Broad)"
     },
     {
       "source": "GWAS Catalog",
-      "release": "opentargets-2026-11-11",
-      "retrieved_at": "2026-11-11T19:57:14Z",
+      "release": "opentargets-2026-11-11 (3 entries); opentargets-2026-11-14 (4 carriers); gwas-catalog-rest-2026-11-14 (rs11591147)",
+      "retrieved_at": "2026-11-14T14:16:47Z",
       "license": "free (EMBL-EBI)"
     }
   ],
@@ -107,6 +107,140 @@
         "review_stars": 2,
         "review_status_text": "criteria provided, multiple submitters, no conflicts",
         "source_version": "curated clinvar:rcv:RCV000454249"
+      },
+      "snpedia": null,
+      "association": "replicated"
+    },
+    {
+      "rsid": "rs1799807",
+      "gene": "BCHE",
+      "condition": "Deficiency of butyrylcholinesterase",
+      "category": "carrier",
+      "result_type": "carrier_status",
+      "effect_allele": "C",
+      "assayability": "snp",
+      "strand": "forward",
+      "chromosome": "3",
+      "position": 165548529,
+      "reference_allele": "T",
+      "alternate_alleles": [
+        "A",
+        "C"
+      ],
+      "alternate_allele": "C",
+      "gnomad_af": 0.01086125621098229,
+      "clinvar": {
+        "significance": "Pathogenic/Likely pathogenic",
+        "review_stars": 2,
+        "review_status_text": "criteria provided, multiple submitters, no conflicts",
+        "source_version": "curated clinvar:rcv:RCV000277104"
+      },
+      "snpedia": null,
+      "association": "replicated"
+    },
+    {
+      "rsid": "rs121908529",
+      "gene": "AGXT",
+      "condition": "Primary hyperoxaluria, type I",
+      "category": "carrier",
+      "result_type": "carrier_status",
+      "effect_allele": "A",
+      "assayability": "snp",
+      "strand": "forward",
+      "chromosome": "2",
+      "position": 241810850,
+      "reference_allele": "G",
+      "alternate_alleles": [
+        "A",
+        "C",
+        "T"
+      ],
+      "alternate_allele": "A",
+      "gnomad_af": 0.000573869795319773,
+      "clinvar": {
+        "significance": "Pathogenic/Likely pathogenic",
+        "review_stars": 2,
+        "review_status_text": "criteria provided, multiple submitters, no conflicts",
+        "source_version": "curated clinvar:rcv:RCV000032681"
+      },
+      "snpedia": null,
+      "association": "replicated"
+    },
+    {
+      "rsid": "rs185803104",
+      "gene": "HOGA1",
+      "condition": "Primary hyperoxaluria type 3",
+      "category": "carrier",
+      "result_type": "carrier_status",
+      "effect_allele": "T",
+      "assayability": "snp",
+      "strand": "forward",
+      "chromosome": "10",
+      "position": 99359925,
+      "reference_allele": "G",
+      "alternate_alleles": [
+        "T"
+      ],
+      "alternate_allele": "T",
+      "gnomad_af": 0.0007969905636317266,
+      "clinvar": {
+        "significance": "Pathogenic",
+        "review_stars": 2,
+        "review_status_text": "criteria provided, multiple submitters, no conflicts",
+        "source_version": "curated clinvar:rcv:RCV000186492"
+      },
+      "snpedia": null,
+      "association": "replicated"
+    },
+    {
+      "rsid": "rs180177314",
+      "gene": "GRHPR",
+      "condition": "Primary hyperoxaluria, type II",
+      "category": "carrier",
+      "result_type": "carrier_status",
+      "effect_allele": "A",
+      "assayability": "snp",
+      "strand": "forward",
+      "chromosome": "9",
+      "position": 37429729,
+      "reference_allele": "G",
+      "alternate_alleles": [
+        "A"
+      ],
+      "alternate_allele": "A",
+      "gnomad_af": 0.00011532832781878341,
+      "clinvar": {
+        "significance": "Pathogenic/Likely pathogenic",
+        "review_stars": 2,
+        "review_status_text": "criteria provided, multiple submitters, no conflicts",
+        "source_version": "curated clinvar:rcv:RCV000186442"
+      },
+      "snpedia": null,
+      "association": "replicated"
+    },
+    {
+      "rsid": "rs11591147",
+      "gene": "PCSK9",
+      "condition": "LDL cholesterol levels",
+      "category": "trait",
+      "result_type": "trait",
+      "effect_allele": "T",
+      "assayability": "snp",
+      "strand": "forward",
+      "chromosome": "1",
+      "position": 55505647,
+      "reference_allele": "G",
+      "alternate_alleles": [
+        "A",
+        "T"
+      ],
+      "alternate_allele": "T",
+      "gnomad_af": 0.014044585987261146,
+      "clinvar": {
+        "significance": "Benign/Likely benign",
+        "review_stars": 2,
+        "review_status_text": "criteria provided, multiple submitters, no conflicts",
+        "source_version": "ClinVar variant_summary-2026-11-14"
       },
       "snpedia": null,
       "association": "replicated"
