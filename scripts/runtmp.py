@@ -21,15 +21,17 @@ Removal is guarded. The helper removes only the directory it created: a real
 directory (not a symbolic link) with the same device and inode, directly under
 the recorded parent, with the expected name, owned by this uid, whose marker is
 a regular file that still names this pid, uid and token. Only the creating
-process removes it, never a forked child. Anything else is left in place and
-reported on stderr as "runtmp: refusing ...".
+process removes it, never a forked child. The removal itself is bound to that
+device and inode: it works through directory descriptors that never follow a
+symbolic link, changes permissions only on directories inside the tree, and
+never changes the parent. Anything else is left in place and reported on
+stderr as "runtmp: refusing ...".
 """
 import atexit
 import json
 import os
 import re
 import secrets
-import shutil
 import signal
 import stat
 import string
@@ -184,37 +186,173 @@ def _refusal(st):
     return None
 
 
+_DIR_FLAGS = (os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+              | getattr(os, "O_CLOEXEC", 0))
+
+
+class _Refused(Exception):
+    """A directory being removed no longer is the one that was checked."""
+
+
+def _open_dir(name, dir_fd):
+    """Open a directory entry relative to dir_fd; a symbolic link fails."""
+    return os.open(name, _DIR_FLAGS, dir_fd=dir_fd)
+
+
 def _onexc(func, path, exc):
-    if isinstance(exc, FileNotFoundError):
-        return
-    if isinstance(exc, PermissionError):
-        try:
-            parent = os.path.dirname(path)
-            os.chmod(parent, os.lstat(parent).st_mode | stat.S_IRWXU)
-            if not os.path.islink(path) and os.path.isdir(path):
-                os.chmod(path, os.lstat(path).st_mode | stat.S_IRWXU)
-            func(path)
-            return
-        except FileNotFoundError:
-            return
-        except OSError:
-            pass
-    raise exc
+    """Error policy for one failed removal step; never touches the filesystem.
+
+    True when the step can be ignored (the entry is already gone), False when it
+    failed. Permission is repaired only through descriptors inside the tree
+    being removed (see _clear), never through a path, so there is nothing to
+    retry here; func and path are accepted for the onexc calling convention.
+    """
+    return isinstance(exc, FileNotFoundError)
 
 
-def _remove_tree(path):
-    """Remove a tree known to be ours; retries while late writers finish."""
-    for _ in range(5):
-        try:
-            shutil.rmtree(path, onexc=_onexc)
-        except FileNotFoundError:
+def _same(st, ident):
+    return (st.st_dev, st.st_ino) == ident
+
+
+def _rmdir_checked(dir_fd, name, ident):
+    """rmdir name under dir_fd only while it is still the directory ident.
+
+    rmdir removes only an empty directory, so the window between this check
+    and the rmdir can at worst remove an empty directory swapped in there.
+    """
+    if not _same(os.stat(name, dir_fd=dir_fd, follow_symlinks=False), ident):
+        raise _Refused("%s was replaced during removal" % name)
+    os.rmdir(name, dir_fd=dir_fd)
+
+
+def _repair_dir(dir_fd, name):
+    """Give the owner rwx on subdirectory name without following a link."""
+    st = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+    if not stat.S_ISDIR(st.st_mode):
+        raise PermissionError("not a directory: %s" % name)
+    try:
+        os.chmod(name, stat.S_IMODE(st.st_mode) | stat.S_IRWXU, dir_fd=dir_fd,
+                 follow_symlinks=False)
+    except NotImplementedError:
+        raise PermissionError("cannot change %s without following links" % name)
+
+
+def _remove_subdir(dir_fd, name):
+    try:
+        fd = _open_dir(name, dir_fd)
+    except PermissionError:
+        _repair_dir(dir_fd, name)
+        fd = _open_dir(name, dir_fd)
+    try:
+        info = os.fstat(fd)
+        empty = _clear(fd)
+    finally:
+        os.close(fd)
+    if not empty:
+        raise PermissionError("could not empty %s" % name)
+    _rmdir_checked(dir_fd, name, (info.st_dev, info.st_ino))
+
+
+def _clear(dir_fd):
+    """Remove every entry of the open directory dir_fd; True when it is empty.
+
+    Works only through descriptors: a symbolic link is unlinked, never
+    followed, and a permission failure is repaired with fchmod on dir_fd
+    itself, which is inside the tree being removed.
+    """
+    for attempt in range(2):
+        failed = False
+        with os.scandir(dir_fd) as it:
+            entries = [(e.name, e.is_dir(follow_symlinks=False)) for e in it]
+        for name, is_dir in entries:
+            try:
+                if is_dir:
+                    _remove_subdir(dir_fd, name)
+                else:
+                    os.unlink(name, dir_fd=dir_fd)
+            except OSError as exc:
+                if not _onexc(os.unlink, name, exc):
+                    failed = True
+        if not failed:
             return True
-        except OSError:
-            pass
-        if not os.path.lexists(path):
-            return True
-        time.sleep(0.05)
-    return not os.path.lexists(path)
+        if attempt == 0:
+            os.fchmod(dir_fd, stat.S_IMODE(os.fstat(dir_fd).st_mode) | stat.S_IRWXU)
+    return False
+
+
+def _remove_tree(path, expect=None):
+    """Remove the active root, or a directory inside it, bound to one inode.
+
+    The directory is reached from a descriptor of the recorded parent (and,
+    below the root, through descriptors that never follow a symbolic link),
+    and its device and inode must equal expect: for the root, the identity
+    recorded at activation. Its contents are removed through that descriptor,
+    so a directory swapped in at the same path is never touched. Removing the
+    root never changes the recorded parent: a parent this process cannot write
+    to leaves the root in place. Returns True when removed; anything that no
+    longer matches leaves the tree and prints "runtmp: refusing ...".
+    """
+    st = _state
+    if st is None or os.getpid() != st["pid"]:
+        return False
+    root_ident = (st["dev"], st["ino"])
+    is_root = path == st["root"]
+    if expect is None and is_root:
+        expect = root_ident
+    rel = os.path.relpath(path, st["root"]).split(os.sep)
+    if expect is None or (not is_root and (not _inside(path) or "." in rel or ".." in rel)):
+        _warn("refusing to remove %s: not a checked directory of the run root" % path)
+        return False
+    if is_root and not os.access(st["parent"], os.W_OK | os.X_OK):
+        _warn("refusing to remove %s: parent directory is not writable" % path)
+        return False
+    opened = []
+    try:
+        opened.append(os.open(st["parent"], _DIR_FLAGS))
+        name = st["name"]
+        if not is_root:
+            opened.append(_open_dir(name, opened[-1]))
+            if not _same(os.fstat(opened[-1]), root_ident):
+                raise _Refused("the run root was replaced")
+            for part in rel[:-1]:
+                opened.append(_open_dir(part, opened[-1]))
+            name = rel[-1]
+        anchor = opened[-1]
+        for _ in range(5):
+            try:
+                fd = _open_dir(name, anchor)
+            except FileNotFoundError:
+                return True
+            try:
+                if not _same(os.fstat(fd), expect):
+                    raise _Refused("replaced by another directory")
+                empty = _clear(fd)
+            finally:
+                os.close(fd)
+            if empty:
+                try:
+                    _rmdir_checked(anchor, name, expect)
+                    return True
+                except FileNotFoundError:
+                    return True
+                except PermissionError:
+                    if is_root:
+                        raise _Refused("parent directory is not writable")
+                    os.fchmod(anchor, stat.S_IMODE(os.fstat(anchor).st_mode) | stat.S_IRWXU)
+                except OSError:
+                    pass
+            time.sleep(0.05)
+        _warn("could not fully remove %s" % path)
+        return False
+    except _Refused as exc:
+        _warn("refusing to remove %s: %s" % (path, exc))
+        return False
+    except OSError as exc:
+        _warn("refusing to remove %s: %s" % (path, exc))
+        return False
+    finally:
+        for fd in reversed(opened):
+            os.close(fd)
 
 
 def _inside(path):
@@ -231,21 +369,23 @@ def release(path):
     """Remove a directory this process created inside its run root, early.
 
     Refuses (returns False) a path outside the root, the root itself, a
-    symbolic link, and anything that is not a directory.
+    symbolic link, and anything that is not a directory. Removal is bound to
+    the device and inode seen here (see _remove_tree).
     """
     if not active():
         return False
     try:
-        if os.path.islink(path) or not os.path.isdir(path):
-            return False
+        info = os.lstat(path)
     except OSError:
+        return False
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
         return False
     resolved = _inside(path)
     if resolved is None or resolved != os.path.abspath(path):
         return False
     if _refusal(_state) is not None:
         return False
-    return _remove_tree(resolved)
+    return _remove_tree(resolved, (info.st_dev, info.st_ino))
 
 
 def cleanup():
@@ -273,8 +413,6 @@ def cleanup():
                 removed = _remove_tree(st["root"])
             except BaseException:
                 removed = _remove_tree(st["root"])
-            if not removed:
-                _warn("could not fully remove %s" % st["root"])
     except BaseException as exc:
         _warn("cleanup error for %s: %r" % (st["root"], exc))
     finally:
