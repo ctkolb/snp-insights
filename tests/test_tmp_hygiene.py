@@ -33,12 +33,12 @@ TIMEOUT = 120
 # Modules whose main() does not activate the owned run root yet. BUILD-2 of the
 # temp-cleanup stage converts them and empties this set; a new module with a
 # main() that does not activate the root fails TMP6.
-PENDING_ACTIVATION = {
-    "tests/test_category.py", "tests/test_cli.py", "tests/test_docs_release.py",
-    "tests/test_evidence.py", "tests/test_guard.py", "tests/test_interpretation.py",
-    "tests/test_release_panel.py", "tests/test_report_readability.py",
-    "tests/test_result_block.py",
-}
+PENDING_ACTIVATION = set()
+
+# T-12 (decision D-7): live project-owned bytes while test_guard runs, and the
+# number of times the project's tracked files are copied into a fixture.
+PEAK_LIVE_BYTES = 25 * 1000 * 1000
+MAX_FULL_COPIES = 14
 
 # Shared by this process and the child programs below: a byte-level picture of
 # a directory tree that never follows a symbolic link.
@@ -237,11 +237,16 @@ def _marker(path):
 
 # ------------------------------------------------------------ TMP1 suites
 
+STANDALONE_SUITES = ("tests/test_category.py", "tests/test_evidence.py",
+                     "tests/test_cli.py", "tests/test_release_panel.py")
+
+
 def test_child_suites(check):
-    for suite in ("tests/test_category.py", "tests/test_evidence.py"):
+    # Each suite runs by direct entry, exactly as the project runs it: its own
+    # main() must activate the owned run root.
+    for suite in STANDALONE_SUITES:
         parent = _fresh("suite")
-        proc = _py("-c", SUITE_CHILD, SCRIPTS, os.path.join(ROOT, suite),
-                   cwd=ROOT, env=_env(parent))
+        proc = _py(os.path.join(ROOT, suite), cwd=ROOT, env=_env(parent))
         name = os.path.basename(suite)
         check("TMP1.suite_passes[%s]" % name,
               proc.returncode == 0 and " 0 failed" in proc.stdout)
@@ -617,7 +622,161 @@ def test_loop_mutations(check):
     check("TMP7.no_new_entries_after_mutation", _entries(here) == before)
 
 
-def run(check):
+# ------------------------------------------------------------ TMP8 scrubbed env (D-10)
+
+def _scrubbed_env_sites():
+    """(file, line) of every dict literal or dict() call that names both PATH and
+    HOME as keys in a test module: a scrubbed environment for a child process."""
+    sites = []
+    for name in sorted(os.listdir(TESTS)):
+        if not (name.startswith("test_") and name.endswith(".py")):
+            continue
+        with open(os.path.join(TESTS, name)) as fh:
+            tree_ = ast.parse(fh.read())
+        for node in ast.walk(tree_):
+            keys = None
+            if isinstance(node, ast.Dict):
+                keys = {k.value for k in node.keys
+                        if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+            elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                  and node.func.id == "dict"):
+                keys = {k.arg for k in node.keywords if k.arg}
+            if keys and {"PATH", "HOME"} <= keys:
+                sites.append((name, node.lineno, "TMPDIR" in keys))
+    return sites
+
+
+def test_scrubbed_env(check):
+    sites = _scrubbed_env_sites()
+    check("TMP8.scrubbed_env_sites_found", len(sites) >= 6)
+    missing = ["%s:%d" % (n, ln) for n, ln, has in sites if not has]
+    check("TMP8.scrubbed_env_passes_tmpdir (missing %s)" % ",".join(missing) if missing
+          else "TMP8.scrubbed_env_passes_tmpdir", not missing)
+    # The detector itself must see an omission.
+    probe = ast.parse("e = {'PATH': 1, 'HOME': 2}\nf = {'PATH': 1, 'HOME': 2, 'TMPDIR': 3}")
+    flags = [("TMPDIR" in {k.value for k in n.keys}) for n in ast.walk(probe)
+             if isinstance(n, ast.Dict)]
+    check("TMP8.detector_distinguishes_omission", sorted(flags) == [False, True])
+
+
+# ------------------------------------------------------------ TMP9 fixture isolation
+
+def test_fixture_isolation(check):
+    sys.path.insert(0, TESTS)
+    sys.path.insert(0, SCRIPTS)
+    import test_guard as tg
+    scope = getattr(tg, "_fixture_scope", None)
+    fingerprint = getattr(tg, "_template_fingerprint", None)
+    check("TMP9.fixture_scope_exists", scope is not None and fingerprint is not None)
+    if scope is None or fingerprint is None:
+        return
+    before = fingerprint()
+    with scope():
+        repo1, base1 = tg._full_fixture()
+        repo2, base2 = tg._full_fixture(("clean synthetic message", "second"))
+        gits = [os.path.realpath(os.path.join(r, ".git")) for r in (repo1, repo2)]
+        homes = [os.path.realpath(os.path.join(r, ".home")) for r in (repo1, repo2)]
+        check("TMP9.fixtures_do_not_share_paths",
+              len({base1, base2}) == 2 and len(set(gits)) == 2 and len(set(homes)) == 2
+              and all(os.path.isdir(g) and not os.path.islink(g) for g in gits))
+        heads = [tg._fx(r, "rev-list", "--count", "HEAD") for r in (repo1, repo2)]
+        check("TMP9.fixtures_keep_independent_history", heads == ["2", "3"])
+        marker = os.path.join(repo1, "docs", "fixture-isolation-probe.md")
+        with open(marker, "w") as fh:
+            fh.write("probe")
+        check("TMP9.mutating_one_fixture_leaves_the_other",
+              not os.path.exists(os.path.join(repo2, "docs", "fixture-isolation-probe.md")))
+        check("TMP9.fixtures_live_inside_owned_root",
+              not runtmp_active() or all(
+                  os.path.realpath(b).startswith(runtmp_root() + os.sep) for b in (base1, base2)))
+    check("TMP9.scope_releases_fixtures", not os.path.lexists(base1) and not os.path.lexists(base2))
+    check("TMP9.template_unchanged", fingerprint() == before)
+
+
+def runtmp_active():
+    try:
+        import runtmp
+    except ImportError:
+        return False
+    return runtmp.active()
+
+
+def runtmp_root():
+    import runtmp
+    return os.path.realpath(runtmp.root())
+
+
+# ------------------------------------------------------------ TMP10 no in-tree scratch (A-1)
+
+def test_no_in_tree_scratch(check):
+    with open(os.path.join(TESTS, "test_guard.py")) as fh:
+        src = fh.read()
+    tree_ = ast.parse(src)
+    literals = [n.value for n in ast.walk(tree_)
+                if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+    check("TMP10.no_fixed_in_tree_large_file",
+          not any("tmp_large" in s for s in literals))
+    check("TMP10.no_stray_large_file_in_tree",
+          not os.path.lexists(os.path.join(TESTS, ".tmp_large.bin")))
+
+
+# ------------------------------------------------------------ TMP11 test_guard (heavy)
+
+GUARD_CHILD_SRC = r'''
+import json, os, shutil, sys
+root = sys.argv[1]
+sys.path.insert(0, os.path.join(root, "scripts"))
+sys.path.insert(0, os.path.join(root, "tests"))
+import test_guard as tg
+stats = {"fixtures": 0, "copies": 0}
+real_full = tg._full_fixture
+real_copy = shutil.copy2
+readme = os.path.join(root, "README.md")
+def counting_full(*a, **k):
+    stats["fixtures"] += 1
+    return real_full(*a, **k)
+def counting_copy(src, dst, *a, **k):
+    if os.path.abspath(src) == readme:
+        stats["copies"] += 1
+    return real_copy(src, dst, *a, **k)
+tg._full_fixture = counting_full
+shutil.copy2 = counting_copy
+rc = tg.main()
+print("STATS " + json.dumps(stats), flush=True)
+sys.exit(rc)
+'''
+
+
+def test_guard_standalone(check):
+    parent = _fresh("guard")
+    out_json = os.path.join(_fresh("guard-json"), "audit.json")
+    proc = _py(AUDIT, "run", "--parent", parent, "--sample-peak", "--json", out_json, "--",
+               sys.executable, "-B", "-c", GUARD_CHILD_SRC, ROOT, cwd=ROOT, timeout=900)
+    summary = _tagged(proc.stdout, "AUDIT") or {}
+    stats = _tagged(proc.stdout, "STATS") or {}
+    check("TMP11.test_guard_passes", summary.get("rc") == 0 and " 0 failed" in proc.stdout)
+    new = summary.get("new_count", -1)
+    check("TMP11.test_guard_leaves_no_entries (left %s)" % new if new else
+          "TMP11.test_guard_leaves_no_entries", new == 0)
+    peak = summary.get("peak_bytes", 10 ** 12)
+    check("TMP11.peak_live_bytes_bounded (peak %s)" % peak if peak > PEAK_LIVE_BYTES else
+          "TMP11.peak_live_bytes_bounded", peak <= PEAK_LIVE_BYTES)
+    copies = stats.get("copies", 10 ** 6)
+    check("TMP11.full_copies_bounded (copies %s)" % copies if copies > MAX_FULL_COPIES else
+          "TMP11.full_copies_bounded", copies <= MAX_FULL_COPIES)
+    check("TMP11.fixture_count_recorded", stats.get("fixtures", 0) > 0)
+    check("TMP11.no_stray_large_file_after_run",
+          not os.path.lexists(os.path.join(TESTS, ".tmp_large.bin")))
+    sys.stderr.write("TMP11 measured: fixtures=%s copies=%s peak=%s new=%s seconds=%s\n" % (
+        stats.get("fixtures"), stats.get("copies"), peak, new, summary.get("seconds")))
+
+
+def run(check, heavy=False):
+    test_scrubbed_env(check)
+    test_fixture_isolation(check)
+    test_no_in_tree_scratch(check)
+    if heavy:
+        test_guard_standalone(check)
     test_child_suites(check)
     test_audit_detects_leak(check)
     test_signals(check)
@@ -642,7 +801,9 @@ def main():
         check("TMP0.runtmp_importable", False)
     else:
         runtmp.activate(tool="test_tmp_hygiene")
-    run(check)
+    # Standalone only: the test_guard child takes about a minute, and the full
+    # pipeline already runs test_guard itself.
+    run(check, heavy=True)
     for name in passed:
         print(f"  ok   {name}")
     for name in failed:
