@@ -152,6 +152,9 @@ elif mode == "nomarker":
 elif mode == "badjson":
     with open(marker, "w") as fh:
         fh.write("{not json")
+elif mode == "parentswap":
+    os.rename(parent, parent + ".moved")
+    os.symlink(parent + ".moved", parent)
 elif mode == "forgedpid":
     rewrite(pid=1)
 elif mode == "foreignuid":
@@ -285,6 +288,12 @@ def test_audit_detects_leak(check):
                       "import tempfile; tempfile.mkdtemp(); tempfile.mkstemp()", SCRIPTS)
     check("TMP2.audit_clean_for_owned_root_child", proc.returncode == 0 and _entries(owned) == [])
 
+    bare = _fresh("audit-bare")
+    proc = _audit_run(bare, "-c", "import tempfile; tempfile.mkdtemp(prefix='bare-')")
+    summary = _tagged(proc.stdout, "AUDIT") or {}
+    check("TMP2.audit_sets_tmpdir_for_command", proc.returncode == 1
+          and [n[:5] for n in summary.get("new_entries", [])] == ["bare-"])
+
     failing = _fresh("audit-fail")
     proc = _audit_run(failing, "-c", "raise SystemExit(5)")
     summary = _tagged(proc.stdout, "AUDIT") or {}
@@ -405,7 +414,8 @@ def test_cleanup_guards(check):
     clean_parent, proc, result = _guard_child("clean")
     check("TMP4.control_removes_root", result is not None and proc.returncode == 0
           and _entries(clean_parent) == [])
-    for mode in ("symlink", "swapped", "nomarker", "badjson", "forgedpid", "foreignuid", "token"):
+    for mode in ("symlink", "swapped", "parentswap", "nomarker", "badjson", "forgedpid",
+                 "foreignuid", "token"):
         parent, proc, result = _guard_child(mode)
         ok = result is not None and proc.returncode == 0
         check("TMP4.refusal_leaves_bytes_unchanged[%s]" % mode,
