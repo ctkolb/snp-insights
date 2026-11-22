@@ -19,8 +19,13 @@ The root is removed when the process ends: on a normal exit, after an
 exception, on Ctrl-C, and on SIGTERM and SIGHUP. Removal is guarded. The
 helper removes only the directory it created, checked by name, location,
 device and inode, owner, and a marker that still names the same process, user
-and token. Only the creating process removes it. If anything does not match,
-the directory is left in place and the run prints `runtmp: refusing ...`.
+and token. Only the creating process removes it. The removal is bound to the
+directory that passed those checks: it works through directory handles that
+never follow a symbolic link, so a directory swapped in at the same path is
+left alone, and it changes permissions only on directories inside the tree
+being removed. It never changes the parent: if the parent is not writable,
+the root stays in place. If anything does not match, the directory is left in
+place and the run prints `runtmp: refusing ...`.
 
 SIGKILL and `os._exit` cannot be caught. Each such run leaves exactly one
 `snp-insights-run-*` directory behind.
@@ -67,7 +72,27 @@ the parent's top level before and after. It prints one `new: NAME` line per
 new entry and a final `AUDIT {...}` summary, and exits 1 when anything new
 remains. `--interrupt-after SECONDS --signal KILL|TERM|INT|HUP` checks
 interrupted runs, and `--max-new 1` accepts the single root a SIGKILL leaves.
-Use a dedicated empty directory, never the shared system temp directory.
+Use a dedicated empty directory, never the shared system temp directory. A
+`--json` report path inside that directory is rejected (exit 64), because a
+report written there would not be counted.
+
+Run on its own, `tests/test_tmp_hygiene.py` also measures
+`tests/test_guard.py`: entries left behind (0 expected), peak live bytes, and
+how many times the suite copies a tracked file into a full fixture. That copy
+count is the metric: it fell from 41 to 1 when the full fixtures started from
+one shared template, and the check fails above 14. The number of fixture
+directories the suite builds is recorded only; it did not change.
+
+## Known limits
+
+- A `stale` root means only that the process that created it has ended. A
+  child process it started can outlive it (for example after SIGKILL) and keep
+  writing into the root. Before removing any root, confirm that no process
+  still uses it, for example by listing open files under it (`lsof +D PATH`).
+- Markers are not authenticated. Any process running as you can write a
+  directory with a matching name and a made-up marker, and the sweep will
+  list it like a real one. The sweep only lists; any removal needs the owner's
+  explicit approval of exact names, as described below.
 
 ## Removing leftovers (manual, owner only)
 
@@ -75,7 +100,8 @@ Nothing in this repository deletes leftovers, and agents never remove them.
 The owner follows these steps:
 
 1. Run the sweep and save its output as the dry-run list.
-2. Read the exact paths listed as `stale`.
+2. Read the exact paths listed as `stale`, and confirm that no process still
+   uses any of them (see Known limits).
 3. Approve, in writing, the exact names to remove. An approval covers only
    those names and that run of the sweep.
 4. Remove exactly those paths yourself, or approve one exact command that

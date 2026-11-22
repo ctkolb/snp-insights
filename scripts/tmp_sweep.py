@@ -103,6 +103,8 @@ def main(argv=None):
         print("%d eligible (stale) of %d run roots under %s" % (
             len(doc["eligible"]), len(doc["entries"]), doc["parent"]))
         print("%d legacy-pattern entries, owner-managed, never eligible" % doc["legacy_count"])
+        print("caution: stale means only that the owning process ended; confirm no process "
+              "still uses a root (for example lsof +D PATH) before any removal")
         for name in doc.get("legacy", []):
             print("legacy\t%s" % os.path.join(doc["parent"], name))
     return 3 if args.fail_on_stale and doc["eligible"] else 0

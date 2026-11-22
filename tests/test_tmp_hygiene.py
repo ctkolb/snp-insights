@@ -841,8 +841,12 @@ def test_guard_standalone(check):
     check("TMP11.fixture_count_recorded", stats.get("fixtures", 0) > 0)
     check("TMP11.no_stray_large_file_after_run",
           not os.path.lexists(os.path.join(TESTS, ".tmp_large.bin")))
-    sys.stderr.write("TMP11 measured: fixtures=%s copies=%s peak=%s new=%s seconds=%s\n" % (
-        stats.get("fixtures"), stats.get("copies"), peak, new, summary.get("seconds")))
+    # The metric is tracked-file copies into full fixtures (41 before the
+    # shared template, 1 after; bound 14). The fixture count is recorded only.
+    sys.stderr.write("TMP11 measured: fixture directories=%s (recorded only), "
+                     "tracked-file copies=%s (bound %s), peak=%s new=%s seconds=%s\n" % (
+        stats.get("fixtures"), stats.get("copies"), MAX_FULL_COPIES, peak, new,
+        summary.get("seconds")))
 
 
 # ------------------------------------------------------------ TMP12 removal binding (F-A)
