@@ -80,6 +80,7 @@ and stand behind generated code as if you wrote it.
 - `scripts/loop_mutations.py` — applies one deliberate bug at a time to a temp
   copy and reports mutations the tests fail to catch; exits non-zero on a
   survivor.
+- `scripts/runtmp.py`, `scripts/tmp_audit.py`, `scripts/tmp_sweep.py` - owned run-root helper, read-only temp audit, and list-only stale sweep (see docs/test-temp-cleanup.md).
 
 ## Layout
 

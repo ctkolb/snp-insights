@@ -359,6 +359,8 @@ suites are `tests/test_release_panel.py` (the panel record and its data),
 accepted-limits register). `tests/test_result_block.py` checks the build-loop
 result-block validator and runs separately.
 
+- `tests/test_tmp_hygiene.py`: temporary-directory hygiene (owned run root, leak audit, interruption, list-only sweep).
+
 Installing the optional `jsonschema` package (the `schema` extra) enables the
 schema-validation passes; the suite runs without it. Each file also runs
 standalone, e.g. `python -B tests/test_release_panel.py` and

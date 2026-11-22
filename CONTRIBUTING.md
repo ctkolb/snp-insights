@@ -35,6 +35,8 @@ python scripts/loop_mutations.py    # exits non-zero on a surviving mutation
 It takes a few minutes; the mutations that are accepted as redundant or
 untestable are recorded in [`docs/accepted-limits.md`](docs/accepted-limits.md).
 
+Test and build-loop runs create one owned temp root and remove it on exit; see docs/test-temp-cleanup.md.
+
 If you have [gitleaks](https://github.com/gitleaks/gitleaks) installed, the
 hooks also run it. CI runs all of the above plus a full-history secret scan; a
 pull request cannot merge until every job is green (see
