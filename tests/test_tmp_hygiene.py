@@ -227,6 +227,22 @@ if mode in ("swapcleanup", "swaprelease"):
     result["hooked"] = len(hits) == 1
     result["decoy"] = tree(target) if os.path.isdir(target) else None
     result["moved"] = tree(moved) if os.path.isdir(moved) else None
+elif mode == "swaprmdir":
+    # Swap after the root has been emptied and before its final rmdir.
+    real = runtmp._clear
+    hits = []
+    def clear_then_swap(fd):
+        empty = real(fd)
+        if not hits and os.path.samestat(os.fstat(fd), os.lstat(root)):
+            os.rename(root, os.path.join(parent, "moved-original"))
+            os.mkdir(root)
+            hits.append(fd)
+        return empty
+    runtmp._clear = clear_then_swap
+    result["returned"] = runtmp.cleanup()
+    runtmp._clear = real
+    result["hooked"] = len(hits) == 1
+    result["decoy_kept"] = os.path.isdir(root) and os.listdir(root) == []
 elif mode == "parentro":
     with open(os.path.join(root, "ours.txt"), "w") as fh:
         fh.write("ours")
@@ -874,6 +890,10 @@ def test_removal_binding(check):
         check("TMP12.swap_outside_untouched[%s]" % mode, r.get("outside") == OUTSIDE_TREE)
     check("TMP12.root_removed_after_refused_release",
           proc.returncode == 0 and _entries(parent) == ["moved-original", "outside"])
+    _, proc, r = _race_child("swaprmdir")
+    check("TMP12.final_rmdir_rechecks_inode", r.get("hooked") is True
+          and r.get("returned") is False and r.get("decoy_kept") is True
+          and "runtmp: refusing" in proc.stderr)
 
 
 # ------------------------------------------------------------ TMP13 chmod boundary (F-B)
