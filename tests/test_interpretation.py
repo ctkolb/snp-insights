@@ -1053,8 +1053,11 @@ def _run_r58_char(attempt):
 
 # Ticket 2D C0 (add-only): golden canonical hashes of today's legacy findings
 # output. generated_at is dropped (it is wall-clock); everything else is pinned,
-# so any change to legacy output (a new field, a version bump, an altered value)
-# changes the hash and fails the characterization gate. The fixture hash also
+# so any change to legacy output (a new field, an altered value) changes the
+# hash and fails the characterization gate. provenance.pipeline_version is
+# swapped back to the pinned "0.1.0" before hashing, so a version bump does not
+# move these hashes; the emitted version is checked by R4B.version_consistent in
+# tests/test_docs_release.py instead. The fixture hash also
 # covers provenance.input_hash, so any byte change to fixtures/raw.sample.txt
 # (even a header comment) moves it; re-pinned after the header was marked fabricated.
 R61_LEGACY_FIXTURE_HASH = "46a9cee628470077cba2ce6f3f3818648999e9d52a528452f895f5017502145f"
@@ -1092,7 +1095,11 @@ def _run_r61_char(attempt):
         old_ppv = ("Rare heterozygous array calls have low positive predictive value and "
                    "warrant clinical-grade confirmation.")
         for label, doc, want in cases:
-            got = _r61_canonical_hash(json.loads(json.dumps(doc).replace(CAVEAT_REGISTRY["rare_ppv"], old_ppv)))
+            legacy = json.loads(json.dumps(doc).replace(CAVEAT_REGISTRY["rare_ppv"], old_ppv))
+            # The pipeline version is pinned to the value the hashes were taken with,
+            # so this characterization stays independent of the release version.
+            legacy["provenance"]["pipeline_version"] = "0.1.0"
+            got = _r61_canonical_hash(legacy)
             _require(f"{label}: legacy findings hash changed, got {got}, want {want}", got == want)
             _require(f"{label}: schema_version is 1.1.0, got {doc['schema_version']!r}",
                      doc["schema_version"] == "1.1.0")

@@ -9,6 +9,8 @@ Or as part of:   python tests/test_pipeline.py
 Every gate is isolated: a missing module, a missing function, or any exception
 fails only that one check (via attempt()), never the whole run.
 """
+import contextlib
+import io
 import json
 import os
 import re
@@ -590,6 +592,205 @@ def run(check):
         return (requested == ["1-101-A-C"]
                 and "\trs9000001\tA\tC\t.\tPASS\tAF=0.25" in body)
     attempt("R2C.gnomad_first_alternate_preserved", gnomad_first_alternate_preserved)
+
+    # T (R-9): the gnomAD lookup and its VCF row use the curated effect allele.
+    # The stub answers a different AF per allele, so a mixed-up allele shows.
+    allele_af = {"A": 0.3, "C": 0.25, "G": 0.01, "T": 0.002}
+
+    def _gnomad_stub(requested):
+        def fake(url, payload, email=None, **kwargs):
+            vid = payload["variables"]["v"]
+            requested.append(vid)
+            return {"data": {"variant": {"genome": {"af": allele_af[vid.rsplit("-", 1)[1]]}}}}
+        return fake
+
+    def _rows(body):
+        return [line.split("\t") for line in body.splitlines() if line and not line.startswith("#")]
+
+    def _fetch_main(variants, coords):
+        """Run fetch_reference small mode offline; return (requested, vcf body, stderr)."""
+        _, fetch_reference, _ = _mods()
+        d = tempfile.mkdtemp()
+        targets = os.path.join(d, "targets.json")
+        with open(targets, "w") as fh:
+            json.dump({"variants": variants}, fh)
+        cache = os.path.join(d, "cache")
+        requested = []
+        saved = (fetch_reference.http_post_json, fetch_reference.fetch_dbsnp_small,
+                 fetch_reference.fetch_clinvar_small)
+        fetch_reference.http_post_json = _gnomad_stub(requested)
+        fetch_reference.fetch_dbsnp_small = lambda rsids, email: {r: coords[r] for r in rsids if r in coords}
+        fetch_reference.fetch_clinvar_small = lambda entries, email: {}
+        err = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                rc = fetch_reference.main(["--targets", targets, "--cache", cache, "--no-gwas",
+                                           "--clinvar-mode", "api"])
+        finally:
+            (fetch_reference.http_post_json, fetch_reference.fetch_dbsnp_small,
+             fetch_reference.fetch_clinvar_small) = saved
+        if rc not in (0, None):
+            raise RuntimeError(f"fetch_reference main exited {rc}")
+        with open(os.path.join(cache, "gnomad.small.vcf")) as fh:
+            return requested, fh.read(), err.getvalue()
+
+    def _direct(coords, **kwargs):
+        """Call fetch_gnomad_small + write_gnomad_vcf; return (requested, afs, vcf body, stderr)."""
+        _, fetch_reference, _ = _mods()
+        requested = []
+        original = fetch_reference.http_post_json
+        fetch_reference.http_post_json = _gnomad_stub(requested)
+        err = io.StringIO()
+        out = os.path.join(tempfile.mkdtemp(), "gnomad.vcf")
+        try:
+            with contextlib.redirect_stderr(err):
+                afs = fetch_reference.fetch_gnomad_small(coords, None, **kwargs)
+                fetch_reference.write_gnomad_vcf(out, coords, afs, **kwargs)
+        finally:
+            fetch_reference.http_post_json = original
+        with open(out) as fh:
+            return requested, afs, fh.read(), err.getvalue()
+
+    def gnomad_effect_second_alternate_requested():
+        requested, body, _ = _fetch_main(
+            [{"rsid": "rs9000002", "gene": "GENEB", "effect_allele": "G"}],
+            {"rs9000002": ("1", 202, "A", ["C", "G"])})
+        return (requested == ["1-202-A-G"]
+                and _rows(body) == [["1", "202", "rs9000002", "A", "G", ".", "PASS", "AF=0.01"]])
+    attempt("T.gnomad_effect_second_alternate_requested", gnomad_effect_second_alternate_requested)
+
+    def gnomad_effect_not_in_alternates_skipped_with_note():
+        requested, body, err = _fetch_main(
+            [{"rsid": "rs9000003", "gene": "GENEC", "effect_allele": "T"},
+             {"rsid": "rs9000013", "gene": "GENEC", "effect_allele": "A"}],
+            {"rs9000003": ("1", 303, "A", ["C", "G"]), "rs9000013": ("1", 313, "A", ["C", "G"])})
+        notes = [ln for ln in err.splitlines() if "gnomad" in ln and "skipped" in ln]
+        return (requested == [] and _rows(body) == []
+                and any("rs9000003" in ln and "'T'" in ln for ln in notes)
+                and any("rs9000013" in ln and "'A'" in ln for ln in notes))
+    attempt("T.gnomad_effect_not_in_alternates_skipped_with_note",
+            gnomad_effect_not_in_alternates_skipped_with_note)
+
+    def gnomad_effect_not_snv_skipped_with_note():
+        requested, body, err = _fetch_main(
+            [{"rsid": "rs9000006", "gene": "GENED", "effect_allele": "D"},
+             {"rsid": "rs9000007", "gene": "GENED", "effect_allele": "G"},
+             {"rsid": "rs9000008", "gene": "GENED", "effect_allele": "CA"}],
+            {"rs9000006": ("4", 606, "A", ["C", "D"]), "rs9000007": ("4", 707, "AT", ["A", "G"]),
+             "rs9000008": ("4", 808, "C", ["CA", "T"])})
+        notes = [ln for ln in err.splitlines() if "gnomad" in ln and "skipped" in ln]
+        return (requested == [] and _rows(body) == []
+                and all(any(r in ln for ln in notes) for r in ("rs9000006", "rs9000007", "rs9000008")))
+    attempt("T.gnomad_effect_not_snv_skipped_with_note", gnomad_effect_not_snv_skipped_with_note)
+
+    def gnomad_multiallelic_per_allele_rows():
+        requested, body, _ = _fetch_main(
+            [{"rsid": "rs9000004", "gene": "GENEE", "effect_allele": "T"},
+             {"rsid": "rs9000005", "gene": "GENEE", "effect_allele": "T"}],
+            {"rs9000004": ("2", 404, "G", ["A", "T"]), "rs9000005": ("3", 505, "C", ["T", "G"])})
+        return (requested == ["2-404-G-T", "3-505-C-T"]
+                and _rows(body) == [["2", "404", "rs9000004", "G", "T", ".", "PASS", "AF=0.002"],
+                                    ["3", "505", "rs9000005", "C", "T", ".", "PASS", "AF=0.002"]])
+    attempt("T.gnomad_multiallelic_per_allele_rows", gnomad_multiallelic_per_allele_rows)
+
+    def gnomad_vcf_alt_equals_requested():
+        requested, body, _ = _fetch_main(
+            [{"rsid": "rs9000009", "gene": "GENEF", "effect_allele": "A"},
+             {"rsid": "rs9000010", "gene": "GENEF", "effect_allele": "G"},
+             {"rsid": "rs9000011", "gene": "GENEF"}],
+            {"rs9000009": ("5", 909, "C", ["G", "T", "A"]), "rs9000010": ("5", 1010, "T", ["C", "G"]),
+             "rs9000011": ("5", 1111, "G", ["A", "C"])})
+        rows = _rows(body)
+        by_rsid = {vid: None for vid in requested}
+        for r in rows:
+            by_rsid["-".join([r[0], r[1], r[3], r[4]])] = r[7]
+        return (sorted(requested) == ["5-1010-T-G", "5-1111-G-A", "5-909-C-A"]
+                and len(rows) == 3 and all("," not in r[4] for r in rows)
+                and by_rsid == {"5-909-C-A": "AF=0.3", "5-1010-T-G": "AF=0.01", "5-1111-G-A": "AF=0.3"})
+    attempt("T.gnomad_vcf_alt_equals_requested", gnomad_vcf_alt_equals_requested)
+
+    legacy_vcf = ("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+                  "1\t101\trs9000001\tA\tC\t.\tPASS\tAF=0.25\n")
+
+    def gnomad_no_effect_keeps_first_alternate():
+        requested, body, _ = _fetch_main([{"rsid": "rs9000001", "gene": "GENEA"}],
+                                         {"rs9000001": ("1", 101, "A", ["C", "G"])})
+        return requested == ["1-101-A-C"] and body == legacy_vcf
+    attempt("T.gnomad_no_effect_keeps_first_alternate", gnomad_no_effect_keeps_first_alternate)
+
+    def gnomad_direct_effect_map():
+        coords = {"rs9000002": ("1", 202, "A", ["C", "G"])}
+        requested, afs, body, err = _direct(coords, effect_alleles={"rs9000002": "G"})
+        return (requested == ["1-202-A-G"] and afs == {"rs9000002": 0.01}
+                and _rows(body) == [["1", "202", "rs9000002", "A", "G", ".", "PASS", "AF=0.01"]]
+                and err == "")
+    attempt("T.gnomad_direct_effect_map", gnomad_direct_effect_map)
+
+    def gnomad_direct_legacy_byte_identical():
+        coords = {"rs9000001": ("1", 101, "A", ["C", "G"])}
+        runs = [_direct(coords), _direct(coords, effect_alleles=None), _direct(coords, effect_alleles={}),
+                _direct(coords, effect_alleles={"rs9000099": "G"})]
+        return all(r == (["1-101-A-C"], {"rs9000001": 0.25}, legacy_vcf, "") for r in runs)
+    attempt("T.gnomad_direct_legacy_byte_identical", gnomad_direct_legacy_byte_identical)
+
+    def gnomad_direct_skip_note():
+        coords = {"rs9000003": ("1", 303, "A", ["C", "G"])}
+        requested, afs, body, err = _direct(coords, effect_alleles={"rs9000003": "T"})
+        return (requested == [] and afs == {} and _rows(body) == []
+                and "rs9000003" in err and "skipped" in err)
+    attempt("T.gnomad_direct_skip_note", gnomad_direct_skip_note)
+
+    def gnomad_writer_drops_unusable_effect_row():
+        # An AF from another lookup is never written under an unusable effect allele.
+        _, fetch_reference, _ = _mods()
+        out = os.path.join(tempfile.mkdtemp(), "gnomad.vcf")
+        fetch_reference.write_gnomad_vcf(out, {"rs9000003": ("1", 303, "A", ["C", "G"])},
+                                         {"rs9000003": 0.25}, effect_alleles={"rs9000003": "T"})
+        with open(out) as fh:
+            return _rows(fh.read()) == []
+    attempt("T.gnomad_writer_drops_unusable_effect_row", gnomad_writer_drops_unusable_effect_row)
+
+    def gnomad_direct_empty_effect_skipped_with_note():
+        coords = {"rs9000991": ("1", 991, "A", ["C", "G"])}
+        requested, afs, _, err = _direct(coords, effect_alleles={"rs9000991": ""})
+        return (requested == [] and afs == {}
+                and err == "  gnomad rs9000991: skipped, effect allele '' is not a single-nucleotide alternate of A/C,G\n")
+    attempt("T.gnomad_direct_empty_effect_skipped_with_note", gnomad_direct_empty_effect_skipped_with_note)
+
+    def gnomad_writer_drops_empty_effect_row():
+        # Supply an AF so the writer must make its own skip decision.
+        _, fetch_reference, _ = _mods()
+        coords = {"rs9000991": ("1", 991, "A", ["C", "G"])}
+        with tempfile.TemporaryDirectory() as directory:
+            out = os.path.join(directory, "gnomad.vcf")
+            fetch_reference.write_gnomad_vcf(out, coords, {"rs9000991": 0.25},
+                                             effect_alleles={"rs9000991": ""})
+            with open(out, "rb") as fh:
+                return fh.read() == (b"##fileformat=VCFv4.2\n"
+                                     b"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
+    attempt("T.gnomad_writer_drops_empty_effect_row", gnomad_writer_drops_empty_effect_row)
+
+    def gnomad_absent_entry_with_other_empty_effect_keeps_first_alternate():
+        for alts in (["C", "G"], "C"):
+            coords = {"rs9000001": ("1", 101, "A", alts)}
+            got = _direct(coords, effect_alleles={"rs9000991": ""})
+            if got != (["1-101-A-C"], {"rs9000001": 0.25}, legacy_vcf, ""):
+                return False
+        return True
+    attempt("T.gnomad_absent_entry_with_other_empty_effect_keeps_first_alternate",
+            gnomad_absent_entry_with_other_empty_effect_keeps_first_alternate)
+
+    def gnomad_target_effect_alleles_first_wins():
+        _, fetch_reference, _ = _mods()
+        d = tempfile.mkdtemp()
+        a, b = os.path.join(d, "a.json"), os.path.join(d, "b.json")
+        with open(a, "w") as fh:
+            json.dump({"variants": [{"rsid": "rs1", "effect_allele": "G"}, {"rsid": "rs2"}]}, fh)
+        with open(b, "w") as fh:
+            json.dump({"variants": [{"rsid": "rs1", "effect_allele": "T"}, {"rsid": "rs2", "effect_allele": "A"},
+                                    {"rsid": "rs3", "effect_allele": "C"}]}, fh)
+        return fetch_reference.load_target_effect_alleles([a, b]) == {"rs1": "G", "rs3": "C"}
+    attempt("T.gnomad_target_effect_alleles_first_wins", gnomad_target_effect_alleles_first_wins)
 
 
 def main():

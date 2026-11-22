@@ -435,15 +435,43 @@ def run(check):
     attempt("S4.run_no_clobber_symlink", s4_run_no_clobber_symlink)
 
     def s4_run_out_dir_is_file():
-        d = tempfile.mkdtemp()
-        f = os.path.join(d, "afile")
-        with open(f, "wb") as fh:
-            fh.write(b"x")
-        code, _, err = _invoke(["run", RAW, PANEL, "--out-dir", f, "--template-only"])
-        if code != 1 or "afile" not in err or "Traceback" in err:
-            return False
-        return os.listdir(d) == ["afile"]
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "afile")
+            with open(f, "wb") as fh:
+                fh.write(b"x")
+            code, _, err = _invoke(["run", RAW, PANEL, "--out-dir", f,
+                                    "--template-only"])
+            if (code != 1 or "afile" not in err or "Traceback" in err
+                    or "--out-dir is not a directory" not in err):
+                return False
+            return os.listdir(d) == ["afile"] and _read_bytes(f) == b"x"
     attempt("S4.run_out_dir_is_file", s4_run_out_dir_is_file)
+
+    def s4_run_makedirs_error():
+        import annotate
+        import run as narrate
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as parent:
+            out_dir = os.path.join(parent, "missing")
+            makedirs = os.makedirs
+
+            def deny_output_dir(path, *args, **kwargs):
+                if path == out_dir:
+                    raise PermissionError("synthetic directory creation failure")
+                return makedirs(path, *args, **kwargs)
+
+            with (mock.patch.object(os, "makedirs", side_effect=deny_output_dir),
+                  mock.patch.object(annotate, "main") as annot,
+                  mock.patch.object(narrate, "main") as narr):
+                code, _, err = _invoke(["run", RAW, PANEL, "--out-dir", out_dir,
+                                        "--template-only"])
+            return (code == 1
+                    and f"cannot create output directory {out_dir}:" in err
+                    and "Traceback" not in err
+                    and not annot.called and not narr.called
+                    and os.listdir(parent) == [])
+    attempt("S4.run_makedirs_error", s4_run_makedirs_error)
 
     def s4_run_out_dir_equals_form():
         d = tempfile.mkdtemp()
@@ -624,6 +652,36 @@ def run(check):
         return True
     attempt("S4.tool_integrity_inner_module", s4_tool_integrity_inner_module)
 
+    def s4_tool_integrity_imported_module():
+        import types
+        from unittest import mock
+
+        cli = _cli()
+        saved = sys.modules.pop("annotate", None)
+        saved_path = sys.path[:]
+        try:
+            with tempfile.TemporaryDirectory() as outside:
+                for path in (None, os.path.join(outside, "annotate.py")):
+                    stub = types.ModuleType("annotate")
+                    stub.__file__ = path
+                    stub.main = mock.Mock(return_value=42)
+                    with mock.patch.object(cli.importlib, "import_module",
+                                           return_value=stub) as importer:
+                        code, _, err = _invoke(["annotate", RAW, PANEL])
+                    expected = ("refusing module annotate loaded from outside "
+                                f"the repository: {path or '<no __file__>'}")
+                    if (importer.call_args_list != [mock.call("annotate")]
+                            or code != 1 or expected not in err or stub.main.called):
+                        return False
+        finally:
+            sys.path[:] = saved_path
+            if saved is not None:
+                sys.modules["annotate"] = saved
+            else:
+                sys.modules.pop("annotate", None)
+        return True
+    attempt("S4.tool_integrity_imported_module", s4_tool_integrity_imported_module)
+
     def s4_within_root_unit():
         cli = _cli()
         base = os.path.realpath(tempfile.mkdtemp())
@@ -692,7 +750,7 @@ def run(check):
         env["PYTHONPATH"] = ROOT + os.pathsep + env.get("PYTHONPATH", "")
         proc = subprocess.run([sys.executable, "-m", "snp_insights", "--version"],
                               cwd=d, capture_output=True, text=True, env=env)
-        return proc.returncode == 0 and proc.stdout.strip() == "snp-insights 0.1.0"
+        return proc.returncode == 0 and proc.stdout.strip() == "snp-insights 0.2.0"
     attempt("S4.cwd_independent", s4_cwd_independent)
 
     # --- S4.build_panel_stdout_mode -------------------------------------

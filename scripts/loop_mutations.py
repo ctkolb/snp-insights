@@ -8,8 +8,9 @@ bug at a time, and runs the test suites. A mutation is KILLED when it makes a
 check fail that passes on the unmutated copy; it SURVIVES otherwise. Surviving
 mutations mean the tests do not pin that behavior.
 
-The unmutated copy is run first as a baseline because the copy has no .git
-directory, so a guard self-test always fails there. Only NEW failures count.
+The unmutated copy runs first to record baseline failures. The copy has no
+.git directory. Its tracked-file manifest comes from the source Git index
+and is used by the pipeline's history fixtures. Only NEW failures count.
 Your working tree is never modified; the temp directory is removed at the end.
 
     python scripts/loop_mutations.py            # run all mutations, exit 1 on any survivor
@@ -30,7 +31,30 @@ I_ = "snp_insights/__init__.py"
 F = "tools/fetch_reference.py"
 SUITES = ("tests/test_evidence.py", "tests/test_category.py", "tests/test_cli.py", "tests/test_pipeline.py")
 COPY_DIRS = ("tools", "tests", "data", "fixtures", "stage2", "stage3", "schema", "scripts", "snp_insights")
-COPY_FILES = ("pyproject.toml", "README.md")
+COPY_FILES = (
+    "pyproject.toml",
+    "README.md",
+    # CLI checkpoint checks and the pipeline's release documentation checks.
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "DESIGN.md",
+    "LICENSE",
+    "SECURITY.md",
+    "docs/accepted-limits.md",
+    "docs/getting-started.md",
+    "docs/loop-spec.md",
+    "docs/owner-checkpoint.md",
+    "docs/panel-curation.md",
+    "docs/reference-data.md",
+    "docs/release-v0.1.0.md",
+    # The pipeline's guard, hook, and CI checks.
+    ".gitignore",
+    ".gitleaks.toml",
+    ".github/workflows/ci.yml",
+    "docs/security.md",
+    "hooks/gitleaks-version.sh",
+    "hooks/pre-push",
+)
 
 # (name, file, text to find, replacement). Each is a single plausible bug.
 MUTATIONS = [
@@ -77,7 +101,7 @@ MUTATIONS = [
     ("S2 carrier: returns None not unknown", E_, "        return cv_tier or \"unknown\"\n    if category == \"trait\":", "        return cv_tier\n    if category == \"trait\":"),
     ("S2 legacy: order swapped", E_, "    return cv_tier or gwas_tier(n) or \"unknown\"", "    return gwas_tier(n) or cv_tier or \"unknown\""),
     ("S2 gwas_n None crashes", E_, "    n = gwas_n or 0", "    n = gwas_n"),
-    ("S2 cv None crashes", E_, "cv_tier = clinvar_tier(cv.get(\"significance\"), cv.get(\"review_stars\")) if cv else None", "cv_tier = clinvar_tier(cv.get(\"significance\"), cv.get(\"review_stars\"))"),
+    ("S2 cv None crashes", E_, "cv_tier = clinvar_tier(cv.get(\"significance\"), cv.get(\"review_stars\"), result_type) if cv else None", "cv_tier = clinvar_tier(cv.get(\"significance\"), cv.get(\"review_stars\"), result_type)"),
     ("S2 validation skipped when association set", B, "category not in (\"carrier\", \"trait\"):\n            label", "category not in (\"carrier\", \"trait\") and not t.get(\"association\"):\n            label"),
     ("S2 validation case-insensitive", B, "if category is not None and category not in (\"carrier\", \"trait\"):", "if category is not None and str(category).lower() not in (\"carrier\", \"trait\"):"),
     ("S2 validation accepts empty string", B, "if category is not None and category not in", "if category and category not in"),
@@ -112,10 +136,10 @@ MUTATIONS = [
     ("S4 help omits check-raw", C, '    ("check-raw", "inspect a raw DNA file offline"),\n', ''),
     ("S4 fetch mapped to build_panel", C, '"fetch": "fetch_reference"', '"fetch": "build_panel"'),
     ("S4 injects flag into every subcommand", C, "rc = module.main(list(args))", 'rc = module.main(list(args) + ["--accept-privacy-risk"])'),
-    ("S4 pyproject version mismatch", P, 'version = "0.1.0"', 'version = "0.1.1"'),
+    ("S4 pyproject version mismatch", P, 'version = "0.2.0"', 'version = "0.2.1"'),
     ("S4 pyproject gains a dependency", P, "dependencies = []", 'dependencies = ["requests"]'),
     ("S4 console script target wrong", P, 'snp_insights.cli:main', 'snp_insights.cli:run'),
-    ("S4 __version__ changed", I_, '__version__ = "0.1.0"', '__version__ = "0.2.0"'),
+    ("S4 __version__ changed", I_, '__version__ = "0.2.0"', '__version__ = "0.3.0"'),
     ("S4 build_panel stdout print removed (AL-007)", B, "    else:\n        print(text)\n    return 0", "    return 0"),
     ("S4 umask not applied", C, "old_umask = os.umask(0o077)", "old_umask = os.umask(0o022)"),
     ("S4 umask group-readable", C, "old_umask = os.umask(0o077)", "old_umask = os.umask(0o027)"),
@@ -139,7 +163,14 @@ def fresh(tmp):
         shutil.rmtree(dest, ignore_errors=True)
         shutil.copytree(os.path.join(ROOT, d), dest, ignore=shutil.ignore_patterns("__pycache__"))
     for f in COPY_FILES:
-        shutil.copy(os.path.join(ROOT, f), os.path.join(tmp, f))
+        dest = os.path.join(tmp, f)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.copy(os.path.join(ROOT, f), dest)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    listing = subprocess.run(("git", "ls-files", "-z"), cwd=ROOT, env=env,
+                             capture_output=True, check=True).stdout
+    with open(os.path.join(tmp, ".tracked-files"), "wb") as fh:
+        fh.write(listing)
 
 
 def failing_checks(tmp):

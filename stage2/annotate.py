@@ -22,7 +22,7 @@ from caveats import CAVEAT_REGISTRY  # noqa: E402
 from references import references_for  # noqa: E402
 from ancestry import parse_ancestry  # noqa: E402
 
-PIPELINE_VERSION = "0.1.0"
+PIPELINE_VERSION = "0.2.0"
 NO_CALL = "0"
 
 # Letters an assayability class can report; anything else cannot be interpreted.
@@ -286,8 +286,9 @@ def annotate_variant(variant, raw, merges=None, sex="unknown", panel_build=SUPPO
     else:
         rc = rarity_class(af)
     ppv = None
+    from evidence import significance_group  # the shared G-1 rule (S-3)
     if (state == "detected" and call.get("zygosity") in ("het", "hom_alt")
-            and sig in ("Pathogenic", "Likely pathogenic") and rc in ("rare", "ultra_rare")):
+            and significance_group(sig) == "P" and rc in ("rare", "ultra_rare")):
         ppv = CAVEAT_REGISTRY["rare_ppv"]
 
     caveat_keys = ["array_limits"]

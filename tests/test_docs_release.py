@@ -87,10 +87,10 @@ NEW_ROW_SHA256 = {
     "AL-027": "febfaee03490fa6dcdcf28a9771bf4805110a29b287af7a40cd51bac3305e20f",
 }
 
-AGENTS_CURRENT_STATE = """## Current state (v0.1.0 release run)
+AGENTS_CURRENT_STATE = """## Current state (v0.2.0 release run)
 
-The release branch carries the reviewed v0.1.0 work: a curated three-entry health
-panel (no trait entries), the template report, the owner-checkpoint procedure
+The release branch carries the reviewed v0.2.0 work: a curated eight-entry
+panel (seven health entries, one trait entry), the template report, the owner-checkpoint procedure
 (docs/owner-checkpoint.md) and the accepted-limits register
 (docs/accepted-limits.md). The remaining steps are owner-only: the private
 real-data checkpoint, repository branch protection, and the release tag.
@@ -104,8 +104,8 @@ references only from curated public targets, never personal coverage or genotype
 Do not request private outputs for analysis."""
 
 AGENTS_ROADMAP_ITEMS = (
-    "2. **Curate a usable panel — DONE for v0.1.0** (three health entries, no "
-    "trait entries; see docs/panel-curation.md).",
+    "2. **Curate a usable panel — DONE for v0.2.0** (seven health entries, one "
+    "trait entry; see docs/panel-curation.md).",
     "9. **Docs polish — DONE for v0.1.0** (README release section, owner "
     "checkpoint, accepted limits).",
 )
@@ -170,13 +170,16 @@ CURATION_RESERVES_PARAGRAPH = (
     "later panels."
 )
 
+# The package, console script and pipeline version of this release (ticket B).
+EXPECTED_VERSION = "0.2.0"
+
 README_STATUS = (
-    "Release candidate v0.1.0. The pipeline runs end to end on synthetic "
-    "fixtures: parse, annotate, a curated three-entry release panel, and a "
+    "Release candidate v0.2.0. The pipeline runs end to end on synthetic "
+    "fixtures: parse, annotate, a curated eight-entry release panel, and a "
     "deterministic template report. The first real-file run is the owner's "
     "local checkpoint (docs/owner-checkpoint.md). Model narration (skeleton "
     "and full modes) and the online path exist but are not part of the "
-    "verified v0.1.0 scope. Known gaps and accepted limits are listed in "
+    "verified v0.2.0 scope. Known gaps and accepted limits are listed in "
     "docs/accepted-limits.md and DESIGN.md."
 )
 
@@ -188,8 +191,8 @@ LIMITATION_KEYS = (
     ("about 0.02% of the genome", CHECKPOINT, "about 0.02% of the genome"),
     ("array presence of each marker is not verified", CURATION,
      "array presence not verified"),
-    ("three health entries and no trait entries", CHECKPOINT,
-     "three health entries"),
+    ("seven health entries and one trait entry", CHECKPOINT,
+     "seven health entries"),
     ("the panel is small and public", None, None),
     ("only template-only narration is verified", LIMITS,
      "Only template-only narration is verified"),
@@ -297,7 +300,7 @@ def _readme_release_panel_workflow():
     _require("release section follows Quickstart", rel[0] > quick)
     _require("requirements phrase", REQUIREMENTS_PHRASE in flat)
     sec = _flat(_release_section())
-    for phrase in ("three health-related entries", "no trait entries",
+    for phrase in ("seven health-related entries", "one trait entry",
                    "built reproducibly from public references",
                    "docs/panel-curation.md",
                    "data/targets.release-evidence.json",
@@ -373,13 +376,13 @@ def _readme_template_only_command():
 
 
 def _readme_limitations_list():
-    sec = _flat(_section(_read(README), "Known limitations (v0.1.0)")).lower()
+    sec = _flat(_section(_read(README), "Known limitations (v0.2.0)")).lower()
     for phrase, doc, doc_phrase in LIMITATION_KEYS:
         _require("README limitation lacks " + phrase, phrase in sec)
         if doc is not None:
             _require("%s lacks %r" % (os.path.basename(doc), doc_phrase),
                      doc_phrase in _flat(_read(doc)))
-    items = [l for l in _section(_read(README), "Known limitations (v0.1.0)")
+    items = [l for l in _section(_read(README), "Known limitations (v0.2.0)")
              .split("\n") if l.startswith("- ")]
     _require("one list item per limitation", len(items) >= len(LIMITATION_KEYS))
     return True
@@ -418,12 +421,29 @@ def _readme_no_real_paths_or_names():
 def _version_consistent():
     with open(os.path.join(ROOT, "pyproject.toml"), "rb") as fh:
         meta = tomllib.load(fh)
-    _require("pyproject version", meta["project"]["version"] == "0.1.0")
+    _require("pyproject version", meta["project"]["version"] == EXPECTED_VERSION)
     import snp_insights
-    _require("package version", snp_insights.__version__ == "0.1.0")
+    _require("package version", snp_insights.__version__ == EXPECTED_VERSION)
+    import json
+    import snp_insights.cli as cli
+    _require("pipeline version",
+             cli._tool_module("annotate").PIPELINE_VERSION == EXPECTED_VERSION)
+    # The version the annotator actually writes into findings.json, not only
+    # the constant: run the real CLI on the synthetic fixture and release panel.
+    with tempfile.TemporaryDirectory() as tmp:
+        findings = os.path.join(tmp, "findings.json")
+        panel = os.path.join(ROOT, "data", "targets.release-panel.json")
+        code, _, _ = _cli(["annotate", RAW_FIXTURE, panel, "-o", findings])
+        _require("synthetic annotation exits 0", code == 0)
+        provenance = json.loads(_read(findings))["provenance"]
+        _require("generated pipeline version",
+                 provenance["pipeline_version"] == EXPECTED_VERSION)
     flat = _flat(_read(README))
-    _require("README version output", "snp-insights 0.1.0" in flat)
-    _require("README release-candidate status", "Release candidate v0.1.0." in flat)
+    _require("README version output", "snp-insights %s" % EXPECTED_VERSION in flat)
+    _require("getting-started version output",
+             "snp-insights %s" % EXPECTED_VERSION in _flat(_read(GETTING_STARTED)))
+    _require("README release-candidate status",
+             "Release candidate v%s." % EXPECTED_VERSION in flat)
     return True
 
 
@@ -467,7 +487,7 @@ def _agents_md_current_state():
              "Complete independent review of the initial CI/support stage"
              not in text)
     _require("Current state heading present",
-             re.search(r"^## Current state \(v0\.1\.0 release run\)$", text, re.M))
+             re.search(r"^## Current state \(v0\.2\.0 release run\)$", text, re.M))
     _require("current state block is exact", AGENTS_CURRENT_STATE in text)
     _require("current state precedes the roadmap",
              text.index("## Current state") < text.index("## Roadmap to beta"))
@@ -500,7 +520,7 @@ def _accepted_limits_rows_append_only():
         _require("%s differs from the approved text" % rid, _sha(new[rid]) == digest)
     appended = raw[LIMITS_BASE_BYTES:].decode("utf-8").split("\n")
     appended = [l for l in appended if l.strip()]
-    _require("only the approved rows AL-014..AL-032 were appended",
+    _require("only the approved rows AL-014..AL-040 were appended",
              [l[2:8] for l in appended]
              == sorted(NEW_ROW_SHA256) + sorted(CLOSURE_ROWS) + sorted(APPENDED_ROWS))
     return True
@@ -534,8 +554,9 @@ def _accepted_limits_rows_028_to_030_present():
     _require("each closure row appears once",
              all(text.count(row) == 1 for row in CLOSURE_ROWS.values()))
     order = [l[2:8] for l in text.split("\n") if re.match(r"\| AL-\d{3} \|", l)]
-    _require("rows are in order, 028..030 followed only by AL-031 and AL-032",
-             order == sorted(order) and order[-5:-2] == sorted(CLOSURE_ROWS))
+    tail = len(APPENDED_ROWS)
+    _require("rows are in order, 028..030 followed only by the appended rows",
+             order == sorted(order) and order[-tail - 3:-tail] == sorted(CLOSURE_ROWS))
     return True
 
 
@@ -617,7 +638,7 @@ RD_HEADINGS = (
     "SNPedia (manual)",
 )
 README_KEEP_HEADINGS = (
-    "How it works", "Why", "Requirements", "Known limitations (v0.1.0)",
+    "How it works", "Why", "Requirements", "Known limitations (v0.2.0)",
     "Privacy & safety", "Status", "Contributing", "License", "Testing",
 )
 DOC_MAP_TARGETS = (
@@ -1014,8 +1035,8 @@ def _new_docs_content_pins():
                    "data/targets.release-panel.json"):
         _require("reference-data lacks " + phrase, phrase in rflat)
     decision = _flat(_section(ref, "Do you need to fetch anything"))
-    _require("decision section answers no for v0.1.0",
-             "v0.1.0" in decision and "no" in decision.lower())
+    _require("decision section answers no for v%s" % EXPECTED_VERSION,
+             "v" + EXPECTED_VERSION in decision and "no" in decision.lower())
     for path in NEW_DOCS:
         sizes = set(re.findall(r"\d+(?:\.\d+)? ?(?:GB|MB|GiB)\b", _read(path)))
         _require("%s: sizes beyond the known figures: %s" % (
@@ -1378,7 +1399,109 @@ AL_032_ROW = (
     " a symlink into a synced or agent-readable location. |"
 )
 
-APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW}
+
+# Owner-approved rows (decision D-7 on r103, ticket S3-B), appended after AL-032.
+AL_033_ROW = (
+    "| AL-033 | REL | The v0.2.0 release panel has seven health-related "
+    "entries (five carrier status, two risk association) and one trait "
+    "entry (rs11591147, LDL cholesterol levels). This row supersedes "
+    "AL-014 for v0.2.0; AL-014 describes v0.1.0 and stays as recorded. "
+    "| LOW | Goals are not quotas; evidence-first curation (owner "
+    "decisions on r96 and r97). | 2026-11-14 | The panel changes. |"
+)
+
+AL_034_ROW = (
+    "| AL-034 | REL | The release panel carries one retrieved_at per "
+    "source (2026-11-14T14:16:47Z, a capture file time), although the "
+    "rows of three entries were captured on 2026-11-11 and those of "
+    "five on 2026-11-14. The dbSNP, gnomAD and GWAS Catalog labels name "
+    "both dates, docs/panel-curation.md records the split, and the "
+    "report prints the single time for every source. | LOW | Accepted "
+    "with the rebuild plan (owner decision R-1 on r100); per-entry "
+    "dates need a panel format change. | 2026-11-14 | The panel gains "
+    "per-entry retrieval dates. |"
+)
+
+AL_035_ROW = (
+    "| AL-035 | REL | The panel build counts GWAS studies by "
+    "word-boundary containment of the curated label or an alias, while "
+    "the T4 replication rule uses equality; for rs11591147 the build "
+    "counts 34 studies where T4 counts 4 rows in 3 groups. The tier is "
+    "the same (replicated). | LOW | Aligning the two rules is a tools "
+    "change outside the S3 wording stage. | 2026-11-14 | A trait's tier "
+    "differs between the build count and the T4 rule. |"
+)
+
+AL_036_ROW = (
+    "| AL-036 | REL | The T4 grammar allows \"-\" in the orientation "
+    "source cell, but the evidence-index check rejects it, so a row "
+    "with an unverified orientation source cannot be recorded; seven "
+    "PCSK9 (rs11591147) rows were left out of T4, with no effect on the "
+    "replication result. | LOW | Found in S2 (r98); changing the "
+    "checker is outside the S3 wording stage. | 2026-11-14 | A trait's "
+    "replication depends on a row whose orientation source is not "
+    "verified. |"
+)
+
+AL_037_ROW = (
+    "| AL-037 | REL | Checker gaps in tests/test_release_panel.py: a "
+    "trait T1 row needs no specific typed source id, and trait T5 "
+    "VariationIDs are not cross-checked. | LOW | Found as surviving "
+    "mutants in S2 (r98); closing them is a checker change outside the "
+    "S3 wording stage. | 2026-11-14 | A trait row cites a wrong or "
+    "missing source id. |"
+)
+
+AL_038_ROW = (
+    "| AL-038 | REL | The full-mode and online model payload still "
+    "carries a trait entry's ClinVar block from findings.json; the "
+    "template report, its citations and the skeleton prompt leave it "
+    "out. Model narration is outside the verified scope (AL-016). | LOW "
+    "| Render-level suppression (owner decision D-2 on r103) leaves "
+    "findings.json and the redaction in tools/prompt.py unchanged. | "
+    "2026-11-14 | Someone enables full-mode or online narration for a "
+    "panel with a trait entry. |"
+)
+
+AL_039_ROW = (
+    "| AL-039 | REL | The mutation runner's Git-free copy takes its "
+    "file list from a manifest written by git ls-files in the source "
+    "tree, and the pipeline's full-tree fixture trusts that manifest "
+    "when the copy has no .git. Nothing checks that the manifest "
+    "covers every tracked file, so a manifest that silently misses a "
+    "file no guard self-test requires would change the fixture without "
+    "a failing check. | LOW | Found by review r121 (R121-F2). The "
+    "runner writes the manifest verbatim from the Git index, the "
+    "fixture fails loudly when the manifest is empty or lacks the "
+    "pipeline suite, and the guard self-test fails loudly when a file "
+    "it requires is missing. | 2026-11-16 | The runner's manifest "
+    "writing changes, or a mutation in the guard, hook, or history "
+    "area survives. |"
+)
+
+AL_040_ROW = (
+    "| AL-040 | REL | In a Git-free checkout that holds a hand-written "
+    "tracked-file manifest, an entry with \"..\" components or an "
+    "absolute path is joined without normalization, so the full-tree "
+    "fixture can read a file outside the checkout and write a copy "
+    "outside its own temporary repository before it fails at the first "
+    "Git step. | LOW | Found by review r121 (R121-F3). The runner "
+    "cannot produce such a path, because git ls-files never lists one "
+    "and the runner rewrites the manifest in its own temporary copy; a "
+    "manifest in a Git-free checkout is trusted by design. | "
+    "2026-11-16 | Someone writes a manifest by hand, or the manifest "
+    "source changes. |"
+)
+
+APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
+                 "AL-033": AL_033_ROW,
+                 "AL-034": AL_034_ROW,
+                 "AL-035": AL_035_ROW,
+                 "AL-036": AL_036_ROW,
+                 "AL-037": AL_037_ROW,
+                 "AL-038": AL_038_ROW,
+                 "AL-039": AL_039_ROW,
+                 "AL-040": AL_040_ROW}
 NARRATION_NOT_VERIFIED = "not verified against a live model"
 FAILURE_EXAMPLE = (
     "template IR failed validation (bug):",
@@ -1512,9 +1635,293 @@ def _r6_accepted_limits_al031_al032_verbatim():
         _require("%s differs from the approved text" % rid, found[rid] == row)
         _require("%s appears once" % rid, text.count(row) == 1)
     order = [l[2:8] for l in text.split("\n") if re.match(r"\| AL-\d{3} \|", l)]
-    _require("AL-031 and AL-032 are the last rows, in order",
-             order == sorted(order) and order[-2:] == ["AL-031", "AL-032"])
-    _require("AL-030 sits directly before AL-031", order[-3] == "AL-030")
+    tail = len(APPENDED_ROWS)
+    _require("AL-031 and AL-032 start the appended rows, which end the register in order",
+             order == sorted(order) and order[-tail:] == sorted(APPENDED_ROWS)
+             and order[-tail:][:2] == ["AL-031", "AL-032"])
+    _require("AL-030 sits directly before AL-031", order[-tail - 1] == "AL-030")
+    return True
+
+
+# ------------------------------------- S3B: panel counts, multi-allelic, Rev 4
+
+RELEASE_PANEL = os.path.join(ROOT, "data", "targets.release-panel.json")
+LOOP_SPEC = os.path.join(DOCS, "loop-spec.md")
+# Pins computed on the base commit 6f8c478 (before ticket S3-B); Rev 4 is appended.
+LOOP_SPEC_BASE_BYTES = 37065
+LOOP_SPEC_BASE_SHA256 = "866725cc1423704b7a1debe046c324dc33d60f7ca225ead5c9f14c1088502a95"
+# Owner decision D-1 (r103): the Limitations panel sentence carries no count.
+PANEL_LIMITATION = ("The release uses a small public panel; the Summary counts "
+                    "its markers by kind.")
+COUNT_WORD = (r"\b(no|zero|one|two|three|four|five|six|seven|eight|nine|ten|"
+              r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|"
+              r"eighteen|nineteen|twenty|\d+)")
+MULTI_ALLELIC_NOTE = ("; multi-allelic site (dbSNP alternates {alts}): criteria 1 "
+                      "and 4 are read for the reference/effect pair (D8)")
+
+
+def _release_panel_variants():
+    import json
+    with open(RELEASE_PANEL, encoding="utf-8") as fh:
+        return json.load(fh)["variants"]
+
+
+def _panel_counts():
+    """Entries in the release panel, by kind, as the docs must state them."""
+    kinds = [v["result_type"] for v in _release_panel_variants()]
+    counts = {
+        "total": len(kinds),
+        "carrier": kinds.count("carrier_status"),
+        "risk": kinds.count("risk_association"),
+        "trait": kinds.count("trait"),
+    }
+    counts["health"] = counts["carrier"] + counts["risk"]
+    _require("panel has an entry of an unknown kind",
+             counts["health"] + counts["trait"] == counts["total"])
+    return counts
+
+
+def _entries(n):
+    return "entry" if n == 1 else "entries"
+
+
+def _expected_count_phrases():
+    """(document, phrase) pairs every count statement must match."""
+    import snp_insights.cli as cli
+    w = cli._tool_module("run").words
+    c = _panel_counts()
+    _require("release panel is empty", c["total"] > 0)
+    h, t = w(c["health"]), w(c["trait"]) + " trait " + _entries(c["trait"])
+    traits = ", ".join(v["rsid"] for v in _release_panel_variants()
+                       if v["result_type"] == "trait")
+    return (
+        (CHECKPOINT, "This release has %s, so a trait-count cutoff" % t),
+        (CHECKPOINT, "%s health %s (%s carrier status, %s risk association) and %s."
+         % (h, _entries(c["health"]), w(c["carrier"]), w(c["risk"]), t)),
+        (README, "small public panel of %s health-related %s and %s,"
+         % (h, _entries(c["health"]), t)),
+        (README, "- The release panel has %s health %s and %s."
+         % (h, _entries(c["health"]), t)),
+        (README, "a curated %s-entry release panel" % w(c["total"])),
+        (GETTING_STARTED, "panel has %s health %s and %s," % (h, _entries(c["health"]), t)),
+        (REFERENCE_DATA, "The release panel has %s (%s)" % (t, traits)),
+        (AGENTS, "a curated %s-entry panel (%s health %s, %s)"
+         % (w(c["total"]), h, _entries(c["health"]), t)),
+        (AGENTS, "(%s health %s, %s; see docs/panel-curation.md)"
+         % (h, _entries(c["health"]), t)),
+    )
+
+
+def _s3b_docs_panel_counts_match_panel():
+    phrases = _expected_count_phrases()
+    import snp_insights.cli as cli
+    w = cli._tool_module("run").words
+    c = _panel_counts()
+    want = {"health": w(c["health"]), "health-related": w(c["health"]),
+            "trait": w(c["trait"])}
+    for path, phrase in phrases:
+        _require("%s lacks the panel count %r" % (os.path.basename(path), phrase),
+                 phrase in _flat(_read(path)))
+    stated = 0
+    for path in sorted({p for p, _ in phrases}):
+        flat = _flat(_read(path))
+        for m in re.finditer(COUNT_WORD + r" (health|health-related|trait) entr(?:y|ies)\b",
+                             flat, re.I):
+            stated += 1
+            _require("%s states %r; the panel has %s" % (
+                os.path.basename(path), m.group(0), want[m.group(2).lower()]),
+                m.group(1).lower() == want[m.group(2).lower()])
+        for m in re.finditer(COUNT_WORD + r"-entry (?:health |release )?panel\b", flat, re.I):
+            stated += 1
+            _require("%s states %r; the panel has %s entries" % (
+                os.path.basename(path), m.group(0), w(c["total"])),
+                m.group(1).lower() == w(c["total"]))
+    _require("no count statement checked", stated >= len(phrases))
+    return True
+
+
+def _s3b_limitation_panel_statement_count_free():
+    import snp_insights.cli as cli
+    limitations = cli._tool_module("caveats").LIMITATIONS
+    _require("no limitations", limitations)
+    panel = [i for i in limitations if "public panel" in i.lower()]
+    _require("%d limitation items describe the panel" % len(panel), len(panel) == 1)
+    _require("panel limitation is not the approved sentence: %r" % panel[0],
+             panel[0] == PANEL_LIMITATION)
+    for item in limitations:
+        _require("limitation states an entry count: %r" % item,
+                 not re.search(COUNT_WORD + r"(?: health(?:-related)?| trait)? entr|"
+                               + COUNT_WORD + r"-entry", item, re.I))
+        _require("limitation names a release version: %r" % item,
+                 not re.search(r"\bv\d+\.\d+", item))
+    return True
+
+
+def _t1_rows():
+    """(rsID, limitations cell, decision) of every T1 data row."""
+    text = _read(CURATION)
+    lines = text.split("\n")
+    start = lines.index("### T1 Decision table")
+    header = None
+    rows = []
+    for line in lines[start + 1:]:
+        if line.startswith("### ") or line.startswith("## "):
+            break
+        if not line.startswith("| "):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split(" | ")]
+        if header is None:
+            header = cells
+            continue
+        if set(line) <= set("|- "):
+            continue
+        _require("T1 row has %d cells" % len(cells), len(cells) == len(header))
+        row = dict(zip(header, cells))
+        rows.append((row["rsID"], row["limitations"], row["decision"]))
+    _require("T1 has no data rows", rows)
+    return rows
+
+
+def _s3b_multi_allelic_rows_have_note():
+    multi = {v["rsid"]: v["alternate_alleles"] for v in _release_panel_variants()
+             if len(v.get("alternate_alleles") or []) > 1}
+    _require("no multi-allelic entry in the release panel", multi)
+    included = {rs: lim for rs, lim, dec in _t1_rows() if dec == "included"}
+    for rsid, alts in sorted(multi.items()):
+        _require("%s has no included T1 row" % rsid, rsid in included)
+        note = MULTI_ALLELIC_NOTE.format(alts=", ".join(alts))
+        _require("%s limitations lack the multi-allelic note %r" % (rsid, note),
+                 included[rsid].endswith(note) and included[rsid].count(note) == 1)
+    for rsid, lim in included.items():
+        if rsid not in multi:
+            _require("%s is not multi-allelic but carries the note" % rsid,
+                     "(D8)" not in lim)
+    return True
+
+
+def _s3b_loop_spec_records_d8():
+    raw = open(LOOP_SPEC, "rb").read()
+    _require("existing bytes unchanged (prefix)",
+             hashlib.sha256(raw[:LOOP_SPEC_BASE_BYTES]).hexdigest() == LOOP_SPEC_BASE_SHA256)
+    tail = raw[LOOP_SPEC_BASE_BYTES:].decode("utf-8")
+    _require("Rev 4 is appended after the last line", tail.startswith("\n### Rev 4 "))
+    _require("one Rev 4 heading", raw.decode("utf-8").count("### Rev 4 ") == 1)
+    flat = _flat(tail)
+    for phrase in ("**D8 (pair reading", "criteria 1 and 4 apply to the reference/effect",
+                   "multi-allelic", "T1 limitation note", "2026-11-13",
+                   "**D9 (stage 2 capture", "STAGE=2",
+                   "**D3 superseded", "bump to 0.2.0", "2026-11-14",
+                   "r96", "r97", "r100", "r105"):
+        _require("Rev 4 lacks %r" % phrase, phrase in flat)
+    return True
+
+
+# Version-independent method statements of the curation paragraph, kept verbatim
+# (ticket r108, R107-F1).
+CURATION_METHOD_SENTENCES = (
+    "The health rows keep carrier or association wording only, and no entry "
+    "states a diagnosis or an absolute risk.",
+    "Effect alleles were re-derived from the complete dbSNP GRCh37 allele set in "
+    "N0d; the curated condition is attributed through a per-condition ClinVar "
+    "record (RCV) whose condition names the curated label by the alias-file "
+    "semantics, and that record's significance and stars are used, never the VCV "
+    "aggregate (D-54-3); the strict other-condition outcome applies when no RCV "
+    "names it.",
+    "The alias file was extended with three reviewed synonyms and two aliases that "
+    "named a different, bleeding disorder were removed (D-54-2).",
+    "Palindromic reference/effect pairs (A/T or C/G) are excluded by default with "
+    "reason code `palindromic` (D-54-1).",
+    "Whether the resulting panel is adequate is the owner's aggregate coverage "
+    "judgment (counts only).",
+)
+
+
+def _t1_dicts():
+    """Every T1 data row as a dict keyed by the header cells."""
+    lines = _read(CURATION).split("\n")
+    start = lines.index("### T1 Decision table")
+    header, rows = None, []
+    for line in lines[start + 1:]:
+        if line.startswith("### ") or line.startswith("## "):
+            break
+        if not line.startswith("| "):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split(" | ")]
+        if header is None:
+            header = cells
+        elif not set(line) <= set("|- "):
+            rows.append(dict(zip(header, cells)))
+    _require("T1 has no data rows", rows)
+    return rows
+
+
+def _curation_release_paragraph():
+    paras = [p for p in re.split(r"\n\s*\n", _section(_read(CURATION), "Limitations"))
+             if "DRAFT rsIDs" in p]
+    _require("%d Limitations paragraphs name the DRAFT pool" % len(paras), len(paras) == 1)
+    _require("the pool paragraph is empty", paras[0].strip())
+    return _flat(paras[0])
+
+
+def _s3b_curation_release_paragraph_matches_tables():
+    import json
+    import snp_insights.cli as cli
+    w = cli._tool_module("run").words
+    para = _curation_release_paragraph()
+    sentences = re.split(r"(?<=\.)\s+(?=[A-Z])", para)
+    _require("the paragraph still says 'For this release'", "For this release" not in para)
+    for sentence in CURATION_METHOD_SENTENCES:
+        _require("method statement changed or missing: %r" % sentence[:40], sentence in para)
+    _require("the paragraph does not end with the adequacy sentence",
+             para.endswith(CURATION_METHOD_SENTENCES[-1]))
+    draft = []
+    for name in ("targets.carrier.json", "targets.traits.json"):
+        with open(os.path.join(ROOT, "data", name), encoding="utf-8") as fh:
+            draft += [v["rsid"] for v in json.load(fh)["variants"]]
+    for phrase in ("the %d DRAFT rsIDs" % len(draft), "no marker was added",
+                   "every trait row was excluded"):
+        hits = [s for s in sentences if phrase.lower() in s.lower()]
+        _require("the v0.1.0 statement %r is missing" % phrase, hits)
+        for s in hits:
+            _require("%r is not scoped to v0.1.0: %r" % (phrase, s), "v0.1.0" in s)
+    rows = _t1_dicts()
+    new = [r for r in rows if r["rsID"] not in draft]
+    inc = [r for r in new if r["decision"] == "included"]
+    exc = [r for r in new if r["decision"] == "excluded"]
+    _require("T1 adds no candidate beyond the DRAFT pool", new)
+    _require("pool growth is not stated from T1",
+             "grew by %s candidates to %d T1 rows, of which %s were included and %s excluded"
+             % (w(len(new)), len(rows), w(len(inc)), w(len(exc))) in para)
+    _require("the paragraph names an rsID other than the added T1 candidates",
+             set(re.findall(r"\brs\d+\b", para)) == {r["rsID"] for r in new})
+    for r in new:
+        named = [s for s in sentences if re.search(r"\b%s\b" % r["rsID"], s)]
+        _require("%s is named in %d sentences" % (r["rsID"], len(named)), len(named) == 1)
+        s = named[0]
+        if r["decision"] == "included":
+            _require("%s: sentence lacks `%s` (category `%s`)" % (
+                r["rsID"], r["result type"], r["category"]),
+                s.startswith("Included as `%s` (category `%s`)" % (r["result type"], r["category"])))
+            if r["result type"] == "trait":
+                for phrase in ("Replication rule", "T4", "not ancestry-informative",
+                               "criterion 8"):
+                    _require("%s: trait sentence lacks %r" % (r["rsID"], phrase), phrase in s)
+        else:
+            _require("%s: sentence lacks reason code `%s`" % (r["rsID"], r["reason code"]),
+                     s.startswith("Excluded with reason code `%s`" % r["reason code"]))
+    _require("T1 has a reserve row", not any(r["decision"] == "reserve" for r in rows))
+    _require("no-reserves statement for v0.2.0 missing", "No reserves exist for v0.2.0" in para)
+    return True
+
+
+def _runner_copies_guard_selftest_files():
+    from guard import SELFTEST_MUST_BE_TRACKED
+    from loop_mutations import COPY_DIRS, COPY_FILES
+
+    missing = sorted(path for path in SELFTEST_MUST_BE_TRACKED
+                     if path not in COPY_FILES
+                     and not any(path.startswith(directory + "/") for directory in COPY_DIRS))
+    _require(f"runner copy inventory omits guard self-test files: {missing}", not missing)
     return True
 
 
@@ -1535,7 +1942,7 @@ def run(check):
     attempt("R4B.readme_template_only_command", _readme_template_only_command)
     attempt("R4B.readme_limitations_list", _readme_limitations_list)
     attempt("R4B.readme_no_real_paths_or_names", _readme_no_real_paths_or_names)
-    attempt("R4B.version_0_1_0_consistent", _version_consistent)
+    attempt("R4B.version_consistent", _version_consistent)
     attempt("R4B.runtime_dependencies_empty", _runtime_dependencies_empty)
     attempt("R4B.readme_status_exact", _readme_status_exact)
     attempt("R4B.readme_testing_section_complete", _readme_testing_section_complete)
@@ -1588,6 +1995,14 @@ def run(check):
     attempt("R6.getting_started_template_failure_troubleshooting", _r6_template_failure_troubleshooting)
     attempt("R6.template_failure_example_is_real", _r6_template_failure_example_is_real)
     attempt("R6.accepted_limits_al031_al032_verbatim", _r6_accepted_limits_al031_al032_verbatim)
+    attempt("S3B.docs_panel_counts_match_panel", _s3b_docs_panel_counts_match_panel)
+    attempt("S3B.limitation_panel_statement_count_free",
+            _s3b_limitation_panel_statement_count_free)
+    attempt("S3B.multi_allelic_rows_have_note", _s3b_multi_allelic_rows_have_note)
+    attempt("S3B.loop_spec_records_d8", _s3b_loop_spec_records_d8)
+    attempt("S3B.curation_release_paragraph_matches_tables",
+            _s3b_curation_release_paragraph_matches_tables)
+    attempt("L.runner_copies_guard_selftest_files", _runner_copies_guard_selftest_files)
 
 
 def main():

@@ -16,19 +16,19 @@ data, and writes a plain-language report. Everything that matters is computed by
 code on your computer: which markers were measured, what you carry, how strong the
 published evidence is, and which links to show.
 
-In v0.1.0 the report is written by fixed templates, with no language model. That is
+In v0.2.0 the report is written by fixed templates, with no language model. That is
 the verified path, it needs no network, and every command in this guide that writes
 a report uses `--template-only`. An optional narration step can have a language model phrase the
 sentences instead (a local model through Ollama by default, or an opt-in online
 model). It is built and tested against fixtures but is not verified against a live
-model in v0.1.0, and the model may only phrase sentences about results that code
+model in v0.2.0, and the model may only phrase sentences about results that code
 has already computed.
 
 It does **not** diagnose anything, give a personal risk estimate, or replace a
 clinician or genetic counselor. A consumer DNA chip measures a tiny part of the
 genome (about 0.02%), and a rare result on a chip can be wrong. This is a research
-and curiosity tool, not medical advice. The v0.1.0 panel has three health entries
-and no trait entries, so most of what you might wonder about is not covered.
+and curiosity tool, not medical advice. The v0.2.0 panel has seven health entries
+and one trait entry, so most of what you might wonder about is not covered.
 
 ## Prerequisites
 
@@ -38,7 +38,7 @@ and no trait entries, so most of what you might wonder about is not covered.
 - **`jsonschema`** (optional). It turns on extra JSON Schema checks. Nothing else
   needs it.
 - **Ollama** (optional). Only for narration by a local language model, which is
-  not verified against a live model in v0.1.0. Nothing in this guide needs it. The
+  not verified against a live model in v0.2.0. Nothing in this guide needs it. The
   verified mode is `--template-only`, which uses no model.
 
 Set up a clean environment inside your copy of the repository:
@@ -49,7 +49,7 @@ pip install jsonschema   # optional
 python -m snp_insights --version
 ```
 
-The last command prints `snp-insights 0.1.0`. Inside the virtual environment,
+The last command prints `snp-insights 0.2.0`. Inside the virtual environment,
 `python` and `python3` mean the same thing. Outside it, many systems have only
 `python3`.
 
@@ -117,7 +117,7 @@ Names can mislead. Three kinds of file sit in `data/`:
   is its built panel. `check-raw` uses that sample panel unless you name another.
 - `data/targets.carrier.json` and `data/targets.traits.json` are **draft starter
   sets**. They are not reviewed and are not for reports.
-- The **v0.1.0 release set**: `data/targets.release.json` (the curated targets),
+- The **v0.2.0 release set**: `data/targets.release.json` (the curated targets),
   `data/targets.release-evidence.json` (the evidence file) and
   `data/targets.release-panel.json`. Despite its name, the last one is a built
   **panel**, not a targets file. It is the file you give to `check-raw` and `run`.
@@ -134,7 +134,7 @@ Names can mislead. Three kinds of file sit in `data/`:
 | `fetch` | Targets files. | A cache of reference files. | **Yes.** |
 
 `fetch` and `build-panel` are for building panels; see [reference-data.md](reference-data.md).
-For v0.1.0 you never need them. `annotate`, `check-raw` and `run` with
+For v0.2.0 you never need them. `annotate`, `check-raw` and `run` with
 `--template-only` make no network call at all.
 
 Here are the four commands you will use, on the synthetic fixture. The output goes
@@ -171,11 +171,13 @@ synthetic fixture (`...` marks skipped lines). Its genotypes are invented:
 
 ```report
 ## Summary
-- one carrier status marker was examined: one was measured, zero were not measured, and zero returned no call or an uninterpretable result. [f_065a9790e8ec · state]
+- five carrier status markers were examined: five were measured, zero were not measured, and zero returned no call or an uninterpretable result. [f_065a9790e8ec · state] [f_a96ae54fd3b4 · state] [f_45738a4169e2 · state] [f_267e6220ca25 · state] [f_9c828d9896e4 · state]
 ...
 - Prothrombin thrombophilia (F2): two copies of the effect allele A were detected. Evidence tier: replicated, from ClinVar's review level: ClinVar lists this record as Pathogenic with two review stars (criteria provided, multiple submitters, no conflicts); this is a review level, not a count of independent studies. This is an association with Prothrombin thrombophilia; this report does not diagnose the condition. [f_b7dae4647a6b · state] [f_b7dae4647a6b · call.zygosity] [f_b7dae4647a6b · result_type] [f_b7dae4647a6b · effect_allele] [f_b7dae4647a6b · condition] [f_b7dae4647a6b · evidence.association] [f_b7dae4647a6b · evidence.clinvar.significance] [f_b7dae4647a6b · evidence.clinvar.review_stars] [f_b7dae4647a6b · evidence.clinvar.review_status_text]
 ...
 - Factor V Leiden thrombophilia (F5): both copies match the reference at this position; the effect allele was not found in the genotype. [f_bfc3a4f653bb · state] [f_bfc3a4f653bb · condition] [f_bfc3a4f653bb · rsid] [f_bfc3a4f653bb · gene] [f_bfc3a4f653bb · effect_allele]
+...
+- LDL cholesterol levels (PCSK9): one copy of the effect allele T was detected. Evidence tier: replicated, from the GWAS Catalog association count. This is a statistical association with LDL cholesterol levels in published studies; it is not a measurement of LDL cholesterol levels and not a diagnosis. [f_1d985d06c208 · state] [f_1d985d06c208 · call.zygosity] [f_1d985d06c208 · result_type] [f_1d985d06c208 · effect_allele] [f_1d985d06c208 · condition] [f_1d985d06c208 · evidence.association]
 ```
 
 **Call states.** Each marker ends in one of these:
@@ -275,7 +277,7 @@ against the synthetic fixture, unless the line says it was read from the code.
   rules as a model's report before anything is rendered. This message means the
   tool's own template report failed that self-check. It is a bug in the tool, not
   in your file. No report is written and the command stops with exit code 1 (`run` has
-  already written the findings file). In v0.1.0 the message is followed by one
+  already written the findings file). In v0.2.0 the message is followed by one
   violation line per problem, each starting with a rule code, then ids, numbers or
   words from the check. This example comes from a deliberately broken test report,
   not from a real file:
