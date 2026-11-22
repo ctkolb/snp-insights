@@ -24,6 +24,7 @@ import validate_report  # noqa: E402
 
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import check_raw  # noqa: E402
+import runtmp  # noqa: E402
 
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 import test_guard  # noqa: E402
@@ -353,6 +354,7 @@ def test_validator_e2e():
 
 
 def main():
+    runtmp.activate(tool="test_pipeline")
     test_parser()
     test_annotator()
     test_condition_normalization()
