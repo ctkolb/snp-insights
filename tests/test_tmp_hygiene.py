@@ -164,6 +164,16 @@ elif mode == "fork":
         sys.exit(0)
     os.waitpid(pid, 0)
     result["after_fork_exists"] = os.path.isdir(root)
+elif mode == "explicit":
+    result["removed"] = runtmp.cleanup()
+    result["again"] = runtmp.cleanup()
+    result["root_gone"] = not os.path.lexists(root)
+    import signal
+    result["handlers_default"] = all(signal.getsignal(s) is signal.SIG_DFL
+                                     for s in (signal.SIGTERM, signal.SIGHUP))
+    result["env_restored"] = os.environ.get("TMPDIR") == parent
+    result["tempdir_restored"] = tempfile.tempdir is None
+    result["inactive"] = not runtmp.active() and runtmp.root() is None
 elif mode == "release":
     outside = os.path.join(parent, "outside")
     os.mkdir(outside)
@@ -384,8 +394,8 @@ def test_signals(check):
 
 # ------------------------------------------------------------ TMP4 guards
 
-def _guard_child(mode):
-    parent = _fresh("guard")
+def _guard_child(mode, parent=None):
+    parent = parent or _fresh("guard")
     proc = _py("-c", GUARD_CHILD, SCRIPTS, mode, parent, cwd=ROOT, env=_env(parent))
     result = _tagged(proc.stdout, "RESULT")
     return parent, proc, result
@@ -409,6 +419,22 @@ def test_cleanup_guards(check):
     check("TMP4.forked_child_does_not_remove",
           result is not None and result.get("after_fork_exists") is True)
     check("TMP4.owner_removes_after_fork", proc.returncode == 0 and _entries(parent) == [])
+    check("TMP4.forked_child_stays_silent", "runtmp:" not in proc.stderr)
+    parent, proc, result = _guard_child("explicit")
+    result = result or {}
+    check("TMP4.explicit_cleanup_removes_once", result.get("removed") is True
+          and result.get("again") is False and result.get("root_gone") is True)
+    check("TMP4.cleanup_restores_signal_handlers", result.get("handlers_default") is True)
+    check("TMP4.cleanup_restores_tmpdir", result.get("env_restored") is True
+          and result.get("tempdir_restored") is True and result.get("inactive") is True)
+    real = _fresh("guard-real")
+    link = real + "-link"
+    os.symlink(real, link)
+    _, proc, result = _guard_child("clean", parent=link)
+    check("TMP4.symlinked_parent_resolved",
+          result is not None and os.path.dirname(result["root"]) == real)
+    check("TMP4.symlinked_parent_root_removed", proc.returncode == 0 and _entries(real) == []
+          and "runtmp:" not in proc.stderr)
     parent, proc, result = _guard_child("release")
     result = result or {}
     check("TMP4.release_removes_inner_tree", result.get("release_inner") is True
@@ -460,6 +486,7 @@ def test_sweep(check):
     os.mkdir(os.path.join(parent, PREFIX + "nomarkr1"))
     _fake_root(parent, PREFIX + "baduid01", dead_pid, uid=os.getuid() + 1)
     _fake_root(parent, PREFIX + "badpid01", "12")
+    _fake_root(parent, PREFIX + "schema02", dead_pid, schema=2)
     bad = os.path.join(parent, PREFIX + "badjson1")
     os.mkdir(bad)
     _write(os.path.join(bad, MARKER), "{broken")
@@ -485,6 +512,7 @@ def test_sweep(check):
         PREFIX + "live0001": "live", PREFIX + "stale001": "stale",
         PREFIX + "nomarkr1": "invalid", PREFIX + "baduid01": "invalid",
         PREFIX + "badpid01": "invalid", PREFIX + "badjson1": "invalid",
+        PREFIX + "schema02": "invalid",
         PREFIX + "symlink1": "invalid", PREFIX + "linkmkr1": "invalid",
         PREFIX + "TOOLONG-name": "invalid", PREFIX + "plainfl1": "invalid",
     }
