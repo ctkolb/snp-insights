@@ -16,9 +16,10 @@ each entry without following symbolic links.
 
 `run` snapshots PARENT, runs COMMAND with TMPDIR=PARENT, optionally signals it
 after a delay, snapshots again, prints one "new: NAME" line per new entry and a
-final "AUDIT {json}" summary line. Exit codes: 0 clean, 1 more new entries than
---max-new (default 0), 2 the command failed (not counting a requested signal),
-64 usage error.
+final "AUDIT {json}" summary line. The --json file must lie outside PARENT; a
+path inside it (also through a symbolic link) is rejected before anything runs.
+Exit codes: 0 clean, 1 more new entries than --max-new (default 0), 2 the
+command failed (not counting a requested signal), 64 usage error.
 """
 import argparse
 import json
@@ -98,6 +99,13 @@ def run(args):
     if not args.command:
         print("tmp_audit: no command after --", file=sys.stderr)
         return 64
+    if args.json:
+        out = os.path.realpath(args.json)
+        if out == parent or out.startswith(parent + os.sep):
+            # Written after the final snapshot, it would escape the count.
+            print("tmp_audit: --json path is inside the measured parent: %s" % out,
+                  file=sys.stderr)
+            return 64
     before = snap(parent)
     env = dict(os.environ)
     env["TMPDIR"] = parent
