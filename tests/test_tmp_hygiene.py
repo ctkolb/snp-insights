@@ -187,6 +187,88 @@ result["tree"] = tree(parent)
 print("RESULT " + json.dumps(result), flush=True)
 '''
 
+# TMP12/TMP13: removal must stay bound to the directory that was validated and
+# must never act through a symbolic link or on the recorded parent. The swap
+# modes wrap the removal step (runtmp._remove_tree) so that the directory at
+# the validated path is replaced after validation and before removal.
+RACE_CHILD = LOAD_SRC + TREE_SRC + r'''
+import json, stat, tempfile
+mode = sys.argv[2]
+parent = sys.argv[3]
+outside = os.path.join(parent, "outside")
+os.mkdir(outside)
+with open(os.path.join(outside, "sentinel.txt"), "w") as fh:
+    fh.write("owner data")
+root = runtmp.activate(tool="hygiene-race", parent=parent)
+result = {"root": root}
+def mode_of(path):
+    return stat.S_IMODE(os.lstat(path).st_mode)
+if mode in ("swapcleanup", "swaprelease"):
+    target = root if mode == "swapcleanup" else tempfile.mkdtemp()
+    with open(os.path.join(target, "ours.txt"), "w") as fh:
+        fh.write("ours")
+    moved = os.path.join(parent, "moved-original")
+    real = runtmp._remove_tree
+    hits = []
+    def swap_then_remove(path, *a, **k):
+        if not hits and os.path.abspath(path) == target:
+            os.rename(target, moved)
+            os.mkdir(target)
+            with open(os.path.join(target, "sentinel.txt"), "w") as fh:
+                fh.write("decoy data")
+            hits.append(path)
+        return real(path, *a, **k)
+    runtmp._remove_tree = swap_then_remove
+    if mode == "swapcleanup":
+        result["returned"] = runtmp.cleanup()
+    else:
+        result["returned"] = runtmp.release(target)
+    runtmp._remove_tree = real
+    result["hooked"] = len(hits) == 1
+    result["decoy"] = tree(target) if os.path.isdir(target) else None
+    result["moved"] = tree(moved) if os.path.isdir(moved) else None
+elif mode == "parentro":
+    with open(os.path.join(root, "ours.txt"), "w") as fh:
+        fh.write("ours")
+    before_tree = tree(root)
+    before_mode = mode_of(parent)
+    os.chmod(parent, before_mode & ~0o222)
+    restricted = mode_of(parent)
+    result["returned"] = runtmp.cleanup()
+    result["mode_unchanged"] = mode_of(parent) == restricted
+    os.chmod(parent, before_mode)
+    result["root_intact"] = os.path.isdir(root) and tree(root) == before_tree
+elif mode == "chmodlink":
+    os.symlink(outside, os.path.join(root, "link-out"))
+    ro = os.path.join(root, "ro")
+    os.mkdir(ro)
+    with open(os.path.join(ro, "sentinel.txt"), "w") as fh:
+        fh.write("ours")
+    os.symlink(outside, os.path.join(ro, "link-in"))
+    os.chmod(ro, 0o500)
+    os.chmod(outside, 0o500)
+    result["outside_mode"] = mode_of(outside)
+    result["returned"] = runtmp.cleanup()
+    result["outside_mode_after"] = mode_of(outside)
+    result["root_gone"] = not os.path.lexists(root)
+    os.chmod(outside, 0o700)
+elif mode == "onexc":
+    # The permission-retry hook, handed a path that leads out of the tree
+    # through a symbolic link, must not touch anything outside the tree.
+    link = os.path.join(root, "nested")
+    os.symlink(outside, link)
+    os.chmod(outside, 0o500)
+    try:
+        runtmp._onexc(os.unlink, os.path.join(link, "sentinel.txt"),
+                      PermissionError("simulated"))
+    except BaseException as exc:
+        result["raised"] = type(exc).__name__
+    result["outside_mode_after"] = mode_of(outside)
+    os.chmod(outside, 0o700)
+result["outside"] = tree(outside)
+print("RESULT " + json.dumps(result), flush=True)
+'''
+
 
 def _py(*args, **kw):
     kw.setdefault("capture_output", True)
@@ -763,7 +845,92 @@ def test_guard_standalone(check):
         stats.get("fixtures"), stats.get("copies"), peak, new, summary.get("seconds")))
 
 
+# ------------------------------------------------------------ TMP12 removal binding (F-A)
+
+OUTSIDE_TREE = {"sentinel.txt": "file:" + b"owner data".hex()}
+DECOY_TREE = {"sentinel.txt": "file:" + b"decoy data".hex()}
+
+
+def _race_child(mode):
+    parent = _fresh("race")
+    proc = _py("-c", RACE_CHILD, SCRIPTS, mode, parent, cwd=ROOT, env=_env(parent))
+    return parent, proc, (_tagged(proc.stdout, "RESULT") or {})
+
+
+def test_removal_binding(check):
+    for mode in ("swapcleanup", "swaprelease"):
+        parent, proc, r = _race_child(mode)
+        moved = r.get("moved") or {}
+        check("TMP12.swap_hook_fired[%s]" % mode, r.get("hooked") is True)
+        check("TMP12.swap_refused[%s]" % mode, r.get("returned") is False)
+        check("TMP12.swap_replacement_bytes_unchanged[%s]" % mode, r.get("decoy") == DECOY_TREE)
+        check("TMP12.swap_original_untouched[%s]" % mode,
+              moved.get("ours.txt") == "file:" + b"ours".hex())
+        check("TMP12.swap_refusal_reported[%s]" % mode, "runtmp: refusing" in proc.stderr)
+        check("TMP12.swap_outside_untouched[%s]" % mode, r.get("outside") == OUTSIDE_TREE)
+    check("TMP12.root_removed_after_refused_release",
+          proc.returncode == 0 and _entries(parent) == ["moved-original", "outside"])
+
+
+# ------------------------------------------------------------ TMP13 chmod boundary (F-B)
+
+def test_chmod_boundary(check):
+    _, proc, r = _race_child("parentro")
+    check("TMP13.readonly_parent_refused",
+          r.get("returned") is False and "runtmp: refusing" in proc.stderr)
+    check("TMP13.readonly_parent_mode_unchanged", r.get("mode_unchanged") is True)
+    check("TMP13.readonly_parent_root_left_intact", r.get("root_intact") is True)
+    _, proc, r = _race_child("chmodlink")
+    check("TMP13.links_in_tree_not_followed", r.get("outside") == OUTSIDE_TREE
+          and r.get("outside_mode") == 0o500 and r.get("outside_mode_after") == 0o500)
+    check("TMP13.readonly_subdir_removed", r.get("returned") is True and r.get("root_gone") is True
+          and "runtmp:" not in proc.stderr)
+    _, proc, r = _race_child("onexc")
+    check("TMP13.retry_hook_never_acts_outside_tree",
+          proc.returncode == 0 and r.get("outside") == OUTSIDE_TREE
+          and r.get("outside_mode_after") == 0o500)
+
+
+# ------------------------------------------------------------ TMP14 audit output path (F-C)
+
+def test_audit_output_path(check):
+    parent = _fresh("audit-out")
+    links = _fresh("audit-out-link")
+    os.symlink(parent, os.path.join(links, "to-parent"))
+    witness = os.path.join(_fresh("audit-out-witness"), "ran")
+    cases = (("inside", os.path.join(parent, "audit.json")),
+             ("nested", os.path.join(parent, "sub", "audit.json")),
+             ("parent", parent),
+             ("via_link", os.path.join(links, "to-parent", "audit.json")))
+    for label, path in cases:
+        proc = _audit_run(parent, "-c", "import sys; open(sys.argv[1], 'w').close()", witness,
+                          extra=("--json", path))
+        check("TMP14.json_inside_parent_rejected[%s]" % label, proc.returncode == 64
+              and "inside the measured parent" in proc.stderr
+              and _tagged(proc.stdout, "AUDIT") is None)
+        check("TMP14.json_inside_parent_runs_nothing[%s]" % label,
+              _entries(parent) == [] and not os.path.exists(witness))
+    control = _fresh("audit-out-control")
+    outside = os.path.join(_fresh("audit-out-ok"), "audit.json")
+    proc = _audit_run(control, "-c", "pass", extra=("--json", outside))
+    check("TMP14.json_outside_parent_written", proc.returncode == 0 and os.path.isfile(outside)
+          and _entries(control) == [])
+
+
+# ------------------------------------------------------------ TMP15 sweep caution
+
+def test_sweep_caution(check):
+    proc = _py(SWEEP, "--parent", _fresh("sweep-caution"), cwd=ROOT)
+    check("TMP15.sweep_prints_caution", proc.returncode == 0 and any(
+        line.startswith("caution: ") and "only that the owning process ended" in line
+        for line in proc.stdout.splitlines()))
+
+
 def run(check, heavy=False):
+    test_removal_binding(check)
+    test_chmod_boundary(check)
+    test_audit_output_path(check)
+    test_sweep_caution(check)
     test_scrubbed_env(check)
     test_fixture_isolation(check)
     test_no_in_tree_scratch(check)
