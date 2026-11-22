@@ -11,6 +11,8 @@ cannot silently rot. The decoy strings here are why the guard exempts this file
 from its own secret scan.
 """
 import contextlib
+import functools
+import hashlib
 import os
 import re
 import shutil
@@ -22,6 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 import guard  # noqa: E402
+import runtmp  # noqa: E402
 
 S3_PACKAGE_PATHS = ("pyproject.toml", "snp_insights/cli.py")
 
@@ -118,9 +121,35 @@ def _fx(repo, *args, check_rc=True, text=True):
     return proc.stdout.strip() if text else proc.stdout
 
 
+# Fixture lifecycle. Every fixture directory this suite creates is registered
+# here, and released (through the owned run root, never by a bare delete) when
+# the enclosing scope ends. Each fixture is still an independent repository
+# with its own HOME and state.
+_LIVE = []
+
+
+@contextlib.contextmanager
+def _fixture_scope():
+    mark = len(_LIVE)
+    try:
+        yield
+    finally:
+        while len(_LIVE) > mark:
+            runtmp.release(_LIVE.pop())
+
+
+def _scoped(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _fixture_scope():
+            return fn(*args, **kwargs)
+    return wrapper
+
+
 def _hg_repo(prefix="snp-insights-hg-"):
     """A synthetic repository with one commit on `main`; returns its path."""
     repo = tempfile.mkdtemp(prefix=prefix)
+    _LIVE.append(repo)
     os.makedirs(os.path.join(repo, ".home"))
     _fx(repo, "init", "-q")
     _fx(repo, "symbolic-ref", "HEAD", "refs/heads/main")
@@ -170,6 +199,7 @@ def _hg_labels(findings):
     return sorted({f.check for f in findings})
 
 
+@_scoped
 def _history_synthetic(check):
     """Replaces the former assertion against this repository's live history.
 
@@ -285,14 +315,15 @@ def run(check):
           not guard.check_secrets([".env.example"]))
 
     # 7. large-file guard ---------------------------------------------------
-    tmp = os.path.join(ROOT, "tests", ".tmp_large.bin")
+    large_dir = tempfile.mkdtemp(prefix="snp-insights-large-")
+    tmp = os.path.join(large_dir, "large.bin")
     try:
         with open(tmp, "wb") as fh:
             fh.write(b"0" * (guard.MAX_FILE_BYTES + 1))
         check("guard rejects oversized tracked file",
-              guard.check_large_files(["tests/.tmp_large.bin"]))
+              guard.check_large_files([tmp]))
     finally:
-        os.remove(tmp)
+        runtmp.release(large_dir)
     check("guard allows small file", not guard.check_large_files(["README.md"]))
 
     # 8. history scan (synthetic repositories; never this repo's own history) -
@@ -541,11 +572,18 @@ def _run_main(argv, repo, denylist=None, env=None):
     return rc, out.getvalue(), err.getvalue()
 
 
-def _full_fixture(messages=("clean synthetic message",), base=None):
-    """A git-free manifest copy of this project's tracked files, committed on
-    `main`, with the given messages committed on `feature`. Only
-    tests/test_pipeline.py differs (a stub that exits 0). Returns (work, base)."""
-    base = base or tempfile.mkdtemp(prefix="snp-insights-full-")
+_TEMPLATE = {}
+
+
+def _build_template():
+    """The pristine base repository, built once per process: a git-free manifest
+    copy of this project's tracked files, committed on `main`, then switched to
+    `feature`. Only tests/test_pipeline.py differs (a stub that exits 0). This is
+    the one place the tracked files are copied from the project. It is never
+    handed to a test: every fixture is a copy of it."""
+    if "base" in _TEMPLATE:
+        return _TEMPLATE["base"]
+    base = tempfile.mkdtemp(prefix="snp-insights-tpl-")
     repo = os.path.join(base, "work")
     os.makedirs(os.path.join(repo, ".home"))
     manifest = os.path.join(ROOT, ".tracked-files")
@@ -568,15 +606,46 @@ def _full_fixture(messages=("clean synthetic message",), base=None):
     _fx(repo, "add", "-f", "--", *paths)
     _fx(repo, "commit", "-q", "-m", "base commit")
     _fx(repo, "switch", "-q", "-c", "feature")
+    _TEMPLATE["base"] = base
+    return base
+
+
+def _template_fingerprint():
+    """(HEAD, tree hash, digest of the working files) of the template; read-only."""
+    repo = os.path.join(_build_template(), "work")
+    digest = hashlib.sha256()
+    for dirpath, dirnames, filenames in os.walk(repo):
+        dirnames[:] = sorted(d for d in dirnames if d != ".git")
+        for name in sorted(filenames):
+            path = os.path.join(dirpath, name)
+            digest.update(os.path.relpath(path, repo).encode() + b"\0")
+            with open(path, "rb") as fh:
+                digest.update(fh.read())
+    return (_fx(repo, "rev-parse", "HEAD"), _fx(repo, "rev-parse", "HEAD^{tree}"),
+            digest.hexdigest())
+
+
+def _full_fixture(messages=("clean synthetic message",), base=None):
+    """An independent copy of the template (its own repository, HOME and state),
+    with the given messages committed on `feature`. Returns (work, base); the
+    base is released when the enclosing fixture scope ends."""
+    template = _build_template()
+    base = base or tempfile.mkdtemp(prefix="snp-insights-full-")
+    _LIVE.append(base)
+    shutil.copytree(template, base, symlinks=True, dirs_exist_ok=True)
+    repo = os.path.join(base, "work")
     for m in messages:
         _hg_commit(repo, m, name="docs/hg-note.md")
     return repo, base
 
 
+@_scoped
 def _history_api(check):
     def guarded(name, fn):
         try:
-            check(name, bool(fn()))
+            with _fixture_scope():
+                result = bool(fn())
+            check(name, result)
         except Exception as exc:  # a crash is a failure, never a pass
             check(name + " [" + type(exc).__name__ + "]", False)
 
@@ -1003,10 +1072,13 @@ def _history_api(check):
     guarded("HG-08.zero_argument_apis_callable", default_args_callable)
 
 
+@_scoped
 def _env_classifier(check):
     def guarded(name, fn):
         try:
-            check(name, bool(fn()))
+            with _fixture_scope():
+                result = bool(fn())
+            check(name, result)
         except Exception as exc:
             check(name + " [" + type(exc).__name__ + "]", False)
 
@@ -1014,7 +1086,8 @@ def _env_classifier(check):
     other = _hg_feature(prefix=f"snp-insights-hg-{SENT}-other-")
     link = os.path.join(tempfile.mkdtemp(prefix="snp-insights-hg-"), "gitdir-link")
     os.symlink(os.path.join(repo, ".git"), link)
-    base = {"PATH": os.environ.get("PATH", ""), "HOME": "/nonexistent"}
+    base = {"PATH": os.environ.get("PATH", ""), "HOME": "/nonexistent",
+            "TMPDIR": tempfile.gettempdir()}
 
     def classify(extra, cwd=repo):
         before = dict(os.environ)
@@ -1124,6 +1197,7 @@ def _hook_fixture(probe=False, gitleaks_stub=False):
     if gitleaks_stub:
         _script(fx.bin, "gitleaks", "exit 0\n")
     fx.env = {"PATH": fx.bin + ":/usr/bin:/bin", "HOME": os.path.join(base, "home"),
+              "TMPDIR": tempfile.gettempdir(),
               "LC_ALL": "C", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
     return fx
 
@@ -1140,7 +1214,8 @@ def _hook_push(fx, branch="feature", cwd=None, git_args=(), extra_env=None):
 def _bare_refs(fx):
     proc = subprocess.run((guard._GIT_EXE, "--git-dir", fx.bare, "for-each-ref",
                            "--format=%(refname)"), capture_output=True, text=True,
-                          env={"PATH": "/usr/bin:/bin", "HOME": fx.base})
+                          env={"PATH": "/usr/bin:/bin", "HOME": fx.base,
+                               "TMPDIR": tempfile.gettempdir()})
     return proc.stdout.split()
 
 
@@ -1162,10 +1237,13 @@ def _snapshot(fx):
     return digest
 
 
+@_scoped
 def _hook_env(check):
     def guarded(name, fn):
         try:
-            check(name, bool(fn()))
+            with _fixture_scope():
+                result = bool(fn())
+            check(name, result)
         except Exception as exc:
             check(name + " [" + type(exc).__name__ + "]", False)
 
@@ -1192,11 +1270,13 @@ def _hook_env(check):
         }
 
     for pid in ("P1", "P2", "P3", "P4"):
-        fx = _hook_fixture()
-        guarded(f"HOOK-ENV-{pid}.push_reaches_guard_and_succeeds",
-                lambda fx=fx, pid=pid: accepted(fx, **shapes(fx)[pid]))
-    fx = _hook_fixture(gitleaks_stub=True)
-    guarded("HOOK-ENV-P1.with_gitleaks_stub", lambda: accepted(fx))
+        with _fixture_scope():
+            fx = _hook_fixture()
+            guarded(f"HOOK-ENV-{pid}.push_reaches_guard_and_succeeds",
+                    lambda fx=fx, pid=pid: accepted(fx, **shapes(fx)[pid]))
+    with _fixture_scope():
+        fx = _hook_fixture(gitleaks_stub=True)
+        guarded("HOOK-ENV-P1.with_gitleaks_stub", lambda: accepted(fx))
 
     # P5: the names Git actually exports to the hook are exactly the known ones.
     def probe_names():
@@ -1406,6 +1486,7 @@ def _r22_cli(work, extra_env=None, bin_dir=None):
         if not os.path.exists(os.path.join(bin_dir, "git")):
             os.symlink(guard._GIT_EXE, os.path.join(bin_dir, "git"))
     env = {"PATH": bin_dir + ":/usr/bin:/bin", "HOME": home, "LC_ALL": "C",
+           "TMPDIR": tempfile.gettempdir(),
            "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
     env.update(extra_env or {})
     proc = subprocess.run(
@@ -1427,10 +1508,13 @@ def _r22_failure_ok(res, work, message):
         and message in text and not any(leak in text for leak in leaks)
 
 
+@_scoped
 def _r22_checks(check):
     def guarded(name, fn):
         try:
-            check(name, bool(fn()))
+            with _fixture_scope():
+                result = bool(fn())
+            check(name, result)
         except Exception as exc:
             check(name + " [" + type(exc).__name__ + "]", False)
 
@@ -1630,7 +1714,8 @@ def _r22_checks(check):
 
     repo = _hg_feature()
     other = _hg_feature(prefix="snp-insights-hg-other-")
-    base_env = {"PATH": os.environ.get("PATH", ""), "HOME": "/nonexistent"}
+    base_env = {"PATH": os.environ.get("PATH", ""), "HOME": "/nonexistent",
+                "TMPDIR": tempfile.gettempdir()}
 
     def classify(extra, cwd=repo):
         return guard._classify_git_env({**base_env, **extra}, cwd)
@@ -1684,10 +1769,13 @@ def _r27_history_branch(work, patch=None):
     return rc, out.getvalue(), err.getvalue(), exc
 
 
+@_scoped
 def _r27_checks(check):
     def guarded(name, fn):
         try:
-            check(name, bool(fn()))
+            with _fixture_scope():
+                result = bool(fn())
+            check(name, result)
         except Exception as exc:
             check(name + " [" + type(exc).__name__ + "]", False)
 
@@ -1731,6 +1819,7 @@ def _dispatch_source():
     return "\n".join(ln[indent:] for ln in lines[start:end]) + "\n"
 
 
+@_scoped
 def _ci_static(check):
     text = _ci_text()
     src = _dispatch_source()
@@ -1762,10 +1851,13 @@ def _ci_static(check):
           and "eval" not in src and "os.system" not in src)
 
 
+@_scoped
 def _ci_dispatch(check):
     def guarded(name, fn):
         try:
-            check(name, bool(fn()))
+            with _fixture_scope():
+                result = bool(fn())
+            check(name, result)
         except Exception as exc:
             check(name + " [" + type(exc).__name__ + "]", False)
 
@@ -1790,6 +1882,7 @@ def _ci_dispatch(check):
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(raw if raw is not None else json.dumps(event))
         env = {"PATH": os.environ.get("PATH", ""), "HOME": base, "LC_ALL": "C",
+               "TMPDIR": tempfile.gettempdir(),
                "GITHUB_EVENT_NAME": name, "GITHUB_EVENT_PATH": path, "GITHUB_SHA": sha,
                "GITHUB_REF": ref, "GITHUB_REPOSITORY": repository}
         env.pop(drop, None)
@@ -1900,6 +1993,7 @@ def _ci_dispatch(check):
     guarded("CI.dispatch_invalid_asserted_branch_fails_closed", pr_bad_branch_is_guard_usage_error)
 
 
+@_scoped
 def _doc_checks(check):
     with open(os.path.join(ROOT, "docs", "security.md"), encoding="utf-8") as fh:
         doc = fh.read()

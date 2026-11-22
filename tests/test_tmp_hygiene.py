@@ -74,17 +74,6 @@ except ImportError:
     runtmp = None
 '''
 
-# TMP1: run a test suite the way the project runs it, under the owned run root.
-SUITE_CHILD = LOAD_SRC + r'''
-import runpy
-if runtmp:
-    runtmp.activate(tool="hygiene-suite")
-target = sys.argv[2]
-sys.argv = [target]
-sys.path.insert(0, os.path.dirname(os.path.abspath(target)))
-runpy.run_path(target, run_name="__main__")
-'''
-
 # TMP3: activate, create nested temp entries, report, then wait or exit.
 SIGNAL_CHILD = LOAD_SRC + r'''
 import json, signal, subprocess, tempfile
