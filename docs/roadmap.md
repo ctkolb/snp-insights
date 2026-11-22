@@ -1,6 +1,16 @@
 # Release roadmap
 
-## v0.3.0 — Biomarker panel expansion
+## v0.3.0 — Test cleanup and biomarker panel expansion
+
+### S0 — Stop test temporary-directory leaks (GitHub issue #14)
+
+Fix test and build-loop scratch cleanup first. Close this stage with independent review before planning biomarker work or capturing public references.
+
+- Give each run one owned temporary root, clean up test fixtures on normal exit and handled failures, and keep the history-guard fixtures isolated while reducing repeated repository copies.
+- Add a regression check that detects a deliberately leaked directory. Verify that the full pipeline suite and full privacy guard leave zero new entries in a controlled system temp directory.
+- Verify that an interrupted run leaves at most one project-owned temporary directory and that the next sweep identifies it. Document the sweep and its dry-run and explicit approval requirements for deletion. Existing leftovers are owner-managed.
+
+### S1–S3 — Biomarker panel expansion
 
 Approved scope. Evaluate these public markers under the existing [panel curation rules](panel-curation.md) and admit the pairs that meet every applicable gate. A documented exclusion is a valid outcome. Candidate rsIDs are starting points for evidence capture.
 
@@ -27,7 +37,7 @@ Proposed stages
 | S2 — Panel rebuild | Apply approved curation decisions, rebuild from pinned public inputs, and verify the resulting snapshot and release-panel tests. Record source provenance and the release version. |
 | S3 — Report and release verification | Verify the findings and coverage states end to end with synthetic fixtures. Review wording against the exact phenotypes and run the release gates before the owner checkpoint. |
 
-Baseline estimate is **8–11 builder and reviewer tickets**. The paired review policy may change that estimate once the stage tiers are assigned. The panel keeps the current result types and deterministic template report. The owner handles the private checkpoint and release tagging.
+Baseline estimate is **11–16 builder and reviewer tickets**, with **3–5 for S0** and **8–11 for the panel expansion**. Recalculate the estimate after the stage tiers and paired reviews are set. The panel keeps the current result types and deterministic template report. The owner handles the private checkpoint and release tagging.
 
 ## v0.4.0 — Disease associations
 
