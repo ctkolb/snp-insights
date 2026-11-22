@@ -670,6 +670,8 @@ def test_fixture_isolation(check):
               and all(os.path.isdir(g) and not os.path.islink(g) for g in gits))
         heads = [tg._fx(r, "rev-list", "--count", "HEAD") for r in (repo1, repo2)]
         check("TMP9.fixtures_keep_independent_history", heads == ["2", "3"])
+        hg = tg._hg_repo()
+        check("TMP9.hg_repo_is_live_in_scope", os.path.isdir(hg))
         marker = os.path.join(repo1, "docs", "fixture-isolation-probe.md")
         with open(marker, "w") as fh:
             fh.write("probe")
@@ -679,6 +681,7 @@ def test_fixture_isolation(check):
               not runtmp_active() or all(
                   os.path.realpath(b).startswith(runtmp_root() + os.sep) for b in (base1, base2)))
     check("TMP9.scope_releases_fixtures", not os.path.lexists(base1) and not os.path.lexists(base2))
+    check("TMP9.scope_releases_hg_repo", not os.path.lexists(hg))
     check("TMP9.template_unchanged", fingerprint() == before)
 
 
