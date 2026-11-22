@@ -863,6 +863,9 @@ def test_failed_validator_status():
 
 
 def main():
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import runtmp
+    runtmp.activate(tool="test_result_block")
     # markers and JSON
     check("builder valid", ok(BUILDER))
     check("reviewer valid", ok(REVIEWER))

@@ -1947,6 +1947,9 @@ def _hash_cli_ok(check):
 
 
 def main():
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import runtmp
+    runtmp.activate(tool="test_guard")
     passed, failed = [], []
 
     def check(name, cond):

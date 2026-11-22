@@ -2006,6 +2006,9 @@ def run(check):
 
 
 def main():
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import runtmp
+    runtmp.activate(tool="test_docs_release")
     passed, failed = [], []
 
     def check(name, cond):
