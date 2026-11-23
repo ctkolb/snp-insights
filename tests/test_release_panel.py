@@ -46,7 +46,9 @@ PINNED_HASHES = {
     "targets.carrier.json": "e9e7453a440ce51609b350b62a2f321c12374286355178edd3a52b47698c4f10",
     "targets.traits.json": "aabf84bfc412144214fc8f4f09eac8983a4ebaec0095c9cd2c9b16f6735fa6ce",
     "targets.sample.json": "0f1ae6151508f8bafeb3c64986d5f59c4cd0704f4ee6a859d795fe97047a93ad",
-    "condition_aliases.json": "61a09b1be59412d998698933f284e149d74e02b267bf82538ee5789f4d6cb5dd",
+    # Re-pinned by v0.3.0 S1 (r139): three alias groups added for the v0.3.0 labels
+    # (owner decision Q3 on r138); was 61a09b1be59412d998698933f284e149d74e02b267bf82538ee5789f4d6cb5dd.
+    "condition_aliases.json": "bc233a8d5642530ae829cfbfb1833f0136186340ad51df81c70a6964726d04ce",
 }
 
 # --- rule constants (single source of truth for the checkers) ----------------

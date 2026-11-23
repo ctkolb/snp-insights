@@ -107,5 +107,16 @@
   "ldl cholesterol levels": [
     "low density lipoprotein cholesterol levels",
     "ldl cholesterol"
+  ],
+  "lipoprotein(a) levels": [
+    "lp(a) levels"
+  ],
+  "25-hydroxyvitamin d levels": [
+    "serum 25-hydroxyvitamin d levels",
+    "vitamin d levels"
+  ],
+  "plasma total homocysteine": [
+    "homocysteine levels",
+    "plasma homocysteine levels"
   ]
 }
