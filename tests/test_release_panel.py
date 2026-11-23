@@ -4365,6 +4365,167 @@ def _run_r67_report_safety(attempt):
             risk_association_report_never_says_carrier)
 
 
+# =============================================================================
+# v0.3.0 S1 curation records (ticket snp-v030-S1-B-BUILD-r139). Pins each v0.3.0
+# row against the owner's triage (T-1..T-6), the staged inclusion of rs10741657
+# (recorded `reserve` until S2 adds its targets entry; orchestrator Option A on
+# r137) and the r138 decisions (Q2 evidence effect alleles, Q3 alias groups).
+# The D-3 value is the gnomAD v2.1.1 continental effect-allele spread recorded
+# in the rationale; 0.20 or more is flagged (D-3). Status, groups and the rows
+# meeting the significance requirement are recomputed with evaluate_replication.
+# =============================================================================
+V030_S1_RETRIEVED = "2026-11-23"
+V030_S1_FLAG_AT = 0.20
+V030_S1_ROWS = {
+    # rsID: (gene, chrom, label, effect allele, decision, reason code, D-3 spread,
+    #        T4 rows, computed status, exclusion code, groups, significant rows)
+    "rs10455872": ("LPA", "6", "Lipoprotein(a) levels", "G", "excluded", "single-study", "0.070", 4,
+                   "single-study", "single-study", [["a19037"]], ["a19037"]),
+    "rs3798220": ("LPA", "6", "Lipoprotein(a) levels", "C", "excluded", "no-independent-confirmation",
+                  "0.275", 1, "no-counted-evidence", "no-independent-confirmation", [], []),
+    "rs6544713": ("ABCG8", "2", "LDL cholesterol levels", "T", "excluded", "evidence-not-in-pack", "0.314", 4,
+                  "no-counted-evidence", "evidence-not-in-pack", [], []),
+    "rs2282679": ("GC", "4", "25-hydroxyvitamin D levels", "T", "excluded", "single-study", "0.202", 9,
+                  "single-study", "single-study", [["a30522242", "a30522310"]], ["a30522242"]),
+    "rs10741657": ("CYP2R1", "11", "25-hydroxyvitamin D levels", "A", "reserve", "-", "0.162", 5,
+                   "replicated", None, [["a27362261"], ["a64666345"]], ["a27362261", "a64666345"]),
+    "rs601338": ("FUT2", "19", "Total vitamin B12 levels", "-", "excluded", "no-independent-confirmation",
+                 "0.495", 1, "no-counted-evidence", "no-independent-confirmation", [], []),
+    "rs6795970": ("SCN10A", "3", "ECG PR interval", "A", "excluded", "no-independent-confirmation", "0.366", 3,
+                  "no-counted-evidence", "no-independent-confirmation", [], []),
+    "rs174537": ("MYRF", "11", "Arachidonic acid levels", "T", "excluded", "no-independent-confirmation",
+                 "0.523", 2, "no-counted-evidence", "no-independent-confirmation", [], []),
+    "rs1801133": ("MTHFR", "1", "Plasma total homocysteine", "A", "excluded", "ancestry-informative", "0.393", 7,
+                  "replicated", None, [["a129422187"], ["a134087602"]], ["a129422187", "a134087602"]),
+    "rs11887534": ("ABCG8", "2", "LDL cholesterol levels", "-", "excluded", "palindromic", "0.085", 0,
+                   None, None, [], []),
+}
+V030_S1_REPLICATION_CODES = ("conflicting-evidence", "single-study", "no-independent-confirmation",
+                             "evidence-not-in-pack")
+V030_S1_ALIAS_GROUPS = {
+    "lipoprotein(a) levels": ["lp(a) levels"],
+    "25-hydroxyvitamin d levels": ["serum 25-hydroxyvitamin d levels", "vitamin d levels"],
+    "plasma total homocysteine": ["homocysteine levels", "plasma homocysteine levels"],
+}
+V030_S1_STAGED = ("included by owner decision T-1; promoted to `included` in S2 together with "
+                  "the targets entry and panel rebuild")
+V030_S1_RESERVES_SENTENCE = ("For v0.3.0 the one `reserve` row, rs10741657 (CYP2R1, trait group), is a "
+                             "staged inclusion, not a coverage swap")
+V030_S1_RESERVE_LIMITS = ("may not transfer", "Finnish Health 2011", "SUNLIGHT",
+                          "owner decision T-1 (D-4a)")
+V030_S1_PROVENANCE = (
+    "a67ffeea8f69210b9e79816a5e4b357f052a62a7b82e563e88825725dd704882",
+    "945768a5ffa75ea9906c895eff18d7125d0bf46bbcb409d8fccd913270719567",
+    "v0.3.0 pack 2026-11-23", "the GWAS Catalog release was not recorded",
+    "no public array manifest was found",
+)
+
+
+def _v030_rows(tables):
+    errors, out = [], {}
+    for rs in V030_S1_ROWS:
+        hits = [r for r in tables["T1"] if r["rsID"] == rs]
+        if len(hits) != 1:
+            errors.append(f"{rs}: {len(hits)} T1 rows, expected 1")
+        else:
+            out[rs] = hits[0]
+    return errors, out
+
+
+def check_v030_s1_rows(tables):
+    errors, rows = _v030_rows(tables)
+    t5 = [r["rsID"] for r in tables["T5"]]
+    for rs, (gene, chrom, label, allele, dec, code, spread, *_rest) in V030_S1_ROWS.items():
+        r = rows.get(rs)
+        if r is None:
+            continue
+        want = {"gene": gene, "chrom (GRCh37)": chrom, "label used in report": label,
+                "result type": "trait", "category": "trait", "effect allele (fwd, GRCh37)": allele,
+                "decision": dec, "reason code": code, "assayability_status": "unknown-provisional",
+                "assayability_source": "-", "retrieved (UTC date)": V030_S1_RETRIEVED}
+        for cell, value in want.items():
+            if r[cell] != value:
+                errors.append(f"{rs}: {cell} {r[cell]!r} != {value!r}")
+        flagged = float(spread) >= V030_S1_FLAG_AT
+        screen = ("at or above the 0.20 threshold, flagged" if flagged
+                  else "below the 0.20 threshold, not flagged")
+        if (f"spread {spread}" not in r["rationale"] or screen not in r["rationale"]
+                or (flagged and "not flagged" in r["rationale"])):
+            errors.append(f"{rs}: rationale lacks the D-3 screen {spread} ({'flagged' if flagged else 'not flagged'})")
+        if t5.count(rs) != 1:
+            errors.append(f"{rs}: {t5.count(rs)} T5 rows, expected 1")
+    return errors
+
+
+def check_v030_s1_replication(tables, aliases):
+    errors, rows = _v030_rows(tables)
+    pack = pack_ids_from_inventory(tables["T5"])
+    for rs, (*_head, n_t4, status, code, groups, significant) in V030_S1_ROWS.items():
+        base = rows.get(rs)
+        t4 = [r for r in tables["T4"] if r["rsID"] == rs]
+        if len(t4) != n_t4:
+            errors.append(f"{rs}: {len(t4)} T4 rows, expected {n_t4}")
+        if base is None or not t4:
+            continue
+        got, got_groups, drops = evaluate_replication(t4, base["effect allele (fwd, GRCh37)"],
+                                                      base["label used in report"], aliases, pack)
+        sig = sorted(rid for rid, c in drops.items() if c is None and row_kind(
+            next(r for r in t4 if r["row id"] == rid)) == "gwas" and _parse_p(
+            next(r for r in t4 if r["row id"] == rid)["p-value"])[0] <= P_THRESHOLD)
+        got_code = replication_exclusion_code(got, drops)
+        if (got, got_code, got_groups, sig) != (status, code, groups, significant):
+            errors.append(f"{rs}: computed {got}/{got_code} groups {got_groups} significant {sig}, "
+                          f"expected {status}/{code} groups {groups} significant {significant}")
+        if base["reason code"] in V030_S1_REPLICATION_CODES and base["reason code"] != got_code:
+            errors.append(f"{rs}: reason code {base['reason code']!r} differs from the computed {got_code!r}")
+    return errors
+
+
+def check_v030_s1_reserve(text, tables, entries):
+    errors, rows = _v030_rows(tables)
+    if V030_S1_RESERVES_SENTENCE not in " ".join((section_body(text, "Reserves and goals") or "").split()):
+        errors.append("Reserves and goals lacks the staged-inclusion sentence")
+    r = rows.get("rs10741657")
+    if r is None:
+        return errors
+    if not r["rationale"].startswith(V030_S1_STAGED):
+        errors.append("rs10741657: rationale does not open with the staged-inclusion statement")
+    errors += [f"rs10741657: limitations lack {p!r}" for p in V030_S1_RESERVE_LIMITS if p not in r["limitations"]]
+    if any(e.get("rsid") == "rs10741657" for e in entries):
+        errors.append("rs10741657: targets entry exists in S1")
+    return errors
+
+
+def check_v030_s1_alias_groups(aliases):
+    return [f"alias group {k!r} is {aliases.get(k)!r}, expected {v!r}"
+            for k, v in V030_S1_ALIAS_GROUPS.items() if aliases.get(k) != v]
+
+
+def check_v030_s1_provenance(text):
+    body = section_body(text, "Provenance block") or ""
+    return [f"Provenance block lacks {p!r}" for p in V030_S1_PROVENANCE if p not in body]
+
+
+def _run_v030_s1(attempt):
+    def aliases():
+        import evidence
+        return evidence.load_aliases(ALIASES_PATH)
+
+    def gate(name, fn):
+        def body():
+            text, tables, targets = _real_world()
+            errors = fn(text, tables, targets)
+            _require(name + ": " + "; ".join(errors), not errors)
+            return True
+        attempt(name, body)
+
+    gate("R1B.v030_s1_rows_recorded", lambda x, t, g: check_v030_s1_rows(t))
+    gate("R1B.v030_s1_replication_recomputed", lambda x, t, g: check_v030_s1_replication(t, aliases()))
+    gate("R1B.v030_s1_reserve_is_staged_inclusion", lambda x, t, g: check_v030_s1_reserve(x, t, _entries(g)))
+    gate("R1B.v030_s1_alias_groups", lambda x, t, g: check_v030_s1_alias_groups(aliases()))
+    gate("R1B.v030_s1_provenance_names_packs", lambda x, t, g: check_v030_s1_provenance(x))
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -4393,6 +4554,7 @@ def run(check):
     _run_real(attempt)
     _run_1b_b_char(attempt)
     _run_1b_b(attempt)
+    _run_v030_s1(attempt)
     _run_1b_b_syn(attempt)
     _run_1b_b_r55(attempt)
     _run_r61(attempt)
