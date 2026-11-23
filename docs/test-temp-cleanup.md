@@ -93,6 +93,10 @@ directories the suite builds is recorded only; it did not change.
   directory with a matching name and a made-up marker, and the sweep will
   list it like a real one. The sweep only lists; any removal needs the owner's
   explicit approval of exact names, as described below.
+- Removal checks each directory again right after opening it, but another
+  process running as you can still rename a directory in the short window
+  between that check and an individual removal; this remaining race is
+  accepted and not closed.
 
 ## Removing leftovers (manual, owner only)
 
