@@ -199,6 +199,31 @@ def _open_dir(name, dir_fd):
     return os.open(name, _DIR_FLAGS, dir_fd=dir_fd)
 
 
+def _open_checked(name, dir_fd, expect=None):
+    """Open directory name under dir_fd, bound to the inode that was opened.
+
+    After the open, the descriptor must be the directory expect (when given),
+    and name must still resolve, without following a link, to the same device
+    and inode as the descriptor. A directory renamed away or replaced after
+    the open is refused before anything is removed through the descriptor.
+    """
+    fd = _open_dir(name, dir_fd)
+    try:
+        info = os.fstat(fd)
+        if expect is not None and not _same(info, expect):
+            raise _Refused("%s was replaced by another directory" % name)
+        try:
+            now = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            raise _Refused("%s was moved after it was opened" % name)
+        if not _same(now, (info.st_dev, info.st_ino)):
+            raise _Refused("%s no longer names the opened directory" % name)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
 def _onexc(func, path, exc):
     """Error policy for one failed removal step; never touches the filesystem.
 
@@ -225,11 +250,13 @@ def _rmdir_checked(dir_fd, name, ident):
     os.rmdir(name, dir_fd=dir_fd)
 
 
-def _repair_dir(dir_fd, name):
+def _repair_dir(dir_fd, name, expect):
     """Give the owner rwx on subdirectory name without following a link."""
     st = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
     if not stat.S_ISDIR(st.st_mode):
         raise PermissionError("not a directory: %s" % name)
+    if not _same(st, expect):
+        raise _Refused("%s was replaced by another directory" % name)
     try:
         os.chmod(name, stat.S_IMODE(st.st_mode) | stat.S_IRWXU, dir_fd=dir_fd,
                  follow_symlinks=False)
@@ -237,20 +264,22 @@ def _repair_dir(dir_fd, name):
         raise PermissionError("cannot change %s without following links" % name)
 
 
-def _remove_subdir(dir_fd, name):
+def _remove_subdir(dir_fd, name, expect=None):
+    """Remove subdirectory name of dir_fd, which was listed as inode expect."""
+    if expect is None:
+        raise _Refused("%s has no recorded identity" % name)
     try:
-        fd = _open_dir(name, dir_fd)
+        fd = _open_checked(name, dir_fd, expect)
     except PermissionError:
-        _repair_dir(dir_fd, name)
-        fd = _open_dir(name, dir_fd)
+        _repair_dir(dir_fd, name, expect)
+        fd = _open_checked(name, dir_fd, expect)
     try:
-        info = os.fstat(fd)
         empty = _clear(fd)
     finally:
         os.close(fd)
     if not empty:
         raise PermissionError("could not empty %s" % name)
-    _rmdir_checked(dir_fd, name, (info.st_dev, info.st_ino))
+    _rmdir_checked(dir_fd, name, expect)
 
 
 def _clear(dir_fd):
@@ -262,12 +291,24 @@ def _clear(dir_fd):
     """
     for attempt in range(2):
         failed = False
+        entries = []
         with os.scandir(dir_fd) as it:
-            entries = [(e.name, e.is_dir(follow_symlinks=False)) for e in it]
-        for name, is_dir in entries:
+            for e in it:
+                ident = None
+                if e.is_dir(follow_symlinks=False):
+                    try:
+                        listed = e.stat(follow_symlinks=False)
+                    except FileNotFoundError:
+                        continue
+                    except OSError:
+                        failed = True
+                        continue
+                    ident = (listed.st_dev, listed.st_ino)
+                entries.append((e.name, ident))
+        for name, ident in entries:
             try:
-                if is_dir:
-                    _remove_subdir(dir_fd, name)
+                if ident is not None:
+                    _remove_subdir(dir_fd, name, ident)
                 else:
                     os.unlink(name, dir_fd=dir_fd)
             except OSError as exc:
@@ -286,8 +327,11 @@ def _remove_tree(path, expect=None):
     The directory is reached from a descriptor of the recorded parent (and,
     below the root, through descriptors that never follow a symbolic link),
     and its device and inode must equal expect: for the root, the identity
-    recorded at activation. Its contents are removed through that descriptor,
-    so a directory swapped in at the same path is never touched. Removing the
+    recorded at activation. Each directory is checked again right after it is
+    opened (see _open_checked) and each subdirectory against the identity it
+    was listed with, before anything is removed through its descriptor. Its
+    contents are removed through that descriptor, so a directory swapped in at
+    the same path, or renamed away after the open, is never touched. Removing the
     root never changes the recorded parent: a parent this process cannot write
     to leaves the root in place. Returns True when removed; anything that no
     longer matches leaves the tree and prints "runtmp: refusing ...".
@@ -311,21 +355,17 @@ def _remove_tree(path, expect=None):
         opened.append(os.open(st["parent"], _DIR_FLAGS))
         name = st["name"]
         if not is_root:
-            opened.append(_open_dir(name, opened[-1]))
-            if not _same(os.fstat(opened[-1]), root_ident):
-                raise _Refused("the run root was replaced")
+            opened.append(_open_checked(name, opened[-1], root_ident))
             for part in rel[:-1]:
-                opened.append(_open_dir(part, opened[-1]))
+                opened.append(_open_checked(part, opened[-1]))
             name = rel[-1]
         anchor = opened[-1]
         for _ in range(5):
             try:
-                fd = _open_dir(name, anchor)
+                fd = _open_checked(name, anchor, expect)
             except FileNotFoundError:
                 return True
             try:
-                if not _same(os.fstat(fd), expect):
-                    raise _Refused("replaced by another directory")
                 empty = _clear(fd)
             finally:
                 os.close(fd)
