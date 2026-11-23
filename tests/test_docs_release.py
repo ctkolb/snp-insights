@@ -520,7 +520,7 @@ def _accepted_limits_rows_append_only():
         _require("%s differs from the approved text" % rid, _sha(new[rid]) == digest)
     appended = raw[LIMITS_BASE_BYTES:].decode("utf-8").split("\n")
     appended = [l for l in appended if l.strip()]
-    _require("only the approved rows AL-014..AL-040 were appended",
+    _require("only the approved rows AL-014..AL-047 were appended",
              [l[2:8] for l in appended]
              == sorted(NEW_ROW_SHA256) + sorted(CLOSURE_ROWS) + sorted(APPENDED_ROWS))
     return True
@@ -1493,6 +1493,83 @@ AL_040_ROW = (
     "source changes. |"
 )
 
+AL_041_ROW = (
+    "| AL-041 | TMP | A stale run root means only that its owning "
+    "process ended. A child process it started can outlive it and "
+    "keep writing into the root, so the sweep can list a root that "
+    "is still in use. The docs tell the owner to confirm no process "
+    "uses a root (for example `lsof +D PATH`) before any removal. | "
+    "MEDIUM | Owner decision on R128-F3: documented, with a caution "
+    "line in the sweep output; no marker or process-group redesign. "
+    "| 2026-11-22 | A leftover root is removed while a process still "
+    "uses it, or the owner wants process-group tracking. |"
+)
+
+AL_042_ROW = (
+    "| AL-042 | TMP | Run-root markers are not authenticated: any "
+    "process running as the same user can create a directory with a "
+    "matching name and a made-up marker, and the sweep lists it as "
+    "stale. The sweep only lists; removal needs the owner's explicit "
+    "approval of exact names. | LOW | Owner decision on R128-F4: "
+    "documented. | 2026-11-22 | The sweep gains a removal mode, or a "
+    "marker is trusted for something beyond listing. |"
+)
+
+AL_043_ROW = (
+    "| AL-043 | TMP | Removal binds to the opened directory and "
+    "re-checks each directory right after opening it, but a process "
+    "running as the same user can still rename a directory in the "
+    "short window between that check and an individual removal, so "
+    "the removal can reach an entry in the moved directory before "
+    "the final refusal. | LOW | Owner decision on the S0 FIX round "
+    "2: close the deterministic windows only; a portable containment "
+    "design is out of scope. | 2026-11-22 | The helper runs where "
+    "another user's or untrusted code shares the same account, or a "
+    "portable containment primitive is available. |"
+)
+
+AL_044_ROW = (
+    "| AL-044 | TMP | Cleanup of a run root walks nested directories "
+    "recursively. Beyond a depth of roughly 700 on the reviewed "
+    "host, `RecursionError` is caught and logged, cleanup returns "
+    "False and a partially cleaned root stays (one root, listed by "
+    "the sweep). Test and build-loop trees are far shallower. | LOW "
+    "| Owner decision on R132-F1 (accepted rather than spend fix "
+    "round 3). | 2026-11-22 | A test or tool builds trees of several "
+    "hundred levels, or cleanup is reused for arbitrary trees. |"
+)
+
+AL_045_ROW = (
+    "| AL-045 | TMP | A process ended by SIGKILL or `os._exit`, or "
+    "killed before its handlers run, leaves exactly one run root; "
+    "the next sweep lists it. A recorded pid that is later reused by "
+    "another process can make a dead root show as live (the safe "
+    "direction: it is not listed stale). | LOW | Bounded by design "
+    "(at most one owned root per process, list-only sweep); no "
+    "deletion code in S0. | 2026-11-22 | Leftover roots accumulate, "
+    "or pid reuse hides a root for long. |"
+)
+
+AL_046_ROW = (
+    "| AL-046 | TMP | The SIGTERM and SIGHUP handlers end the "
+    "process through SystemExit, so a check that catches SystemExit "
+    "can let a terminated run continue. Runs started under `nohup` "
+    "(SIGHUP ignored) fail the SIGHUP hygiene checks by design. | "
+    "LOW | Handler left unchanged; documented. | 2026-11-22 | A test "
+    "or tool starts catching SystemExit around long work, or the "
+    "hygiene suite is run under `nohup`. |"
+)
+
+AL_047_ROW = (
+    "| AL-047 | TMP | The peak-bytes and tracked-file-copy gate "
+    "(T-12) runs only when tests/test_tmp_hygiene.py runs directly, "
+    "not inside the pipeline run. The metric is tracked-file copies "
+    "(41 to 1, bound 14); the number of fixture directories (41) is "
+    "recorded only and did not change. | LOW | Owner confirmed this "
+    "reading of T-12 (accept all). | 2026-11-22 | The copy count "
+    "regresses unnoticed in pipeline-only runs. |"
+)
+
 APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
                  "AL-033": AL_033_ROW,
                  "AL-034": AL_034_ROW,
@@ -1501,7 +1578,14 @@ APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
                  "AL-037": AL_037_ROW,
                  "AL-038": AL_038_ROW,
                  "AL-039": AL_039_ROW,
-                 "AL-040": AL_040_ROW}
+                 "AL-040": AL_040_ROW,
+                 "AL-041": AL_041_ROW,
+                 "AL-042": AL_042_ROW,
+                 "AL-043": AL_043_ROW,
+                 "AL-044": AL_044_ROW,
+                 "AL-045": AL_045_ROW,
+                 "AL-046": AL_046_ROW,
+                 "AL-047": AL_047_ROW}
 NARRATION_NOT_VERIFIED = "not verified against a live model"
 FAILURE_EXAMPLE = (
     "template IR failed validation (bug):",
@@ -1630,13 +1714,13 @@ def _r6_template_failure_example_is_real():
 def _r6_accepted_limits_al031_al032_verbatim():
     text = _read(LIMITS)
     found = _rows(text, set(APPENDED_ROWS))
-    _require("AL-031 and AL-032 present", sorted(found) == sorted(APPENDED_ROWS))
+    _require("AL-031..AL-047 all present", sorted(found) == sorted(APPENDED_ROWS))
     for rid, row in APPENDED_ROWS.items():
         _require("%s differs from the approved text" % rid, found[rid] == row)
         _require("%s appears once" % rid, text.count(row) == 1)
     order = [l[2:8] for l in text.split("\n") if re.match(r"\| AL-\d{3} \|", l)]
     tail = len(APPENDED_ROWS)
-    _require("AL-031 and AL-032 start the appended rows, which end the register in order",
+    _require("AL-031 starts the appended rows, which end the register in order at AL-047",
              order == sorted(order) and order[-tail:] == sorted(APPENDED_ROWS)
              and order[-tail:][:2] == ["AL-031", "AL-032"])
     _require("AL-030 sits directly before AL-031", order[-tail - 1] == "AL-030")
