@@ -203,6 +203,12 @@ root = runtmp.activate(tool="hygiene-race", parent=parent)
 result = {"root": root}
 def mode_of(path):
     return stat.S_IMODE(os.lstat(path).st_mode)
+def read(path):
+    try:
+        with open(path) as fh:
+            return fh.read()
+    except OSError:
+        return None
 if mode in ("swapcleanup", "swaprelease"):
     target = root if mode == "swapcleanup" else tempfile.mkdtemp()
     with open(os.path.join(target, "ours.txt"), "w") as fh:
@@ -281,6 +287,120 @@ elif mode == "onexc":
         result["raised"] = type(exc).__name__
     result["outside_mode_after"] = mode_of(outside)
     os.chmod(outside, 0o700)
+elif mode in ("rootrename", "childrename"):
+    # TMP16: right after the directory is opened for removal, rename it away
+    # and put an empty directory at its name. Nothing in the renamed directory
+    # may be removed through the descriptor.
+    if mode == "rootrename":
+        target, label = root, runtmp._state["name"]
+    else:
+        target, label = os.path.join(root, "nested"), "nested"
+        os.mkdir(target)
+    with open(os.path.join(target, "ours.txt"), "w") as fh:
+        fh.write("ours")
+    result["before"] = sorted(os.listdir(target))
+    parked = os.path.join(parent, "parked")
+    real = runtmp._open_dir
+    hits = []
+    def open_then_rename(name, dir_fd):
+        fd = real(name, dir_fd)
+        if not hits and name == label:
+            os.rename(target, parked)
+            os.mkdir(target)
+            hits.append(name)
+        return fd
+    runtmp._open_dir = open_then_rename
+    result["returned"] = runtmp.cleanup()
+    runtmp._open_dir = real
+    result["hooked"] = len(hits) == 1
+    result["parked"] = sorted(os.listdir(parked)) if os.path.isdir(parked) else None
+    result["parked_bytes"] = read(os.path.join(parked, "ours.txt"))
+elif mode == "childswap":
+    # TMP16: between listing the root and removing a subdirectory, its name
+    # is swapped for an outside directory (all arguments passed through).
+    nested = os.path.join(root, "nested")
+    os.mkdir(nested)
+    with open(os.path.join(nested, "ours.txt"), "w") as fh:
+        fh.write("ours")
+    result["before"] = ["ours.txt"]
+    decoy = os.path.join(parent, "decoy")
+    os.mkdir(decoy)
+    with open(os.path.join(decoy, "sentinel.txt"), "w") as fh:
+        fh.write("decoy data")
+    parked = os.path.join(parent, "parked")
+    real = runtmp._remove_subdir
+    hits = []
+    def swap_then_remove(dir_fd, name, *a, **k):
+        if not hits and name == "nested":
+            os.rename(nested, parked)
+            os.rename(decoy, nested)
+            hits.append(name)
+        return real(dir_fd, name, *a, **k)
+    runtmp._remove_subdir = swap_then_remove
+    result["returned"] = runtmp.cleanup()
+    runtmp._remove_subdir = real
+    result["hooked"] = len(hits) == 1
+    result["parked"] = sorted(os.listdir(parked)) if os.path.isdir(parked) else None
+    result["parked_bytes"] = read(os.path.join(parked, "ours.txt"))
+    result["decoy_bytes"] = read(os.path.join(nested, "sentinel.txt"))
+elif mode == "releasespell":
+    # TMP17: release() accepts only the plain absolute spelling of a path.
+    for case in ("dot", "trailing", "plain"):
+        child = os.path.join(root, "child-" + case)
+        os.mkdir(child)
+        with open(os.path.join(child, "ours.txt"), "w") as fh:
+            fh.write("ours")
+    os.mkdir(os.path.join(root, "unused"))
+    result["dot"] = runtmp.release(os.path.join(root, "unused", "..", "child-dot"))
+    result["dot_bytes"] = read(os.path.join(root, "child-dot", "ours.txt"))
+    result["trailing"] = runtmp.release(os.path.join(root, "child-trailing") + os.sep)
+    result["trailing_bytes"] = read(os.path.join(root, "child-trailing", "ours.txt"))
+    result["plain"] = runtmp.release(os.path.join(root, "child-plain"))
+    result["plain_gone"] = not os.path.lexists(os.path.join(root, "child-plain"))
+elif mode == "nofollow":
+    # TMP18: the directory open used for removal never follows a link.
+    os.symlink(outside, os.path.join(root, "link-out"))
+    rfd = os.open(root, os.O_RDONLY)
+    try:
+        fd = runtmp._open_dir("link-out", rfd)
+    except OSError:
+        result["opened"] = False
+    else:
+        result["opened"] = True
+        os.close(fd)
+    os.close(rfd)
+    result["returned"] = runtmp.cleanup()
+elif mode == "releaserootswap":
+    # TMP18: the root is replaced before release() walks to its target, and
+    # the target is moved into the replacement: the walk must refuse.
+    target = tempfile.mkdtemp()
+    with open(os.path.join(target, "ours.txt"), "w") as fh:
+        fh.write("ours")
+    parked = os.path.join(parent, "parked-root")
+    real = runtmp._remove_tree
+    hits = []
+    def swap_root(path, *a, **k):
+        if not hits:
+            os.rename(root, parked)
+            os.mkdir(root)
+            os.rename(os.path.join(parked, os.path.basename(target)), target)
+            hits.append(path)
+        return real(path, *a, **k)
+    runtmp._remove_tree = swap_root
+    result["returned"] = runtmp.release(target)
+    runtmp._remove_tree = real
+    result["hooked"] = len(hits) == 1
+    result["target_bytes"] = read(os.path.join(target, "ours.txt"))
+elif mode == "ancestorlink":
+    # TMP18: an ancestor of the parent is renamed and replaced by a link to
+    # it; the root is no longer at its checked location, so cleanup refuses.
+    x = os.path.dirname(parent)
+    y = os.path.join(os.path.dirname(x), "y")
+    os.rename(x, y)
+    os.symlink("y", x)
+    result["returned"] = runtmp.cleanup()
+    result["root_kept"] = os.path.isdir(os.path.join(y, os.path.basename(parent),
+                                                     os.path.basename(root)))
 result["outside"] = tree(outside)
 print("RESULT " + json.dumps(result), flush=True)
 '''
@@ -871,8 +991,8 @@ OUTSIDE_TREE = {"sentinel.txt": "file:" + b"owner data".hex()}
 DECOY_TREE = {"sentinel.txt": "file:" + b"decoy data".hex()}
 
 
-def _race_child(mode):
-    parent = _fresh("race")
+def _race_child(mode, parent=None):
+    parent = parent or _fresh("race")
     proc = _py("-c", RACE_CHILD, SCRIPTS, mode, parent, cwd=ROOT, env=_env(parent))
     return parent, proc, (_tagged(proc.stdout, "RESULT") or {})
 
@@ -950,7 +1070,52 @@ def test_sweep_caution(check):
         for line in proc.stdout.splitlines()))
 
 
+# ------------------------------------------------------------ TMP16 check after open (F-A2)
+
+def test_after_open_binding(check):
+    for mode in ("rootrename", "childrename", "childswap"):
+        _, proc, r = _race_child(mode)
+        check("TMP16.hook_fired[%s]" % mode, r.get("hooked") is True)
+        check("TMP16.refused[%s]" % mode,
+              r.get("returned") is False and "runtmp: refusing" in proc.stderr)
+        check("TMP16.moved_directory_untouched[%s]" % mode,
+              r.get("parked") == r.get("before") and r.get("parked_bytes") == "ours")
+        check("TMP16.outside_untouched[%s]" % mode, r.get("outside") == OUTSIDE_TREE)
+    check("TMP16.swapped_in_directory_untouched", r.get("decoy_bytes") == "decoy data")
+
+
+# ------------------------------------------------------------ TMP17 release spellings (R130-F2)
+
+def test_release_spellings(check):
+    _, proc, r = _race_child("releasespell")
+    for case in ("dot", "trailing"):
+        check("TMP17.release_refuses_spelling[%s]" % case, r.get(case) is False)
+        check("TMP17.release_spelling_target_intact[%s]" % case, r.get(case + "_bytes") == "ours")
+    check("TMP17.release_plain_spelling_removes",
+          r.get("plain") is True and r.get("plain_gone") is True)
+
+
+# ------------------------------------------------------------ TMP18 no-follow and location (T-GAP)
+
+def test_link_and_location(check):
+    _, proc, r = _race_child("nofollow")
+    check("TMP18.dir_open_never_follows_link",
+          r.get("opened") is False and r.get("outside") == OUTSIDE_TREE)
+    _, proc, r = _race_child("releaserootswap")
+    check("TMP18.release_refuses_replaced_root", r.get("hooked") is True
+          and r.get("returned") is False and r.get("target_bytes") == "ours"
+          and "runtmp: refusing" in proc.stderr)
+    parent = os.path.join(_fresh("ancestor"), "x", "p")
+    os.makedirs(parent)
+    _, proc, r = _race_child("ancestorlink", parent)
+    check("TMP18.relinked_ancestor_refused", r.get("returned") is False
+          and r.get("root_kept") is True and "runtmp: refusing" in proc.stderr)
+
+
 def run(check, heavy=False):
+    test_after_open_binding(check)
+    test_release_spellings(check)
+    test_link_and_location(check)
     test_removal_binding(check)
     test_chmod_boundary(check)
     test_audit_output_path(check)
