@@ -1919,6 +1919,14 @@ CURATION_METHOD_SENTENCES = (
     "judgment (counts only).",
 )
 
+# Owner decision R-a on r138: the pool paragraph is checked per panel version.
+V020_GROWTH = (11, 34, 5, 6)  # candidates, T1 rows after v0.2.0, included, excluded
+V030_POOL = ("rs10455872", "rs3798220", "rs6544713", "rs2282679", "rs10741657",
+             "rs601338", "rs6795970", "rs174537", "rs1801133", "rs11887534")
+V030_GROWTH = (10, 44, 1, 9)  # candidates, T1 rows after v0.3.0, reserve, excluded
+V030_RESERVES = {"rs10741657"}
+V030_RESERVE_SENTENCE = "Recorded as `reserve` (staged inclusion, owner decision T-1)"
+
 
 def _t1_dicts():
     """Every T1 data row as a dict keyed by the header cells."""
@@ -1970,12 +1978,30 @@ def _s3b_curation_release_paragraph_matches_tables():
             _require("%r is not scoped to v0.1.0: %r" % (phrase, s), "v0.1.0" in s)
     rows = _t1_dicts()
     new = [r for r in rows if r["rsID"] not in draft]
-    inc = [r for r in new if r["decision"] == "included"]
-    exc = [r for r in new if r["decision"] == "excluded"]
     _require("T1 adds no candidate beyond the DRAFT pool", new)
-    _require("pool growth is not stated from T1",
-             "grew by %s candidates to %d T1 rows, of which %s were included and %s excluded"
-             % (w(len(new)), len(rows), w(len(inc)), w(len(exc))) in para)
+    # Version split (owner decision R-a on r138): the v0.2.0 growth sentence keeps
+    # its numbers and the v0.3.0 rows have their own sentence. S2 restores the
+    # strict no-reserve assertion when it promotes rs10741657 to `included`.
+    v030 = [r for r in new if r["rsID"] in V030_POOL]
+    v020 = [r for r in new if r["rsID"] not in V030_POOL]
+    _require("T1 lacks a v0.3.0 pool row", sorted(r["rsID"] for r in v030) == sorted(V030_POOL))
+    inc2 = [r for r in v020 if r["decision"] == "included"]
+    exc2 = [r for r in v020 if r["decision"] == "excluded"]
+    _require("v0.2.0 rows changed: %d rows, %d included, %d excluded" % (len(v020), len(inc2), len(exc2)),
+             (len(v020), len(draft) + len(v020), len(inc2), len(exc2)) == V020_GROWTH)
+    _require("v0.2.0 pool growth is not stated from T1",
+             "For v0.2.0 the pool grew by %s candidates to %d T1 rows, of which %s were included and %s excluded"
+             % (w(len(v020)), len(draft) + len(v020), w(len(inc2)), w(len(exc2))) in para)
+    inc3 = [r for r in v030 if r["decision"] == "included"]
+    res3 = [r for r in v030 if r["decision"] == "reserve"]
+    exc3 = [r for r in v030 if r["decision"] == "excluded"]
+    _require("a v0.3.0 row is included before S2", not inc3)
+    _require("v0.3.0 rows changed: %d rows, %d reserve, %d excluded" % (len(v030), len(res3), len(exc3)),
+             (len(v030), len(rows), len(res3), len(exc3)) == V030_GROWTH)
+    _require("v0.3.0 pool growth is not stated from T1",
+             "For v0.3.0 the pool grew by %s candidates to %d T1 rows, of which none was included, "
+             "%s is a reserve and %s were excluded"
+             % (w(len(v030)), len(rows), w(len(res3)), w(len(exc3))) in para)
     _require("the paragraph names an rsID other than the added T1 candidates",
              set(re.findall(r"\brs\d+\b", para)) == {r["rsID"] for r in new})
     for r in new:
@@ -1990,10 +2016,14 @@ def _s3b_curation_release_paragraph_matches_tables():
                 for phrase in ("Replication rule", "T4", "not ancestry-informative",
                                "criterion 8"):
                     _require("%s: trait sentence lacks %r" % (r["rsID"], phrase), phrase in s)
+        elif r["decision"] == "reserve":
+            _require("%s: reserve sentence is not the staged-inclusion form" % r["rsID"],
+                     s.startswith(V030_RESERVE_SENTENCE))
         else:
             _require("%s: sentence lacks reason code `%s`" % (r["rsID"], r["reason code"]),
                      s.startswith("Excluded with reason code `%s`" % r["reason code"]))
-    _require("T1 has a reserve row", not any(r["decision"] == "reserve" for r in rows))
+    _require("the reserve rows are not exactly %s" % sorted(V030_RESERVES),
+             {r["rsID"] for r in rows if r["decision"] == "reserve"} == V030_RESERVES)
     _require("no-reserves statement for v0.2.0 missing", "No reserves exist for v0.2.0" in para)
     return True
 
