@@ -409,10 +409,16 @@ def release(path):
     """Remove a directory this process created inside its run root, early.
 
     Refuses (returns False) a path outside the root, the root itself, a
-    symbolic link, and anything that is not a directory. Removal is bound to
-    the device and inode seen here (see _remove_tree).
+    symbolic link, anything that is not a directory, and any spelling with a
+    "." or ".." component or a trailing separator. Removal is bound to the
+    device and inode seen here (see _remove_tree).
     """
     if not active():
+        return False
+    raw = os.fspath(path)
+    if raw.endswith(os.sep):
+        return False
+    if any(part in (".", "..") for part in raw.split(os.sep)):
         return False
     try:
         info = os.lstat(path)
