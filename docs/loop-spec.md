@@ -624,3 +624,27 @@ identifiers only (rsIDs, gene names); no machine paths.
     fix deferred; frozen pack manifest; ticket split A/B/S3/T.
   - r105 (2026-11-14): the trait sentence repeats the finding's label ("not a
     measurement of" the label "and not a diagnosis") and is ratified.
+
+## v0.3.0 run: S0 temporary-directory cleanup (decisions log)
+
+- **Scope.** GitHub issue #14. One owned run root per process at
+  `<parent>/snp-insights-run-<8 chars>`, with a marker file. `tempfile.tempdir`
+  and `TMPDIR` are redirected into it. The root is cleaned up on exit, SIGTERM
+  and SIGHUP. The sweep is list-only (live, stale, invalid). A read-only audit
+  tool is added. Hygiene tests start at TMP1. `scripts/guard.py` is unchanged.
+- **D-1 to D-11 (owner, accepted as recommended).** Two HIGH BUILDs and one
+  cumulative paired review; no deletion code in S0; the helper lives at
+  `scripts/runtmp.py`; no CI change; documentation lines authorized; branch
+  `codex/v0.3.0-biomarker-panel` from 07dc614.
+- **Owner decisions during review.**
+  - T-12 reads as tracked-file copies, 41 to 1 (bound 14), with the fixture
+    directory count unchanged (accept all).
+  - R128-F3 and R128-F4 are accepted limits (AL-041, AL-042).
+  - R128-F6 is rejected: the copyright header matches existing files.
+  - `tmp_audit.py` rejects an output path inside the measured parent rather
+    than counting it.
+  - The same-user rename race is accepted (AL-043).
+  - R132-F1 deep nesting is accepted (AL-044).
+  - AL-045 to AL-047 are recorded from review candidates.
+- **Fix rounds.** BUILD r125 took two FIX rounds (r129, r131); the stage limit
+  is three.
