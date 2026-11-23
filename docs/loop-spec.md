@@ -648,3 +648,85 @@ identifiers only (rsIDs, gene names); no machine paths.
   - AL-045 to AL-047 are recorded from review candidates.
 - **Fix rounds.** BUILD r125 took two FIX rounds (r129, r131); the stage limit
   is three.
+
+## v0.3.0 run: S1 evidence and curation records (decisions log)
+
+- **Evidence pack.** Frozen 2026-11-22 (owner's local date, -05:00; the
+  captures carry UTC 2026-11-23) outside the repository as `evidence/v0.3.0`,
+  MANIFEST.sha256 sha256
+  a67ffeea8f69210b9e79816a5e4b357f052a62a7b82e563e88825725dd704882 (121
+  entries). The supplement `evidence/v0.3.0-supp1` (MANIFEST.sha256 sha256
+  945768a5ffa75ea9906c895eff18d7125d0bf46bbcb409d8fccd913270719567, 2 entries)
+  holds the gnomAD answers for 11-14914878-A-G and -A-C (the latter "Variant not
+  found"). GWAS Catalog release not recorded; no public array manifest found.
+- **Pack defect.** The derived file `placements.tsv` places rs10741657 on the
+  alternate scaffold NW_003871082.1 (the helper kept the last GRCh37
+  placement), and `gnomad-variant-ids.tsv` follows it. The raw dbSNP record is
+  correct (NC_000011.9, 11:14914878, A>C,G) and is the only source used; no
+  value is copied from either derived file, and the pack is not edited.
+- **D-1 to D-11 (owner, accepted as recommended, 2026-11-22).**
+  - D-1 Capture 9 candidates plus rs11887534 identity-only; rs4245791 not
+    captured.
+  - D-2 "levels" label forms; D-2b no full GWAS file.
+  - D-3 Record the gnomAD v2.1.1 continental effect-allele frequency spread;
+    flag at 0.20 or more (threshold set by the owner after seeing the
+    numbers); a flagged row is excluded unless the owner includes it with a
+    decision id.
+  - D-4 Per-candidate inclusion decided at triage after the S1 survey.
+  - D-5 Accept same-label pairs; pin the behavior with a test; register an
+    accepted limit.
+  - D-6 No direction wording added to the report template.
+  - D-7 Array manifest: unknown-provisional unless the owner finds a public
+    manifest.
+  - D-8 Budget re-baseline accepted: 21 clean / 25 max total tickets (with
+    D-9: 20 / 24).
+  - D-9 The S2 review is folded into the S3 paired review (the S3 export
+    contains the S2 diff; the attack list adds rebuild reproducibility).
+  - D-10 The S3 ticket may edit the AGENTS.md "Current state" block and its
+    pinned test.
+  - D-11 The builder may use the existing py312 schema venv for the schema
+    pass (run only, install nothing).
+- **T-1 to T-6 (owner triage, "accept all", 2026-11-23).**
+  - T-1 rs10741657 CYP2R1 "25-hydroxyvitamin D levels": include; the possible
+    Finnish Health 2011 / SUNLIGHT overlap is recorded as a limit in
+    `limitations` with the owner decision id (D-4a accepted).
+  - T-2 rs1801133 MTHFR: exclude `ancestry-informative` (D-3 default; the
+    label question is moot).
+  - T-3 Other candidates excluded with the survey codes: rs10455872
+    `single-study`; rs3798220 `no-independent-confirmation`; rs6544713
+    `evidence-not-in-pack`; rs2282679 `single-study`; rs601338
+    `no-independent-confirmation`; rs6795970 `no-independent-confirmation`;
+    rs174537 `no-independent-confirmation`; rs11887534 `palindromic`. The
+    rationale records the screen flag (replication code first, flag in the
+    rationale).
+  - T-4 Underflowed p-values: the existing `p-malformed` rule stands; accepted
+    limit AL-048.
+  - T-5 SCN10A: no "Electrocardiographic traits" alias.
+  - T-6 Minor items (FADS gene cell, effect allele `?`, retrieved date)
+    resolved by the builder from the survey: the rs174537 gene cell is MYRF
+    (the captured annotation; no captured record names FADS1 or FADS2), `?`
+    is kept in T4 allele cells (it never matches a T1 allele, so the row drops
+    as `allele-mismatch` or `trait-mismatch`), and `retrieved` is the UTC
+    capture date 2026-11-23.
+- **Staged inclusion (orchestrator Option A on r137, delegated by the
+  owner).** The release bijection gate needs a targets entry for every
+  `included` row, and targets are S2. S1 therefore records rs10741657 as
+  `reserve`, with every reserve-applicable gate run. S2 promotes that one
+  decision cell to `included` in the commit that adds its targets entry and
+  rebuilds the panel, and restores the strict no-reserve assertion in
+  tests/test_docs_release.py.
+- **r138 decisions (owner, "accept recommendations", 2026-11-23).** R-a: the
+  curation release-paragraph gate pins the reserve set to exactly rs10741657
+  with a staged-inclusion sentence and splits the pool growth by version
+  (v0.2.0 keeps 34 rows, five included, six excluded; v0.3.0 adds ten: none
+  included, one reserve, nine excluded). Q2: excluded rows with T4 rows carry
+  the evidence effect allele in T1. Q3: alias groups for Lipoprotein(a)
+  levels, Plasma total homocysteine and 25-hydroxyvitamin D levels, one
+  re-pin, and a test that pins each new row's computed status. Q4: T4 cohort
+  source `pmid:<id>` for unknown cohorts and orientation source `dbsnp:rs<id>`
+  for unverified rows. Q5: accepted limits AL-048 and AL-049, pinned.
+- **Survey correction (S1 BUILD).** Four T4 rows (a30522325, a27438753,
+  a27438761, a30522333) have no direction in the captured GWAS records (beta
+  "-", no odds ratio); the survey draft said up. They are recorded with
+  direction `-`. Neither the rs10741657 status (replicated, two groups) nor the
+  rs2282679 status (single-study) changes.

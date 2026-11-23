@@ -520,7 +520,7 @@ def _accepted_limits_rows_append_only():
         _require("%s differs from the approved text" % rid, _sha(new[rid]) == digest)
     appended = raw[LIMITS_BASE_BYTES:].decode("utf-8").split("\n")
     appended = [l for l in appended if l.strip()]
-    _require("only the approved rows AL-014..AL-047 were appended",
+    _require("only the approved rows AL-014..AL-049 were appended",
              [l[2:8] for l in appended]
              == sorted(NEW_ROW_SHA256) + sorted(CLOSURE_ROWS) + sorted(APPENDED_ROWS))
     return True
@@ -1570,6 +1570,31 @@ AL_047_ROW = (
     "regresses unnoticed in pipeline-only runs. |"
 )
 
+AL_048_ROW = (
+    "| AL-048 | REL | A GWAS p-value whose value underflows to 0.0 "
+    "as a float (for example 6e-22136 or 2e-456) is rejected as "
+    "`p-malformed`, so the row can neither count as a group nor "
+    "meet the significance requirement, even when it is the "
+    "strongest row in the pack. In v0.3.0 this removed the UK "
+    "Biobank Lp(a) rows for rs10455872 and rs3798220. | LOW | Owner "
+    "decision T-4 (v0.3.0 S1 triage): the existing `p-malformed` "
+    "rule stands; it can only exclude evidence, never add it. | "
+    "2026-11-23 | A candidate's replication outcome depends on an "
+    "underflowed row, or the rule is changed to parse such values. "
+    "|"
+)
+
+AL_049_ROW = (
+    "| AL-049 | REL | The report does not state the direction of a "
+    "trait association (whether the effect allele goes with higher "
+    "or lower values); the direction is recorded only in the T1 "
+    "`direction/meaning` cell of docs/panel-curation.md. | LOW | "
+    "Owner decision D-6 (v0.3.0 S1): no direction wording is added "
+    "to the report template. | 2026-11-23 | The owner wants the "
+    "report to state direction, or a reader takes a trait finding "
+    "to mean higher or lower values. |"
+)
+
 APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
                  "AL-033": AL_033_ROW,
                  "AL-034": AL_034_ROW,
@@ -1585,7 +1610,9 @@ APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
                  "AL-044": AL_044_ROW,
                  "AL-045": AL_045_ROW,
                  "AL-046": AL_046_ROW,
-                 "AL-047": AL_047_ROW}
+                 "AL-047": AL_047_ROW,
+                 "AL-048": AL_048_ROW,
+                 "AL-049": AL_049_ROW}
 NARRATION_NOT_VERIFIED = "not verified against a live model"
 FAILURE_EXAMPLE = (
     "template IR failed validation (bug):",
@@ -1714,13 +1741,13 @@ def _r6_template_failure_example_is_real():
 def _r6_accepted_limits_al031_al032_verbatim():
     text = _read(LIMITS)
     found = _rows(text, set(APPENDED_ROWS))
-    _require("AL-031..AL-047 all present", sorted(found) == sorted(APPENDED_ROWS))
+    _require("AL-031..AL-049 all present", sorted(found) == sorted(APPENDED_ROWS))
     for rid, row in APPENDED_ROWS.items():
         _require("%s differs from the approved text" % rid, found[rid] == row)
         _require("%s appears once" % rid, text.count(row) == 1)
     order = [l[2:8] for l in text.split("\n") if re.match(r"\| AL-\d{3} \|", l)]
     tail = len(APPENDED_ROWS)
-    _require("AL-031 starts the appended rows, which end the register in order at AL-047",
+    _require("AL-031 starts the appended rows, which end the register in order at AL-049",
              order == sorted(order) and order[-tail:] == sorted(APPENDED_ROWS)
              and order[-tail:][:2] == ["AL-031", "AL-032"])
     _require("AL-030 sits directly before AL-031", order[-tail - 1] == "AL-030")
