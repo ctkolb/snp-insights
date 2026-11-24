@@ -2201,6 +2201,20 @@ def _v030s3_accepted_limits_rows():
     return True
 
 
+def _v030s3f_excerpt_reflects_equal_reference_sentence():
+    flat = _flat(_read(GETTING_STARTED))
+    old = ("Factor V Leiden thrombophilia (F5): both copies match the reference at this "
+           "position; the effect allele was not found in the genotype.")
+    new = ("Factor V Leiden thrombophilia (F5): no copy of the effect allele was found in "
+           "the genotype at this position.")
+    _require("getting-started still shows the false rs6025 sentence", old not in flat)
+    _require("getting-started lacks the rs6025 sentence for effect allele = reference", new in flat)
+    _require("the excerpt line does not cite effect_allele_is_reference",
+             "effect_allele_is_reference]" in flat.split(new, 1)[1].split("\n")[0][:400]
+             or "effect_allele_is_reference]" in flat.split(new, 1)[1][:400])
+    return True
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -2283,6 +2297,8 @@ def run(check):
     attempt("L.runner_copies_guard_selftest_files", _runner_copies_guard_selftest_files)
     attempt("V030S3.release_wording", _v030s3_release_wording)
     attempt("V030S3.accepted_limits_rows", _v030s3_accepted_limits_rows)
+    attempt("V030S3F.docs_excerpt_reflects_equal_reference_sentence",
+            _v030s3f_excerpt_reflects_equal_reference_sentence)
 
 
 def main():

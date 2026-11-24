@@ -4784,8 +4784,7 @@ S3_STATE_CASES = (
     ("detected_hom_alt", ("A", "A"), "detected", "hom_alt",
      "two copies of the effect allele A were detected. " + S3_TRAIT_TAIL),
     ("covered_reference", ("C", "C"), "covered_reference", "hom_ref",
-     "both copies match the reference at this position; the effect allele was not found "
-     "in the genotype."),
+     "no copy of the effect allele was found in the genotype at this position."),
     ("covered_nocall", ("0", "0"), "covered_nocall", "unknown",
      "this position is on the array, but the array returned no call, so no genotype is available."),
     ("covered_uninterpretable", ("T", "T"), "covered_uninterpretable", "unknown",
@@ -4924,6 +4923,11 @@ def _run_v030_s3(attempt):
             # W-2: only the no-call template speaks of the position being on the array.
             on_array = "on the array" in mine[0][2]
             _require(f"{name}: 'on the array' wording is {on_array}", on_array == (state == "covered_nocall"))
+            if state == "covered_reference":
+                cited = {c["field_path"] for sec in ir["sections"] for cl in sec["claims"]
+                         if cl["claim_id"] == mine[0][1] for c in cl["citations"]}
+                _require("the covered_reference claim does not cite effect_allele_is_reference: %r"
+                         % sorted(cited), "effect_allele_is_reference" in cited)
             if state == "not_covered":
                 _require("not_covered lacks the no-information sentence",
                          "gives no information about whether the effect allele is present"
@@ -5118,6 +5122,211 @@ def _run_v030_s3(attempt):
     attempt("V030S3.same_label_pair_pins_behavior", same_label_pair_pins_behavior)
 
 
+# =============================================================================
+# V030S3F: F-1 fix (r149). When the effect allele equals the reference allele the
+# covered_reference sentence must not say the genotype matches the reference.
+# =============================================================================
+S3F_SHIPPED = "{label}{gene}: both copies match the reference at this position; the effect allele was not found in the genotype."
+S3F_EQUAL = "{label}{gene}: no copy of the effect allele was found in the genotype at this position."
+# sha256 of each shipped covered_reference sentence, computed at the base commit (21636ee) with
+# the first non-effect declared allele as a homozygous genotype; rs6025 is the one entry whose
+# effect allele equals the reference allele, so it is pinned by its new exact sentence instead.
+S3F_SHIPPED_DIGESTS = {
+    "rs1800562": "e33d6d73a9e3fbf9aa932013199f9cefca5fa6d8b0407cb6c9c1bbd87e22ac7b",
+    "rs1799963": "d3eb5fb22a75d8acc994615b1c059f2184472860acfe115d12dc631af275317d",
+    "rs1799807": "630740ae35f1a791ae2d99c4984f97fe55d0d6e79dc5180f92c4f2b131cd6988",
+    "rs121908529": "df20e9dd220752269eebb5a2d7bb08218df263eaccfacf2909df7bfc21f41cbb",
+    "rs185803104": "bf1c10abf33f2effa2716b8664625a4e01dc8611b80f29838d511d38c44d5532",
+    "rs180177314": "aae20f74e61bf1c90fd350cb03096b02f04e7bc6e21017f55e824ad6c2962f7e",
+    "rs11591147": "0872305fb367e95b7b6912017de48cf660d9e6c14403c15b0ff3769a25912eff",
+}
+S3F_SHIPPED_EIGHT = ("rs1800562", "rs1799963", "rs6025", "rs1799807", "rs121908529",
+                     "rs185803104", "rs180177314", "rs11591147")
+S3F_EQUAL_ENTRIES = ("rs6025", "rs10741657")
+# Base digests of the findings schema (canonical JSON, without the one new property) and of the
+# report IR schema file: the flag is the only schema change.
+S3F_FINDINGS_SCHEMA_DIGEST = "f56ac7f119394f58e8c284cca90216d00a34267b668a15ad47c0146756fba69d"
+S3F_REPORT_IR_SCHEMA_SHA256 = "23d9d820d556dba804e3950a5e252e5dfa5b4d8fd402fff4c452fe9de36ec406"
+
+
+def _s3f_genotype(v):
+    eff, ref = v["effect_allele"], v["reference_allele"]
+    other = ref if ref != eff else [a for a in v["alternate_alleles"] if a != eff][0]
+    return other
+
+
+def _s3f_raw(directory, v, genotype, name="raw.s3f.txt"):
+    lines = ["#Invented synthetic raw data for the F-1 tests; not a real person.",
+             "#Data was collected using AncestryDNA array version: TESTARRAY-1",
+             "#Data is formatted using AncestryDNA converter version: TESTCONVERTER-1",
+             "#Genetic data is provided below as five TAB delimited columns.",
+             "#using human reference build 37.1 coordinates.",
+             "rsid\tchromosome\tposition\tallele1\tallele2",
+             "%s\t%s\t%s\t%s\t%s" % (v["rsid"], v["chromosome"], v["position"], genotype[0], genotype[1])]
+    path = os.path.join(directory, name)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    return path
+
+
+def _run_v030_s3_fix(attempt):
+    sys.path.insert(0, os.path.join(ROOT, "stage2"))
+    sys.path.insert(0, os.path.join(ROOT, "stage3"))
+    import annotate as annotate_mod
+    import run as stage3_run
+
+    def finding(flag="absent", effect="A"):
+        f = {"finding_id": "f_000000000001", "rsid": "rs9000200", "gene": "GENEZ",
+             "condition": "Example trait one", "state": "covered_reference", "effect_allele": effect}
+        if flag != "absent":
+            f["effect_allele_is_reference"] = flag
+        return f
+
+    def coverage_sentence_reference_equality():
+        label = {"label": "Example trait one", "gene": " (GENEZ)"}
+        _require("flag true: wrong sentence: %r" % stage3_run.coverage_sentence(finding(True)),
+                 stage3_run.coverage_sentence(finding(True)) == S3F_EQUAL.format(**label))
+        # The effect allele differs from the reference, or the reference is unknown: the flag is
+        # absent and the sentence stays the shipped text (the documented safe default). An
+        # explicit false is treated like an absent flag.
+        for flag in ("absent", False):
+            got = stage3_run.coverage_sentence(finding(flag))
+            _require("flag %r: sentence changed: %r" % (flag, got), got == S3F_SHIPPED.format(**label))
+        for bad in ("true", 1, None):
+            got = stage3_run.coverage_sentence(finding(bad))
+            _require("flag %r (not a boolean true): sentence changed: %r" % (bad, got),
+                     got == S3F_SHIPPED.format(**label))
+        # the other four missing-call states are untouched by the flag
+        for state in ("covered_nocall", "covered_uninterpretable", "not_covered", "not_assayable"):
+            f = dict(finding(True), state=state)
+            g = {k: v for k, v in f.items() if k != "effect_allele_is_reference"}
+            _require("%s: the flag changed its sentence" % state,
+                     stage3_run.coverage_sentence(f) == stage3_run.coverage_sentence(g))
+        return True
+    attempt("V030S3F.coverage_sentence_reference_equality", coverage_sentence_reference_equality)
+
+    def annotate_emits_flag_only_when_equal():
+        panel = read_panel()
+        directory = tempfile.mkdtemp(prefix="s3f-flag-")
+        for v in panel["variants"]:
+            equal = v["effect_allele"] == v["reference_allele"]
+            _require("%s: unexpected equality %r" % (v["rsid"], equal), equal == (v["rsid"] in S3F_EQUAL_ENTRIES))
+            for geno in ((v["effect_allele"],) * 2, (_s3f_genotype(v),) * 2, ("0", "0")):
+                doc = annotate_mod.build_findings(_s3f_raw(directory, v, geno), panel, {})
+                f = [x for x in doc["findings"] if x["rsid"] == v["rsid"]][0]
+                if equal:
+                    _require("%s %s: flag %r, expected True" % (v["rsid"], geno, f.get("effect_allele_is_reference")),
+                             f.get("effect_allele_is_reference") is True)
+                else:
+                    _require("%s %s: the flag is present (%r)" % (v["rsid"], geno, f.get("effect_allele_is_reference")),
+                             "effect_allele_is_reference" not in f)
+        # synthetic variants: equal, different, unknown reference, legacy format
+        def variant(rsid, ref, effect, result_type="trait"):
+            v = {"rsid": rsid, "chromosome": "1", "position": 1000, "gene": "GENEZ",
+                 "condition": "Example trait one", "category": "trait", "effect_allele": effect,
+                 "assayability": "snp", "reference_allele": ref, "alternate_allele": "C",
+                 "cls": "risk", "association": "replicated", "gnomad_af": 0.2, "clinvar": None,
+                 "snpedia": None, "strand": "forward"}
+            if result_type:
+                v["result_type"] = result_type
+            return v
+        for name, v, expect in (("equal", variant("rs9000201", "A", "A"), True),
+                                ("different", variant("rs9000202", "G", "A"), None),
+                                ("unknown reference", variant("rs9000203", None, "A"), None),
+                                ("legacy panel", variant("rs9000204", "A", "A", None), None)):
+            raw = _s3f_raw(directory, dict(v, chromosome="1", position=1000), ("C", "C"), "raw.%s.txt" % name.replace(" ", "_"))
+            doc = annotate_mod.build_findings(raw, {"merges": {}, "sources": [], "variants": [v]}, {})
+            f = doc["findings"][0]
+            _require("%s: flag %r, expected %r" % (name, f.get("effect_allele_is_reference"), expect),
+                     f.get("effect_allele_is_reference") is expect and (expect is True or "effect_allele_is_reference" not in f))
+        return True
+    attempt("V030S3F.annotate_emits_flag_only_when_equal", annotate_emits_flag_only_when_equal)
+
+    def schema_flag_is_the_only_schema_change():
+        with open(os.path.join(ROOT, "schema", "findings.schema.json"), encoding="utf-8") as fh:
+            schema = json.load(fh)
+        finding_def = schema["$defs"]["finding"]
+        prop = finding_def["properties"].get("effect_allele_is_reference")
+        _require("the schema does not declare effect_allele_is_reference", prop is not None)
+        _require("the flag is not a boolean: %r" % prop, prop.get("type") == "boolean")
+        _require("the flag is required", "effect_allele_is_reference" not in finding_def["required"])
+        _require("the finding allows additional properties", finding_def.get("additionalProperties") is False)
+        del finding_def["properties"]["effect_allele_is_reference"]
+        digest = hashlib.sha256(json.dumps(schema, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        _require("the findings schema changed beyond the flag: %s" % digest, digest == S3F_FINDINGS_SCHEMA_DIGEST)
+        got = _sha256_file(os.path.join(ROOT, "schema", "report_ir.schema.json"))
+        _require("report_ir.schema.json changed: %s" % got, got == S3F_REPORT_IR_SCHEMA_SHA256)
+        try:
+            import jsonschema
+        except ImportError:
+            return True
+        panel = read_panel()
+        directory = tempfile.mkdtemp(prefix="s3f-schema-")
+        v = [x for x in panel["variants"] if x["rsid"] == "rs6025"][0]
+        doc = annotate_mod.build_findings(_s3f_raw(directory, v, ("C", "C")), panel, {})
+        with open(os.path.join(ROOT, "schema", "findings.schema.json"), encoding="utf-8") as fh:
+            jsonschema.Draft202012Validator(json.load(fh)).validate(doc)
+        _require("the schema-validated document lacks the flag", doc["findings"][0].get("effect_allele_is_reference") is True)
+        return True
+    attempt("V030S3F.schema_flag_is_the_only_schema_change", schema_flag_is_the_only_schema_change)
+
+    def covered_reference_sentences_first_eight():
+        panel = read_panel()
+        entries = {v["rsid"]: v for v in panel["variants"]}
+        directory = tempfile.mkdtemp(prefix="s3f-eight-")
+        for rsid in S3F_SHIPPED_EIGHT:
+            v = entries[rsid]
+            g = _s3f_genotype(v)
+            doc, ir, errors = _s3_e2e(_s3f_raw(directory, v, (g, g)), panel)
+            _require("%s: IR fails validation: %s" % (rsid, errors), not errors)
+            claim = [c for c in _s3_claims(doc, ir) if c[3] == [rsid] and c[0] != "s_summary"][0][2]
+            if rsid == "rs6025":
+                want = S3F_EQUAL.format(label="Factor V Leiden thrombophilia", gene=" (F5)")
+                _require("rs6025: sentence differs: %r" % claim, claim == want)
+                continue
+            digest = hashlib.sha256(claim.encode()).hexdigest()
+            _require("%s: the shipped covered_reference sentence changed: %r" % (rsid, claim),
+                     digest == S3F_SHIPPED_DIGESTS[rsid])
+            _require("%s: the sentence is not the shipped template" % rsid, claim.endswith(
+                S3F_SHIPPED.format(label="", gene="").split(": ", 1)[1]))
+        _require("the digest table does not name the seven unchanged entries",
+                 sorted(S3F_SHIPPED_DIGESTS) == sorted(set(S3F_SHIPPED_EIGHT) - {"rs6025"}))
+        # rs10741657 (ninth entry): the new sentence too
+        v = entries["rs10741657"]
+        doc, ir, errors = _s3_e2e(_s3f_raw(directory, v, ("C", "C"), "raw.ninth.txt"), panel)
+        claim = [c for c in _s3_claims(doc, ir) if c[3] == ["rs10741657"] and c[0] != "s_summary"][0][2]
+        _require("rs10741657: sentence differs: %r" % claim,
+                 claim == S3F_EQUAL.format(label="25-hydroxyvitamin D levels", gene=" (CYP2R1)"))
+        return True
+    attempt("V030S3F.covered_reference_sentences_first_eight", covered_reference_sentences_first_eight)
+
+    def new_sentence_is_traceable_and_scan_clean():
+        panel = read_panel()
+        entries = {v["rsid"]: v for v in panel["variants"]}
+        directory = tempfile.mkdtemp(prefix="s3f-trace-")
+        for rsid in ("rs6025", "rs10741657", "rs1800562"):
+            v = entries[rsid]
+            g = _s3f_genotype(v)
+            doc, ir, errors = _s3_e2e(_s3f_raw(directory, v, (g, g), "raw.%s.txt" % rsid), panel)
+            _require("%s: IR fails validation: %s" % (rsid, errors), not errors)
+            row = [c for c in _s3_claims(doc, ir) if c[3] == [rsid] and c[0] != "s_summary"][0]
+            cited = {c["field_path"] for sec in ir["sections"] for cl in sec["claims"]
+                     if cl["claim_id"] == row[1] for c in cl["citations"]}
+            if rsid in S3F_EQUAL_ENTRIES:
+                _require("%s: the claim does not cite the flag: %r" % (rsid, sorted(cited)),
+                         "effect_allele_is_reference" in cited)
+                for bad in ("match the reference", "reference genotype"):
+                    _require("%s: the sentence still says %r: %r" % (rsid, bad, row[2]), bad not in row[2])
+                _require("%s: the sentence has no 'no copy' statement" % rsid, "no copy of the effect allele" in row[2])
+            else:
+                _require("%s: a claim cites a flag the finding does not carry: %r" % (rsid, sorted(cited)),
+                         "effect_allele_is_reference" not in cited)
+            hits = _s3_scan(row[2], entries[rsid]["condition"])
+            _require("%s: the wording scan flags %s: %r" % (rsid, hits, row[2]), not hits)
+        return True
+    attempt("V030S3F.new_sentence_is_traceable_and_scan_clean", new_sentence_is_traceable_and_scan_clean)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -5149,6 +5358,7 @@ def run(check):
     _run_v030_s1(attempt)
     _run_v030_s2(attempt)
     _run_v030_s3(attempt)
+    _run_v030_s3_fix(attempt)
     _run_1b_b_syn(attempt)
     _run_1b_b_r55(attempt)
     _run_r61(attempt)
