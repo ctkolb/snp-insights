@@ -73,7 +73,7 @@ nothing about you. A piece of the report:
 ...
 ## Summary
 ...
-- eight curated markers were examined: eight were measured, zero were not measured, and zero returned no call or an uninterpretable result. [f_065a9790e8ec · state] [f_b7dae4647a6b · state] [f_bfc3a4f653bb · state] [f_a96ae54fd3b4 · state] [f_45738a4169e2 · state] [f_267e6220ca25 · state] [f_9c828d9896e4 · state] [f_1d985d06c208 · state]
+- nine curated markers were examined: eight were measured, one was not measured, and zero returned no call or an uninterpretable result. [f_065a9790e8ec · state] [f_b7dae4647a6b · state] [f_bfc3a4f653bb · state] [f_a96ae54fd3b4 · state] [f_45738a4169e2 · state] [f_267e6220ca25 · state] [f_9c828d9896e4 · state] [f_1d985d06c208 · state] [f_07cb35f0d30c · state]
 ```
 
 `python -m snp_insights <command>` works when the repository is the current
@@ -98,8 +98,8 @@ glossary and troubleshooting are in [docs/getting-started.md](docs/getting-start
 
 ## Release panel and your own file
 
-v0.2.0 ships a small public panel of seven health-related entries and one trait
-entry, built reproducibly from public references. The curation record is
+v0.2.0 ships a small public panel of seven health-related entries and two trait
+entries, built reproducibly from public references. The curation record is
 [docs/panel-curation.md](docs/panel-curation.md), the curated evidence file is
 `data/targets.release-evidence.json`, and the built panel is
 `data/targets.release-panel.json`.
@@ -317,7 +317,7 @@ downloads and the SNPedia path.
 - The array covers about 0.02% of the genome.
 - Array presence of each marker is not verified: no public array manifest is
   available, so a marker may not be on your array version.
-- The release panel has seven health entries and one trait entry.
+- The release panel has seven health entries and two trait entries.
 - The panel is small and public: it is a reproducible starting point, not a
   screening panel.
 - Only template-only narration is verified in this release; the skeleton and full
@@ -389,7 +389,7 @@ inventory, and [SECURITY.md](SECURITY.md) to report an issue.
 ## Status
 
 Release candidate v0.2.0. The pipeline runs end to end on synthetic fixtures:
-parse, annotate, a curated eight-entry release panel, and a deterministic
+parse, annotate, a curated nine-entry release panel, and a deterministic
 template report. The first real-file run is the owner's local checkpoint
 (docs/owner-checkpoint.md). Model narration (skeleton and full modes) and the
 online path exist but are not part of the verified v0.2.0 scope. Known gaps and

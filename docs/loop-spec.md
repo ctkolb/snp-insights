@@ -743,3 +743,35 @@ identifiers only (rsIDs, gene names); no machine paths.
   no-reserves sentence), R141-F4 (the SUNLIGHT ancestry cell is qualified by
   phase), R141-F5 (AL-049 names the T1 and T4 cells that record direction)
   and R141-F6 (the LPA cohort and phenotype summaries).
+
+## v0.3.0 run: S2 panel rebuild (decisions log)
+
+- **Scope.** rs10741657 (CYP2R1, 25-hydroxyvitamin D levels) is promoted from
+  `reserve` to `included` with its targets entry, appended as the ninth entry
+  after the eight shipped entries, and the release panel is rebuilt offline from
+  the frozen v0.3.0 packs. `panel_version` is 0.3.0 in the three release data
+  files only (policy 7.2); the package version, `pyproject.toml` and
+  `EXPECTED_VERSION` do not change (the tag decision is the owner's).
+- **Owner decisions on the blocked r144 attempt (owner, "accept",
+  2026-11-23).** U-1: `_s3a_release_trait` picks the PCSK9 trait finding by
+  rsID rs11591147, because the panel now has two trait entries; the assertions
+  are unchanged. U-2 and U-3: S2 edits the AGENTS.md "Current state" block and
+  roadmap item 2 counts ("nine-entry panel (seven health entries, two trait
+  entries)"), the two-trait-entries phrase in docs/reference-data.md, and the
+  pinned literals `AGENTS_CURRENT_STATE` and `AGENTS_ROADMAP_ITEMS`, counts
+  only; D-10 moves from S3 to S2 for these counts only. C-1: the evidence file
+  gets only the `panel_version` change, no entry (the build tool refuses curated
+  evidence for a non-carrier target). C-2: `gnomad_af` of rs10741657 holds the
+  captured G-allele value; the annotator derives the frequency of the effect
+  allele A as one minus it (0.3625); the C allele is absent from gnomAD and no
+  value is invented for it. C-3: one no-call row for rs10741657 is added to the
+  states fixture; end-to-end fixtures stay with S3. C-4: `--retrieved-at` is
+  2026-11-23T19:22:03Z, the file time of the supplement's A-G answer.
+- **R141-F2 applied.** The CYP2R1 build input holds the two eligible
+  main-effect accessions (GCST005367, GCST012014); the intake-interaction
+  accession GCST005366 (same publication as GCST005367), GCST005782 and
+  GCST000697 are not in it. A test builds the one-publication case and requires
+  `single_study`.
+- **R141-F3 applied.** The S3B growth gate compares the whole v0.3.0 growth
+  sentence, rejects every `reserve` row, and its self-check rejects an extra
+  false v0.3.0 growth sentence and a contradictory suffix.

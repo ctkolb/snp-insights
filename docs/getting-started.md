@@ -28,7 +28,7 @@ It does **not** diagnose anything, give a personal risk estimate, or replace a
 clinician or genetic counselor. A consumer DNA chip measures a tiny part of the
 genome (about 0.02%), and a rare result on a chip can be wrong. This is a research
 and curiosity tool, not medical advice. The v0.2.0 panel has seven health entries
-and one trait entry, so most of what you might wonder about is not covered.
+and two trait entries, so most of what you might wonder about is not covered.
 
 ## Prerequisites
 

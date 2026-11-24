@@ -81,7 +81,7 @@ never derived from the real run.
 ## Aggregate adequacy rule
 
 Whether the panel is adequate is the owner's aggregate judgment from counts only.
-This release has one trait entry, so a trait-count cutoff cannot distinguish
+This release has two trait entries, so a trait-count cutoff cannot distinguish
 coverage in this release. Consider the aggregate measured health-entry count and other
 locally observed aggregate coverage totals, then choose the outcome yourself.
 Do not share per-marker coverage.
@@ -89,7 +89,7 @@ Do not share per-marker coverage.
 ## Current release facts
 
 The v0.2.0 release panel is a small public panel of seven health entries (five
-carrier status, two risk association) and one trait entry. The array covers about 0.02% of the genome. A rare array call should be
+carrier status, two risk association) and two trait entries. The array covers about 0.02% of the genome. A rare array call should be
 confirmed by a clinical-grade test. No reserves exist for v0.1.0, so a coverage-poor outcome is reported
 and decided by the owner; no reserve swap is possible in this release. If you
 report `coverage-poor`, that is the recorded outcome, not a failure of the run.
