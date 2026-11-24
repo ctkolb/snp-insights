@@ -81,9 +81,9 @@ never derived from the real run.
 ## Aggregate adequacy rule
 
 Whether the panel is adequate is the owner's aggregate judgment from counts only.
-This release has two trait entries, so a trait-count cutoff cannot distinguish
-coverage in this release. Consider the aggregate measured health-entry count and other
-locally observed aggregate coverage totals, then choose the outcome yourself.
+This release has two trait entries; no count cutoff is prescribed. Consider the
+aggregate measured health-entry count and other locally observed aggregate
+coverage totals, then choose the outcome yourself.
 Do not share per-marker coverage.
 
 ## Current release facts
