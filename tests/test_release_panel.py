@@ -5267,7 +5267,8 @@ def _run_v030_s3_fix(attempt):
         doc = annotate_mod.build_findings(_s3f_raw(directory, v, ("C", "C")), panel, {})
         with open(os.path.join(ROOT, "schema", "findings.schema.json"), encoding="utf-8") as fh:
             jsonschema.Draft202012Validator(json.load(fh)).validate(doc)
-        _require("the schema-validated document lacks the flag", doc["findings"][0].get("effect_allele_is_reference") is True)
+        flagged = [f for f in doc["findings"] if f["rsid"] == "rs6025"][0]
+        _require("the schema-validated document lacks the flag", flagged.get("effect_allele_is_reference") is True)
         return True
     attempt("V030S3F.schema_flag_is_the_only_schema_change", schema_flag_is_the_only_schema_change)
 
