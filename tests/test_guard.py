@@ -1845,7 +1845,7 @@ def _ci_static(check):
           "        run: python tests/test_pipeline.py\n" in text)
     check("CI.action_pins_unchanged",
           text.count("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1") == 4
-          and text.count("actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97") == 2)
+          and text.count("actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0") == 2)
     check("CI.guard_invoked_by_argv_not_shell",
           "sys.executable, \"scripts/guard.py\", \"--full\"" in src and "shell=True" not in src
           and "eval" not in src and "os.system" not in src)
