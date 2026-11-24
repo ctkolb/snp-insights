@@ -22,7 +22,7 @@ from caveats import CAVEAT_REGISTRY  # noqa: E402
 from references import references_for  # noqa: E402
 from ancestry import parse_ancestry  # noqa: E402
 
-PIPELINE_VERSION = "0.2.0"
+PIPELINE_VERSION = "0.3.0"
 NO_CALL = "0"
 
 # Letters an assayability class can report; anything else cannot be interpreted.
