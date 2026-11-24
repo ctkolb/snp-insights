@@ -5508,8 +5508,10 @@ def _run_v030_s3_fix2(attempt):
                       if cl["citations"] and by.get(cl["citations"][0]["finding_id"], {}).get("state") == "covered_reference"
                       and sec["section_id"] != "s_summary"}
         _require("the case lacks four covered_reference claims: %r" % sorted(ref_claims), len(ref_claims) == 4)
+        system = " ".join(stage3_run.SKELETON_SYSTEM.split())
         _require("the skeleton prompt still asks for a reference genotype",
-                 "reference genotype was observed" not in stage3_run.SKELETON_SYSTEM)
+                 "reference genotype was observed" not in system
+                 and "do NOT say the genotype is the reference genotype" in system)
         sent = []
 
         def reply(kw):
