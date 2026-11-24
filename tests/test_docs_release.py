@@ -87,13 +87,14 @@ NEW_ROW_SHA256 = {
     "AL-027": "febfaee03490fa6dcdcf28a9771bf4805110a29b287af7a40cd51bac3305e20f",
 }
 
-AGENTS_CURRENT_STATE = """## Current state (v0.2.0 release run)
+AGENTS_CURRENT_STATE = """## Current state (v0.3.0 release run)
 
-The release branch carries the reviewed v0.2.0 work: a curated nine-entry
-panel (seven health entries, two trait entries), the template report, the owner-checkpoint procedure
-(docs/owner-checkpoint.md) and the accepted-limits register
-(docs/accepted-limits.md). The remaining steps are owner-only: the private
-real-data checkpoint, repository branch protection, and the release tag.
+The release branch carries the v0.3.0 work: a curated nine-entry panel (seven
+health entries, two trait entries; panel_version 0.3.0), the template report,
+the owner-checkpoint procedure (docs/owner-checkpoint.md) and the
+accepted-limits register (docs/accepted-limits.md). The package version stays
+0.2.0 until the owner decides on a tag. The remaining steps are owner-only: the
+private real-data checkpoint, repository branch protection, and the release tag.
 
 The real-data checkpoint is owner-only, in a separate local environment. Keep
 real DNA, findings, reports, private logs, and hashes outside all agent-accessible
@@ -104,7 +105,7 @@ references only from curated public targets, never personal coverage or genotype
 Do not request private outputs for analysis."""
 
 AGENTS_ROADMAP_ITEMS = (
-    "2. **Curate a usable panel — DONE for v0.2.0** (seven health entries, two "
+    "2. **Curate a usable panel — DONE for v0.3.0** (seven health entries, two "
     "trait entries; see docs/panel-curation.md).",
     "9. **Docs polish — DONE for v0.1.0** (README release section, owner "
     "checkpoint, accepted limits).",
@@ -174,13 +175,14 @@ CURATION_RESERVES_PARAGRAPH = (
 EXPECTED_VERSION = "0.2.0"
 
 README_STATUS = (
-    "Release candidate v0.2.0. The pipeline runs end to end on synthetic "
-    "fixtures: parse, annotate, a curated nine-entry release panel, and a "
-    "deterministic template report. The first real-file run is the owner's "
-    "local checkpoint (docs/owner-checkpoint.md). Model narration (skeleton "
-    "and full modes) and the online path exist but are not part of the "
-    "verified v0.2.0 scope. Known gaps and accepted limits are listed in "
-    "docs/accepted-limits.md and DESIGN.md."
+    "Release run for panel version 0.3.0; the package version stays 0.2.0 "
+    "until the owner decides on a tag. The pipeline runs end to end on "
+    "synthetic fixtures: parse, annotate, a curated nine-entry release "
+    "panel, and a deterministic template report. The first real-file run is "
+    "the owner's local checkpoint (docs/owner-checkpoint.md). Model "
+    "narration (skeleton and full modes) and the online path exist but are "
+    "not part of the verified scope. Known gaps and accepted limits are "
+    "listed in docs/accepted-limits.md and DESIGN.md."
 )
 
 REQUIREMENTS_PHRASE = ("Python 3.12 or 3.14 (the CI matrix); other 3.12+ "
@@ -442,8 +444,11 @@ def _version_consistent():
     _require("README version output", "snp-insights %s" % EXPECTED_VERSION in flat)
     _require("getting-started version output",
              "snp-insights %s" % EXPECTED_VERSION in _flat(_read(GETTING_STARTED)))
-    _require("README release-candidate status",
-             "Release candidate v%s." % EXPECTED_VERSION in flat)
+    _require("README package-version status",
+             "the package version stays %s until the owner decides on a tag"
+             % EXPECTED_VERSION in flat)
+    _require("README no longer calls itself a release candidate",
+             "Release candidate" not in flat)
     return True
 
 
@@ -487,7 +492,7 @@ def _agents_md_current_state():
              "Complete independent review of the initial CI/support stage"
              not in text)
     _require("Current state heading present",
-             re.search(r"^## Current state \(v0\.2\.0 release run\)$", text, re.M))
+             re.search(r"^## Current state \(v0\.3\.0 release run\)$", text, re.M))
     _require("current state block is exact", AGENTS_CURRENT_STATE in text)
     _require("current state precedes the roadmap",
              text.index("## Current state") < text.index("## Roadmap to beta"))
@@ -520,7 +525,7 @@ def _accepted_limits_rows_append_only():
         _require("%s differs from the approved text" % rid, _sha(new[rid]) == digest)
     appended = raw[LIMITS_BASE_BYTES:].decode("utf-8").split("\n")
     appended = [l for l in appended if l.strip()]
-    _require("only the approved rows AL-014..AL-049 were appended",
+    _require("only the approved rows AL-014..AL-050 were appended",
              [l[2:8] for l in appended]
              == sorted(NEW_ROW_SHA256) + sorted(CLOSURE_ROWS) + sorted(APPENDED_ROWS))
     return True
@@ -1402,11 +1407,13 @@ AL_032_ROW = (
 
 # Owner-approved rows (decision D-7 on r103, ticket S3-B), appended after AL-032.
 AL_033_ROW = (
-    "| AL-033 | REL | The v0.2.0 release panel has seven health-related "
+    "| AL-033 | REL | The release panel has seven health-related "
     "entries (five carrier status, two risk association) and two trait "
     "entries (rs11591147, LDL cholesterol levels; rs10741657, "
-    "25-hydroxyvitamin D levels). This row supersedes "
-    "AL-014 for v0.2.0; AL-014 describes v0.1.0 and stays as recorded. "
+    "25-hydroxyvitamin D levels). The second trait entry is new in "
+    "panel version 0.3.0; the v0.2.0 panel had seven health-related "
+    "entries and one trait entry. This row supersedes AL-014 for the "
+    "release panel; AL-014 describes v0.1.0 and stays as recorded. "
     "| LOW | Goals are not quotas; evidence-first curation (owner "
     "decisions on r96 and r97). | 2026-11-14 | The panel changes. |"
 )
@@ -1597,6 +1604,21 @@ AL_049_ROW = (
     "to mean higher or lower values. |"
 )
 
+AL_050_ROW = (
+    "| AL-050 | REL | Curated trait labels can be shared by more than one "
+    "candidate: rs6544713 and rs11591147 share \"LDL cholesterol levels\", "
+    "and rs2282679 and rs10741657 share \"25-hydroxyvitamin D levels\". "
+    "The release panel carries one entry per label, so it reports no "
+    "same-label pair. If a panel carries two entries with one label, the "
+    "findings document reports a mixed-evidence contradiction as-is when "
+    "their evidence differs and none when it is equal; it never "
+    "reconciles them. | LOW | Owner decision D-5 (v0.3.0 S1): "
+    "same-label pairs are accepted; the behavior is pinned by the "
+    "synthetic two-entry test V030S3.same_label_pair_pins_behavior. | "
+    "2026-11-23 | A panel carries two entries with one label, or the "
+    "contradiction rule changes. |"
+)
+
 APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
                  "AL-033": AL_033_ROW,
                  "AL-034": AL_034_ROW,
@@ -1614,7 +1636,8 @@ APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
                  "AL-046": AL_046_ROW,
                  "AL-047": AL_047_ROW,
                  "AL-048": AL_048_ROW,
-                 "AL-049": AL_049_ROW}
+                 "AL-049": AL_049_ROW,
+                 "AL-050": AL_050_ROW}
 NARRATION_NOT_VERIFIED = "not verified against a live model"
 FAILURE_EXAMPLE = (
     "template IR failed validation (bug):",
@@ -1743,13 +1766,13 @@ def _r6_template_failure_example_is_real():
 def _r6_accepted_limits_al031_al032_verbatim():
     text = _read(LIMITS)
     found = _rows(text, set(APPENDED_ROWS))
-    _require("AL-031..AL-049 all present", sorted(found) == sorted(APPENDED_ROWS))
+    _require("AL-031..AL-050 all present", sorted(found) == sorted(APPENDED_ROWS))
     for rid, row in APPENDED_ROWS.items():
         _require("%s differs from the approved text" % rid, found[rid] == row)
         _require("%s appears once" % rid, text.count(row) == 1)
     order = [l[2:8] for l in text.split("\n") if re.match(r"\| AL-\d{3} \|", l)]
     tail = len(APPENDED_ROWS)
-    _require("AL-031 starts the appended rows, which end the register in order at AL-049",
+    _require("AL-031 starts the appended rows, which end the register in order at AL-050",
              order == sorted(order) and order[-tail:] == sorted(APPENDED_ROWS)
              and order[-tail:][:2] == ["AL-031", "AL-032"])
     _require("AL-030 sits directly before AL-031", order[-tail - 1] == "AL-030")
@@ -2122,6 +2145,62 @@ def _runner_copies_guard_selftest_files():
     return True
 
 
+# ------------------------------------- V030S3: v0.3.0 release-run wording
+
+RELEASE_CLAIM_PATTERNS = (
+    r"\b(?:has|have) been (?:released|published|tagged)\b",
+    r"\b(?:is|was|are|were) (?:released|published|tagged)\b",
+    r"\bRelease candidate\b",
+    r"\bnow available\b",
+)
+
+
+def _v030s3_release_wording():
+    readme = _flat(_read(README))
+    getting = _flat(_read(GETTING_STARTED))
+    checkpoint = _flat(_read(CHECKPOINT))
+    status = _flat(_section(_read(README), "Status"))
+    state = _flat(_section(_read(AGENTS), "Current state (v0.3.0 release run)"))
+    facts = _flat(_section(_read(CHECKPOINT), "Current release facts"))
+    _require("README release section names panel version 0.3.0",
+             "panel version 0.3.0" in _flat(_release_section()))
+    _require("getting-started names panel version 0.3.0", "panel version 0.3.0" in getting)
+    _require("owner checkpoint names panel version 0.3.0", "panel version 0.3.0" in facts)
+    _require("README states the package version stays 0.2.0",
+             "package version stays 0.2.0 until the owner decides on a tag" in status)
+    _require("AGENTS states the package version stays 0.2.0",
+             "package version stays 0.2.0 until the owner decides on a tag" in state)
+    _require("the old v0.2.0 panel statement is gone from the owner checkpoint",
+             "The v0.2.0 release panel" not in checkpoint)
+    _require("the old v0.2.0 panel statement is gone from getting-started",
+             "The v0.2.0 panel has" not in getting and "v0.2.0 release set" not in getting)
+    _require("the old v0.2.0 panel statement is gone from the README",
+             "v0.2.0 ships a small public panel" not in readme)
+    for label, text in (("README Status", status), ("AGENTS current state", state),
+                        ("owner checkpoint release facts", facts)):
+        for pattern in RELEASE_CLAIM_PATTERNS:
+            _require("%s claims a release, tag or publication (%s)" % (label, pattern),
+                     re.search(pattern, text, re.I) is None)
+        _require("%s does not leave release steps to the owner" % label,
+                 "owner" in text.lower())
+    return True
+
+
+def _v030s3_accepted_limits_rows():
+    text = _read(LIMITS)
+    rows = _rows(text, {"AL-033", "AL-050"})
+    _require("AL-033 still names the first trait label", "rs11591147" in rows["AL-033"])
+    _require("AL-033 no longer calls the nine-entry panel the v0.2.0 panel",
+             "The v0.2.0 release panel has" not in rows["AL-033"])
+    _require("AL-033 says the second trait entry is new in 0.3.0",
+             "new in panel version 0.3.0" in rows["AL-033"])
+    _require("AL-050 names its pin", "V030S3.same_label_pair_pins_behavior" in rows["AL-050"])
+    with open(os.path.join(ROOT, "tests", "test_release_panel.py"), encoding="utf-8") as fh:
+        _require("the AL-050 pin does not exist in the release-panel tests",
+                 'attempt("V030S3.same_label_pair_pins_behavior"' in fh.read())
+    return True
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -2202,6 +2281,8 @@ def run(check):
     attempt("S3B.release_paragraph_gate_rejects_contradictions",
             _s3b_release_paragraph_gate_rejects_contradictions)
     attempt("L.runner_copies_guard_selftest_files", _runner_copies_guard_selftest_files)
+    attempt("V030S3.release_wording", _v030s3_release_wording)
+    attempt("V030S3.accepted_limits_rows", _v030s3_accepted_limits_rows)
 
 
 def main():

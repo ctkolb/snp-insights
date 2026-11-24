@@ -3931,18 +3931,18 @@ R2E_EXPECTED = {
         "rs1799963": ("detected", "hom_alt"),
         "rs6025": ("covered_reference", "hom_ref"),
         "rs1799807": ("detected", "het"),
-        "rs121908529": ("covered_reference", "hom_ref"),
+        "rs121908529": ("not_covered", None),
         "rs185803104": ("detected", "hom_alt"),
         "rs180177314": ("detected", "het"),
         "rs11591147": ("detected", "het"),
-        "rs10741657": ("not_covered", None),
+        "rs10741657": ("detected", "het"),
     },
     "raw.release.synthetic.states.txt": {
         "rs1800562": ("covered_nocall", "unknown"),
         "rs1799963": ("covered_uninterpretable", "unknown"),
         "rs6025": ("not_covered", None),
         "rs1799807": ("covered_nocall", "unknown"),
-        "rs121908529": ("not_covered", None),
+        "rs121908529": ("covered_reference", "hom_ref"),
         "rs185803104": ("covered_uninterpretable", "unknown"),
         "rs180177314": ("covered_reference", "hom_ref"),
         "rs11591147": ("detected", "hom_alt"),
@@ -4766,6 +4766,356 @@ def _run_v030_s2(attempt):
     attempt("V030S2.cyp2r1_input_check_rejects_other_accessions", cyp2r1_input_check_rejects_other_accessions)
 
 
+# =============================================================================
+# V030S3: v0.3.0 S3 release verification of the nine-entry panel (I-11, I-12,
+# I-13; owner decisions W-1 to W-3 on r146). Offline, invented data only.
+# =============================================================================
+S3_LABEL = "25-hydroxyvitamin D levels"
+S3_GENE = "CYP2R1"
+S3_NUMBER_WORDS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
+S3_TRAIT_TAIL = ("Evidence tier: replicated, from the GWAS Catalog association count. "
+                 "This is a statistical association with {label} in published studies; "
+                 "it is not a measurement of {label} and not a diagnosis.")
+# One synthetic genotype per coverage state for the new marker (W-3): the committed fixtures give
+# detected het (A) and no-call (B); the rest run through the same path from in-test raw files.
+S3_STATE_CASES = (
+    ("detected_het", ("A", "C"), "detected", "het",
+     "one copy of the effect allele A was detected. " + S3_TRAIT_TAIL),
+    ("detected_hom_alt", ("A", "A"), "detected", "hom_alt",
+     "two copies of the effect allele A were detected. " + S3_TRAIT_TAIL),
+    ("covered_reference", ("C", "C"), "covered_reference", "hom_ref",
+     "both copies match the reference at this position; the effect allele was not found "
+     "in the genotype."),
+    ("covered_nocall", ("0", "0"), "covered_nocall", "unknown",
+     "this position is on the array, but the array returned no call, so no genotype is available."),
+    ("covered_uninterpretable", ("T", "T"), "covered_uninterpretable", "unknown",
+     "this position was measured, but the alleles did not match the known alleles, "
+     "so no genotype is interpreted."),
+    ("not_covered", None, "not_covered", None,
+     "this marker was not measured by this array. That gives no information about whether "
+     "the effect allele is present."),
+)
+# The nine-entry findings count claim for each committed fixture (eight + one; three + one + five).
+S3_TOTAL_LITERALS = {
+    "raw.release.synthetic.txt": (
+        "nine curated markers were examined: eight were measured, one was not measured, "
+        "and zero returned no call or an uninterpretable result."),
+    "raw.release.synthetic.states.txt": (
+        "nine curated markers were examined: three were measured, one was not measured, "
+        "and five returned no call or an uninterpretable result."),
+}
+S3_REQUIRED_STATES = frozenset((
+    ("detected", "het"), ("detected", "hom_alt"), ("covered_reference", "hom_ref"),
+    ("covered_nocall", "unknown"), ("covered_uninterpretable", "unknown"), ("not_covered", None)))
+S3_FORBIDDEN_STEMS = (
+    "diagnos", "deficien", "normal", "high risk", "low risk", "higher risk", "lower risk",
+    "increased risk", "absolute risk", "lifetime risk", "risk score", "risk of", "your level",
+    "should", "recommend", "supplement", "treat", "chance", "probab", "%")
+S3_REQUIRED_STEMS = frozenset((
+    "diagnos", "deficien", "normal", "high risk", "low risk", "your level", "should",
+    "recommend", "supplement", "treat", "absolute risk"))
+# W-1 allowlist (exact): the shipped label that is a condition name, not a claim.
+S3_ALLOWED_LABEL = "Deficiency of butyrylcholinesterase"
+
+
+def _s3_allowed_sentences(condition):
+    """The three fixed negated 'diagnos' templates, whole, with the condition substituted."""
+    return (
+        "(carrier status refers to one copy; this report does not diagnose " + condition + ")",
+        "This is an association with " + condition + "; this report does not diagnose the condition.",
+        "This is a statistical association with " + condition + " in published studies; "
+        "it is not a measurement of " + condition + " and not a diagnosis.",
+    )
+
+
+def _s3_scan(text, condition, stems=None):
+    """Forbidden stems left in text after removing only the exact allowlist (W-1)."""
+    rest = text
+    for sentence in _s3_allowed_sentences(condition):
+        rest = rest.replace(sentence, " ")
+    rest = rest.replace(S3_ALLOWED_LABEL, " ")
+    low = rest.lower()
+    return [s for s in (S3_FORBIDDEN_STEMS if stems is None else stems) if s in low]
+
+
+def _s3_raw(directory, genotype, name="raw.s3.txt"):
+    lines = ["#Invented synthetic raw data for the v0.3.0 S3 state tests; not a real person.",
+             "#Data was collected using AncestryDNA array version: TESTARRAY-1",
+             "#Data is formatted using AncestryDNA converter version: TESTCONVERTER-1",
+             "#Genetic data is provided below as five TAB delimited columns.",
+             "#using human reference build 37.1 coordinates.",
+             "rsid\tchromosome\tposition\tallele1\tallele2",
+             "rs6025\t1\t169519049\tC\tC"]
+    if genotype is not None:
+        lines.append("rs10741657\t11\t14914878\t%s\t%s" % genotype)
+    path = os.path.join(directory, name)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    return path
+
+
+def _s3_e2e(raw_path, panel, aliases=None):
+    """annotate -> template_ir -> validate_report for any raw file; (doc, ir, errors)."""
+    import validate_report
+    sys.path.insert(0, os.path.join(ROOT, "stage2"))
+    sys.path.insert(0, os.path.join(ROOT, "stage3"))
+    import annotate
+    import run as stage3_run
+    doc = annotate.build_findings(raw_path, panel, aliases or {})
+    directory = tempfile.mkdtemp(prefix="s3-e2e-")
+    findings_path = os.path.join(directory, "findings.json")
+    with open(findings_path, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+    ir = stage3_run.template_ir(doc, stage3_run.sha256_file(findings_path))
+    errors, _ = validate_report.check(findings_path, ir, findings=doc)
+    return doc, ir, errors
+
+
+def _s3_claims(doc, ir):
+    """(section_id, claim_id, text, [cited rsIDs]) for every claim in the IR."""
+    by = {f["finding_id"]: f for f in doc["findings"]}
+    rows = []
+    for sec in ir["sections"]:
+        for cl in sec["claims"]:
+            rsids = sorted({by[c["finding_id"]]["rsid"] for c in cl["citations"]
+                            if c["finding_id"] in by and by[c["finding_id"]].get("rsid")})
+            rows.append((sec["section_id"], cl["claim_id"], cl["text"], rsids))
+    return rows
+
+
+def _s3_total_sentence(doc):
+    states = [f["state"] for f in doc["findings"]]
+    measured = sum(1 for s in states if s in ("detected", "covered_reference"))
+    absent = sum(1 for s in states if s in ("not_covered", "not_assayable"))
+    other = sum(1 for s in states if s in ("covered_nocall", "covered_uninterpretable"))
+    _require("states not partitioned: %r" % sorted(set(states)), measured + absent + other == len(states))
+    w = S3_NUMBER_WORDS
+
+    def verb(n):
+        return "was" if n == 1 else "were"
+    return ("%s curated markers were examined: %s %s measured, %s %s not measured, and %s returned "
+            "no call or an uninterpretable result."
+            % (w[len(states)], w[measured], verb(measured), w[absent], verb(absent), w[other]))
+
+
+def _run_v030_s3(attempt):
+    sys.path.insert(0, os.path.join(ROOT, "stage2"))
+    import annotate as annotate_mod
+
+    def new_marker_every_state_sentence():
+        panel = read_panel()
+        directory = tempfile.mkdtemp(prefix="s3-states-")
+        seen = set()
+        for name, genotype, state, zygosity, tail in S3_STATE_CASES:
+            doc, ir, errors = _s3_e2e(_s3_raw(directory, genotype, "raw.%s.txt" % name), panel)
+            _require(f"{name}: template IR fails validation: {errors}", not errors)
+            f = {x["rsid"]: x for x in doc["findings"]}["rs10741657"]
+            _require(f"{name}: state {f['state']!r}, expected {state!r}", f["state"] == state)
+            _require(f"{name}: zygosity {f['call'].get('zygosity')!r}, expected {zygosity!r}",
+                     f["call"].get("zygosity") == zygosity)
+            seen.add((f["state"], f["call"].get("zygosity")))
+            mine = [c for c in _s3_claims(doc, ir)
+                    if c[0] == "s_traits" and c[3] == ["rs10741657"]]
+            _require(f"{name}: expected one trait claim for the marker, got {len(mine)}", len(mine) == 1)
+            want = "%s (%s): %s" % (S3_LABEL, S3_GENE, tail.format(label=S3_LABEL))
+            _require(f"{name}: sentence differs:\n  got  {mine[0][2]!r}\n  want {want!r}", mine[0][2] == want)
+            # W-2: only the no-call template speaks of the position being on the array.
+            on_array = "on the array" in mine[0][2]
+            _require(f"{name}: 'on the array' wording is {on_array}", on_array == (state == "covered_nocall"))
+            if state == "not_covered":
+                _require("not_covered lacks the no-information sentence",
+                         "gives no information about whether the effect allele is present"
+                         in mine[0][2])
+            for _sec, _cid, text, _rs in _s3_claims(doc, ir):
+                if state != "covered_nocall" and "rs10741657" in _rs and _sec != "s_summary":
+                    _require(f"{name}: a claim for the new marker says it is on the array",
+                             "on the array" not in text)
+        _require("the state loop does not cover every coverage state: %r" % sorted(
+            S3_REQUIRED_STATES - seen, key=str), seen == S3_REQUIRED_STATES)
+        return True
+    attempt("V030S3.new_marker_every_state_sentence", new_marker_every_state_sentence)
+
+    def committed_fixtures_hold_new_marker_states():
+        panel = read_panel()
+        expect = {"raw.release.synthetic.txt": ("detected", "het"),
+                  "raw.release.synthetic.states.txt": ("covered_nocall", "unknown")}
+        for name, (state, zygosity) in expect.items():
+            path = _fixture_path(name)
+            doc, ir, errors = _s3_e2e(path, panel)
+            _require(f"{name}: IR fails validation: {errors}", not errors)
+            f = {x["rsid"]: x for x in doc["findings"]}["rs10741657"]
+            _require(f"{name}: rs10741657 is {f['state']!r}, expected {state!r}", f["state"] == state)
+            _require(f"{name}: rs10741657 zygosity {f['call'].get('zygosity')!r}",
+                     f["call"].get("zygosity") == zygosity)
+            mine = [c for c in _s3_claims(doc, ir) if c[0] == "s_traits" and c[3] == ["rs10741657"]]
+            _require(f"{name}: expected one trait claim for rs10741657, got {len(mine)}", len(mine) == 1)
+            wanted = [c for c in S3_STATE_CASES if c[2] == state and c[3] == zygosity][0]
+            want = "%s (%s): %s" % (S3_LABEL, S3_GENE, wanted[4].format(label=S3_LABEL))
+            _require(f"{name}: sentence differs: {mine[0][2]!r}", mine[0][2] == want)
+            with open(path, encoding="utf-8") as fh:
+                rows = [ln for ln in fh.read().splitlines()
+                        if ln and not ln.startswith("#") and not ln.startswith("rsid")]
+            _require(f"{name}: {len(rows)} data rows exceed the 8-row cap", len(rows) <= 8)
+        return True
+    attempt("V030S3.committed_fixtures_hold_new_marker_states", committed_fixtures_hold_new_marker_states)
+
+    def count_claims_sum_with_nine_entries():
+        panel = read_panel()
+        entries = panel["variants"]
+        _require("the panel does not have nine entries", len(entries) == 9)
+        per_type = {"carrier_status": "carrier status", "risk_association": "association",
+                    "trait": "trait"}
+        w = S3_NUMBER_WORDS
+        for name in R2E_FIXTURES:
+            doc, ir, errors = _s3_e2e(_fixture_path(name), panel)
+            _require(f"{name}: IR fails validation: {errors}", not errors)
+            _require(f"{name}: {len(doc['findings'])} findings, expected 9", len(doc["findings"]) == 9)
+            claims = {c[1]: c[2] for c in _s3_claims(doc, ir)}
+            want = _s3_total_sentence(doc)
+            _require(f"{name}: total claim differs:\n  got  {claims.get('cl_summary_total')!r}\n"
+                     f"  want {want!r}", claims.get("cl_summary_total") == want)
+            _require(f"{name}: the total claim is not the pinned literal: {want!r}",
+                     want == S3_TOTAL_LITERALS[name])
+            counts = [sum(1 for f in doc["findings"] if f["state"] in group)
+                      for group in (("detected", "covered_reference"), ("not_covered", "not_assayable"),
+                                    ("covered_nocall", "covered_uninterpretable"))]
+            _require(f"{name}: counts {counts} do not sum to nine", sum(counts) == 9)
+            by_type = {}
+            for f in doc["findings"]:
+                by_type.setdefault(f["result_type"], []).append(f["state"])
+            _require(f"{name}: result types {sorted(by_type)}", set(by_type) == set(per_type))
+            _require(f"{name}: type sizes do not sum to nine",
+                     sum(len(v) for v in by_type.values()) == 9)
+            for rt, label in per_type.items():
+                states = by_type[rt]
+                m = sum(1 for s in states if s in ("detected", "covered_reference"))
+                a = sum(1 for s in states if s in ("not_covered", "not_assayable"))
+                o = len(states) - m - a
+                sentence = ("%s %s markers were examined: %s %s measured, %s %s not measured, and %s "
+                            "returned no call or an uninterpretable result."
+                            % (w[len(states)], label, w[m], "was" if m == 1 else "were",
+                               w[a], "was" if a == 1 else "were", w[o]))
+                got = claims.get("cl_summary_" + rt)
+                _require(f"{name}: {rt} claim differs: {got!r} != {sentence!r}", got == sentence)
+        return True
+    attempt("V030S3.count_claims_sum_with_nine_entries", count_claims_sum_with_nine_entries)
+
+    def wording_scan_self_test():
+        _require("a required forbidden stem is missing from the scan: %r"
+                 % sorted(S3_REQUIRED_STEMS - set(S3_FORBIDDEN_STEMS)),
+                 S3_REQUIRED_STEMS <= set(S3_FORBIDDEN_STEMS))
+        for stem in S3_FORBIDDEN_STEMS:
+            bad = "Example trait (GENEZ): this is a %s sentence." % stem
+            _require(f"the scan misses the stem {stem!r}", stem in _s3_scan(bad, S3_LABEL))
+        # The allowlist is exact: only the three fixed negated templates and the one label.
+        good_trait = "This is a statistical association with %s in published studies; it is not a " \
+                     "measurement of %s and not a diagnosis." % (S3_LABEL, S3_LABEL)
+        _require("the allowed trait template is flagged", not _s3_scan(good_trait, S3_LABEL))
+        _require("the allowed risk-association template is flagged",
+                 not _s3_scan("This is an association with Example thrombophilia; this report does "
+                              "not diagnose the condition.", "Example thrombophilia"))
+        _require("the allowed carrier template is flagged",
+                 not _s3_scan("one copy of the effect allele T were detected (carrier status refers to "
+                              "one copy; this report does not diagnose Example disease).", "Example disease"))
+        _require("the allowed label is flagged", not _s3_scan(S3_ALLOWED_LABEL + " (BCHE): ok", "x"))
+        for bad, why in (
+                (good_trait.replace("not a diagnosis", "not a diagnoses"), "a changed template"),
+                (good_trait + " This is a diagnosis.", "an extra sentence"),
+                (good_trait.replace(S3_LABEL, "LDL cholesterol levels", 1), "a substituted label"),
+                ("Your diagnosis: " + good_trait, "a prefix"),
+                ("This report does not diagnose anything.", "a free negation"),
+                ("deficiency of butyrylcholinesterase", "a lowercase label"),
+                (S3_ALLOWED_LABEL + " deficiency", "the label plus a stem"),
+                ("Deficiency of vitamin D", "another deficiency label")):
+            _require(f"the scan accepts {why}: {bad!r}", _s3_scan(bad, S3_LABEL))
+        return True
+    attempt("V030S3.wording_scan_self_test", wording_scan_self_test)
+
+    def wording_scan_nine_entries():
+        panel = read_panel()
+        entries = {v["rsid"]: v for v in panel["variants"]}
+        _require("the panel does not have nine entries", len(entries) == 9)
+        directory = tempfile.mkdtemp(prefix="s3-scan-")
+        sources = [(name, _fixture_path(name)) for name in R2E_FIXTURES]
+        sources += [(case[0], _s3_raw(directory, case[1], "raw.%s.txt" % case[0]))
+                    for case in S3_STATE_CASES]
+        scanned, seen_rs = 0, set()
+        for name, path in sources:
+            doc, ir, errors = _s3_e2e(path, panel)
+            _require(f"{name}: IR fails validation: {errors}", not errors)
+            for sec, cid, text, rsids in _s3_claims(doc, ir):
+                cond = entries[rsids[0]]["condition"] if len(rsids) == 1 else ""
+                hits = _s3_scan(text, cond)
+                _require(f"{name}/{cid}: forbidden wording {hits}: {text!r}", not hits)
+                scanned += 1
+                seen_rs.update(rsids)
+        for rsid, v in entries.items():
+            hits = _s3_scan(v["condition"], v["condition"])
+            _require(f"label of {rsid}: forbidden wording {hits}: {v['condition']!r}", not hits)
+            scanned += 1
+        _require("the scan did not reach every entry: %r" % sorted(set(entries) - seen_rs),
+                 seen_rs >= set(entries))
+        _require(f"only {scanned} texts scanned", scanned >= 60)
+        return True
+    attempt("V030S3.wording_scan_nine_entries", wording_scan_nine_entries)
+
+    def same_label_pair_pins_behavior():
+        aliases = {}
+
+        def variant(rsid, position, association):
+            return {"rsid": rsid, "chromosome": "1", "position": position, "gene": "GENEZ",
+                    "condition": "Example trait one", "category": "trait", "result_type": "trait",
+                    "effect_allele": "A", "assayability": "snp", "reference_allele": "G",
+                    "alternate_allele": "A", "cls": "risk", "association": association,
+                    "gnomad_af": 0.2, "clinvar": None, "snpedia": None, "strand": "forward"}
+
+        def run(first, second):
+            directory = tempfile.mkdtemp(prefix="s3-label-")
+            lines = ["#synthetic raw data for the same-label test",
+                     "#Data was collected using AncestryDNA array version: TESTARRAY-1",
+                     "#using human reference build 37.1 coordinates.",
+                     "rsid\tchromosome\tposition\tallele1\tallele2",
+                     "rs9000101\t1\t1000\tA\tG", "rs9000102\t1\t2000\tA\tG"]
+            path = os.path.join(directory, "raw.txt")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("\n".join(lines) + "\n")
+            panel = {"merges": {}, "sources": [], "variants": [variant("rs9000101", 1000, first),
+                                                               variant("rs9000102", 2000, second)]}
+            return _s3_e2e(path, panel, aliases)
+
+        doc, ir, errors = run("replicated", "replicated")
+        _require("equal tiers: report fails validation: %s" % errors, not errors)
+        _require("equal tiers: a contradiction was emitted: %r" % doc["contradictions"],
+                 doc["contradictions"] == [])
+        doc, ir, errors = run("replicated", "single_study")
+        _require("differing tiers: report fails validation: %s" % errors, not errors)
+        _require("differing tiers: expected one contradiction, got %r" % doc["contradictions"],
+                 len(doc["contradictions"]) == 1)
+        c = doc["contradictions"][0]
+        want = ("Multiple variants are reported for the same condition (Example trait one) with "
+                "differing evidence: rs9000101 has no ClinVar classification; rs9000102 has no "
+                "ClinVar classification. Both are reported as-is; they are not reconciled.")
+        _require("differing tiers: contradiction kind %r" % c["kind"],
+                 c["kind"] == "overlapping_condition_mixed_evidence")
+        _require("differing tiers: contradiction text differs: %r" % c["description"], c["description"] == want)
+        by = {f["finding_id"]: f["rsid"] for f in doc["findings"]}
+        _require("differing tiers: the contradiction does not name both findings",
+                 sorted(by[i] for i in c["finding_ids"]) == ["rs9000101", "rs9000102"])
+        reported = [i for sec in ir["sections"] for i in sec.get("contradiction_ids", [])]
+        _require("differing tiers: the report does not carry the contradiction: %r" % reported,
+                 reported == [c["contradiction_id"]])
+        # D-5: no entry in the real panel shares a label (no real pair is changed or added).
+        panel = read_panel()
+        real = annotate_mod.load_aliases(ALIASES_PATH)
+        keys = [annotate_mod.normalize_condition(v["condition"], real) for v in panel["variants"]]
+        _require("two release entries share a label: %r" % keys, len(set(keys)) == 9)
+        for name in R2E_FIXTURES:
+            real_doc, _ir, _errors = _s3_e2e(_fixture_path(name), panel, real)
+            _require(f"{name}: a release fixture emits a contradiction", real_doc["contradictions"] == [])
+        return True
+    attempt("V030S3.same_label_pair_pins_behavior", same_label_pair_pins_behavior)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -4796,6 +5146,7 @@ def run(check):
     _run_1b_b(attempt)
     _run_v030_s1(attempt)
     _run_v030_s2(attempt)
+    _run_v030_s3(attempt)
     _run_1b_b_syn(attempt)
     _run_1b_b_r55(attempt)
     _run_r61(attempt)
