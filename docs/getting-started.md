@@ -16,12 +16,12 @@ data, and writes a plain-language report. Everything that matters is computed by
 code on your computer: which markers were measured, what you carry, how strong the
 published evidence is, and which links to show.
 
-In v0.2.0 the report is written by fixed templates, with no language model. That is
+In v0.3.0 the report is written by fixed templates, with no language model. That is
 the verified path, it needs no network, and every command in this guide that writes
 a report uses `--template-only`. An optional narration step can have a language model phrase the
 sentences instead (a local model through Ollama by default, or an opt-in online
 model). It is built and tested against fixtures but is not verified against a live
-model in v0.2.0, and the model may only phrase sentences about results that code
+model in v0.3.0, and the model may only phrase sentences about results that code
 has already computed.
 
 It does **not** diagnose anything, give a personal risk estimate, or replace a
@@ -38,7 +38,7 @@ and two trait entries, so most of what you might wonder about is not covered.
 - **`jsonschema`** (optional). It turns on extra JSON Schema checks. Nothing else
   needs it.
 - **Ollama** (optional). Only for narration by a local language model, which is
-  not verified against a live model in v0.2.0. Nothing in this guide needs it. The
+  not verified against a live model in v0.3.0. Nothing in this guide needs it. The
   verified mode is `--template-only`, which uses no model.
 
 Set up a clean environment inside your copy of the repository:
@@ -49,7 +49,7 @@ pip install jsonschema   # optional
 python -m snp_insights --version
 ```
 
-The last command prints `snp-insights 0.2.0`. Inside the virtual environment,
+The last command prints `snp-insights 0.3.0`. Inside the virtual environment,
 `python` and `python3` mean the same thing. Outside it, many systems have only
 `python3`.
 
@@ -134,7 +134,7 @@ Names can mislead. Three kinds of file sit in `data/`:
 | `fetch` | Targets files. | A cache of reference files. | **Yes.** |
 
 `fetch` and `build-panel` are for building panels; see [reference-data.md](reference-data.md).
-For v0.2.0 you never need them. `annotate`, `check-raw` and `run` with
+For v0.3.0 you never need them. `annotate`, `check-raw` and `run` with
 `--template-only` make no network call at all.
 
 Here are the four commands you will use, on the synthetic fixture. The output goes
@@ -277,7 +277,7 @@ against the synthetic fixture, unless the line says it was read from the code.
   rules as a model's report before anything is rendered. This message means the
   tool's own template report failed that self-check. It is a bug in the tool, not
   in your file. No report is written and the command stops with exit code 1 (`run` has
-  already written the findings file). In v0.2.0 the message is followed by one
+  already written the findings file). In v0.3.0 the message is followed by one
   violation line per problem, each starting with a rule code, then ids, numbers or
   words from the check. This example comes from a deliberately broken test report,
   not from a real file:

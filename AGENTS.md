@@ -122,12 +122,12 @@ tests/    test_pipeline.py + test_evidence.py, test_category.py, test_cli.py,
 
 ## Current state (v0.3.0 release run)
 
-The release branch carries the v0.3.0 work: a curated nine-entry panel (seven
-health entries, two trait entries), panel_version 0.3.0, the template report,
-the owner-checkpoint procedure (docs/owner-checkpoint.md) and the
-accepted-limits register (docs/accepted-limits.md). The package version stays
-0.2.0 until the owner decides on a tag. The remaining steps are owner-only: the
-private real-data checkpoint, repository branch protection, and the release tag.
+v0.3.0 is merged to main and tagged. It carries a curated nine-entry panel
+(seven health entries, two trait entries), panel_version 0.3.0, the template
+report, the owner-checkpoint procedure (docs/owner-checkpoint.md) and the
+accepted-limits register (docs/accepted-limits.md). The package version is
+0.3.0. The remaining steps are owner-only: the private real-data checkpoint
+and repository branch protection.
 
 The real-data checkpoint is owner-only, in a separate local environment. Keep
 real DNA, findings, reports, private logs, and hashes outside all agent-accessible

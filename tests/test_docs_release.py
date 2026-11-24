@@ -89,12 +89,12 @@ NEW_ROW_SHA256 = {
 
 AGENTS_CURRENT_STATE = """## Current state (v0.3.0 release run)
 
-The release branch carries the v0.3.0 work: a curated nine-entry panel (seven
-health entries, two trait entries), panel_version 0.3.0, the template report,
-the owner-checkpoint procedure (docs/owner-checkpoint.md) and the
-accepted-limits register (docs/accepted-limits.md). The package version stays
-0.2.0 until the owner decides on a tag. The remaining steps are owner-only: the
-private real-data checkpoint, repository branch protection, and the release tag.
+v0.3.0 is merged to main and tagged. It carries a curated nine-entry panel
+(seven health entries, two trait entries), panel_version 0.3.0, the template
+report, the owner-checkpoint procedure (docs/owner-checkpoint.md) and the
+accepted-limits register (docs/accepted-limits.md). The package version is
+0.3.0. The remaining steps are owner-only: the private real-data checkpoint
+and repository branch protection.
 
 The real-data checkpoint is owner-only, in a separate local environment. Keep
 real DNA, findings, reports, private logs, and hashes outside all agent-accessible
@@ -172,11 +172,11 @@ CURATION_RESERVES_PARAGRAPH = (
 )
 
 # The package, console script and pipeline version of this release (ticket B).
-EXPECTED_VERSION = "0.2.0"
+EXPECTED_VERSION = "0.3.0"
 
 README_STATUS = (
-    "Release run for panel version 0.3.0; the package version stays 0.2.0 "
-    "until the owner decides on a tag. The pipeline runs end to end on "
+    "Released as v0.3.0: panel version 0.3.0 and package version 0.3.0. "
+    "The pipeline runs end to end on "
     "synthetic fixtures: parse, annotate, a curated nine-entry release "
     "panel, and a deterministic template report. The first real-file run is "
     "the owner's local checkpoint (docs/owner-checkpoint.md). Model "
@@ -378,13 +378,13 @@ def _readme_template_only_command():
 
 
 def _readme_limitations_list():
-    sec = _flat(_section(_read(README), "Known limitations (v0.2.0)")).lower()
+    sec = _flat(_section(_read(README), "Known limitations (v0.3.0)")).lower()
     for phrase, doc, doc_phrase in LIMITATION_KEYS:
         _require("README limitation lacks " + phrase, phrase in sec)
         if doc is not None:
             _require("%s lacks %r" % (os.path.basename(doc), doc_phrase),
                      doc_phrase in _flat(_read(doc)))
-    items = [l for l in _section(_read(README), "Known limitations (v0.2.0)")
+    items = [l for l in _section(_read(README), "Known limitations (v0.3.0)")
              .split("\n") if l.startswith("- ")]
     _require("one list item per limitation", len(items) >= len(LIMITATION_KEYS))
     return True
@@ -445,8 +445,8 @@ def _version_consistent():
     _require("getting-started version output",
              "snp-insights %s" % EXPECTED_VERSION in _flat(_read(GETTING_STARTED)))
     _require("README package-version status",
-             "the package version stays %s until the owner decides on a tag"
-             % EXPECTED_VERSION in flat)
+             "panel version 0.3.0 and package version %s" % EXPECTED_VERSION
+             in flat)
     _require("README no longer calls itself a release candidate",
              "Release candidate" not in flat)
     return True
@@ -643,7 +643,7 @@ RD_HEADINGS = (
     "SNPedia (manual)",
 )
 README_KEEP_HEADINGS = (
-    "How it works", "Why", "Requirements", "Known limitations (v0.2.0)",
+    "How it works", "Why", "Requirements", "Known limitations (v0.3.0)",
     "Privacy & safety", "Status", "Contributing", "License", "Testing",
 )
 DOC_MAP_TARGETS = (
@@ -2220,10 +2220,10 @@ def _v030s3_release_wording():
              "panel version 0.3.0" in _flat(_release_section()))
     _require("getting-started names panel version 0.3.0", "panel version 0.3.0" in getting)
     _require("owner checkpoint names panel version 0.3.0", "panel version 0.3.0" in facts)
-    _require("README states the package version stays 0.2.0",
-             "package version stays 0.2.0 until the owner decides on a tag" in status)
-    _require("AGENTS states the package version stays 0.2.0",
-             "package version stays 0.2.0 until the owner decides on a tag" in state)
+    _require("README states package version 0.3.0",
+             "panel version 0.3.0 and package version 0.3.0" in status)
+    _require("AGENTS states package version 0.3.0",
+             "The package version is 0.3.0." in state)
     _require("the old v0.2.0 panel statement is gone from the owner checkpoint",
              "The v0.2.0 release panel" not in checkpoint)
     _require("the old v0.2.0 panel statement is gone from getting-started",
