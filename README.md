@@ -98,8 +98,9 @@ glossary and troubleshooting are in [docs/getting-started.md](docs/getting-start
 
 ## Release panel and your own file
 
-v0.2.0 ships a small public panel of seven health-related entries and two trait
-entries, built reproducibly from public references. The curation record is
+The release panel (panel version 0.3.0) is a small public panel of seven
+health-related entries and two trait entries, built reproducibly from public
+references. The curation record is
 [docs/panel-curation.md](docs/panel-curation.md), the curated evidence file is
 `data/targets.release-evidence.json`, and the built panel is
 `data/targets.release-panel.json`.
@@ -388,11 +389,12 @@ inventory, and [SECURITY.md](SECURITY.md) to report an issue.
 
 ## Status
 
-Release candidate v0.2.0. The pipeline runs end to end on synthetic fixtures:
+Release run for panel version 0.3.0; the package version stays 0.2.0 until the
+owner decides on a tag. The pipeline runs end to end on synthetic fixtures:
 parse, annotate, a curated nine-entry release panel, and a deterministic
 template report. The first real-file run is the owner's local checkpoint
 (docs/owner-checkpoint.md). Model narration (skeleton and full modes) and the
-online path exist but are not part of the verified v0.2.0 scope. Known gaps and
+online path exist but are not part of the verified scope. Known gaps and
 accepted limits are listed in docs/accepted-limits.md and DESIGN.md.
 
 ## Contributing

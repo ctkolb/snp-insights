@@ -90,7 +90,7 @@ NEW_ROW_SHA256 = {
 AGENTS_CURRENT_STATE = """## Current state (v0.3.0 release run)
 
 The release branch carries the v0.3.0 work: a curated nine-entry panel (seven
-health entries, two trait entries; panel_version 0.3.0), the template report,
+health entries, two trait entries), panel_version 0.3.0, the template report,
 the owner-checkpoint procedure (docs/owner-checkpoint.md) and the
 accepted-limits register (docs/accepted-limits.md). The package version stays
 0.2.0 until the owner decides on a tag. The remaining steps are owner-only: the
