@@ -1347,7 +1347,7 @@ def _s3a_trait_sentence(label):
 
 
 def _s3a_release_trait(doc):
-    traits = [f for f in doc["findings"] if f.get("result_type") == "trait"]
+    traits = [f for f in doc["findings"] if f.get("result_type") == "trait" and f.get("rsid") == "rs11591147"]
     _require(f"want one trait finding in the release fixture, got {len(traits)}", len(traits) == 1)
     return traits[0]
 

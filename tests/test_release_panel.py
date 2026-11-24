@@ -486,7 +486,7 @@ def check_targets_shape(obj):
         return _result(["shape: top level is not an object"], 0)
     if not isinstance(obj.get("_note"), str):
         errors.append("shape: _note missing")
-    if obj.get("panel_version") != "0.2.0":
+    if obj.get("panel_version") != "0.3.0":
         errors.append(f"shape: panel_version {obj.get('panel_version')!r}")
     variants = obj.get("variants")
     if not isinstance(variants, list):
@@ -1414,17 +1414,17 @@ def _run_invariants(attempt):
         ("allele_differs", _set_row("rs9000003", allele="I"), "row-field-differs"),
     ])
     _syn(attempt, "targets_shape", lambda w: check_targets_shape(
-        {"_note": "x", "panel_version": "0.2.0", "genome_build": "GRCh37", "strand": "forward",
+        {"_note": "x", "panel_version": "0.3.0", "genome_build": "GRCh37", "strand": "forward",
          "variants": w["entries"]}), [
         ("entry_missing_field", lambda w: w["entries"][0].pop("effect_allele"), "shape"),
         ("entry_bad_rsid", _set_entry("rs9000001", rsid="9000001"), "shape"),
     ])
 
     def targets_shape_top_level():
-        base = {"_note": "x", "panel_version": "0.2.0", "variants": []}
+        base = {"_note": "x", "panel_version": "0.3.0", "variants": []}
         _clean(check_targets_shape(base), "shape/empty")
         for defect, obj in (("not an object", []), ("wrong version", dict(base, panel_version="0.1.0")),
-                            ("variants not a list", dict(base, variants={})), ("no note", {"panel_version": "0.2.0", "variants": []})):
+                            ("variants not a list", dict(base, variants={})), ("no note", {"panel_version": "0.3.0", "variants": []})):
             _has(check_targets_shape(obj), "shape", f"shape/{defect}")
         return True
     attempt("R1B.syn_targets_shape_top_level", targets_shape_top_level)
@@ -2777,7 +2777,7 @@ def _target_entry(**kw):
 
 
 def _targets_obj(*entries):
-    return {"_note": "invented", "panel_version": "0.2.0", "genome_build": "GRCh37",
+    return {"_note": "invented", "panel_version": "0.3.0", "genome_build": "GRCh37",
             "strand": "forward", "variants": list(entries)}
 
 
@@ -3363,7 +3363,7 @@ def check_evidence_file(evidence, targets, t1, t2, t5):
         errors.append(f"top_level_unknown_key: {key}")
     if not isinstance(evidence.get("_note"), str):
         errors.append("shape: _note missing")
-    if evidence.get("panel_version") != "0.2.0":
+    if evidence.get("panel_version") != "0.3.0":
         errors.append(f"shape: panel_version {evidence.get('panel_version')!r}")
     entries = evidence.get("entries")
     if not isinstance(entries, list):
@@ -3428,7 +3428,7 @@ def _evidence_world():
     target = {"rsid": "rs9000002", "gene": "GENEB", "condition": "Example condition one",
               "category": "carrier", "result_type": "carrier_status",
               "effect_allele": "G", "assayability": "snp", "strand": "forward"}
-    targets = {"_note": "invented", "panel_version": "0.2.0", "genome_build": "GRCh37",
+    targets = {"_note": "invented", "panel_version": "0.3.0", "genome_build": "GRCh37",
                "strand": "forward", "variants": [target]}
     t1 = {"rs9000002": {"rsID": "rs9000002", "label used in report": "Example condition one",
                         "sources (typed ids)":
@@ -3437,7 +3437,7 @@ def _evidence_world():
                         "matched review status": "criteria provided, multiple submitters, no conflicts"}}
     t5 = {"rs9000002": {"pack file index id":
                         "dbsnp:rs9000002;clinvar:vcv:9001001;clinvar:rcv:RCV900000001"}}
-    evidence = {"_note": "invented", "panel_version": "0.2.0", "entries": [
+    evidence = {"_note": "invented", "panel_version": "0.3.0", "entries": [
         {"rsid": "rs9000002", "condition": "Example condition one",
          "clinvar_record": "clinvar:rcv:RCV900000001", "significance": "Pathogenic",
          "review_status": "criteria provided, multiple submitters, no conflicts", "review_stars": 2}]}
@@ -3935,6 +3935,7 @@ R2E_EXPECTED = {
         "rs185803104": ("detected", "hom_alt"),
         "rs180177314": ("detected", "het"),
         "rs11591147": ("detected", "het"),
+        "rs10741657": ("not_covered", None),
     },
     "raw.release.synthetic.states.txt": {
         "rs1800562": ("covered_nocall", "unknown"),
@@ -3945,6 +3946,7 @@ R2E_EXPECTED = {
         "rs185803104": ("covered_uninterpretable", "unknown"),
         "rs180177314": ("covered_reference", "hom_ref"),
         "rs11591147": ("detected", "hom_alt"),
+        "rs10741657": ("covered_nocall", "unknown"),
     },
 }
 
@@ -4230,7 +4232,7 @@ def _run_r65(attempt):
 # compared against literal values from the reviewed N1 dbSNP capture, and the
 # curated ClinVar blocks and source labels are literals from the committed panel.
 # =============================================================================
-REVIEWED_PANEL_SHA256 = "7acfdde8e216a97e2d245c324af9a2f588b3578a5b3bf3bd32f025a94469c6d7"
+REVIEWED_PANEL_SHA256 = "379f050163dc37430b6e493b20749958a058c8df48124606951f6b10a0bcaa0e"
 N1_DBSNP_ORACLE = {
     "rs1800562": {"chromosome": "6", "position": 26093141,
                   "reference_allele": "G", "alternate_alleles": ["A", "T"]},
@@ -4248,6 +4250,8 @@ N1_DBSNP_ORACLE = {
                "reference_allele": "G", "alternate_alleles": ["A"]},
     "rs11591147": {"chromosome": "1", "position": 55505647,
                "reference_allele": "G", "alternate_alleles": ["A", "T"]},
+    "rs10741657": {"chromosome": "11", "position": 14914878,
+               "reference_allele": "A", "alternate_alleles": ["C", "G"]},
 }
 R67_PANEL_CURATED = {
     "rs1800562": {
@@ -4287,10 +4291,10 @@ R67_PANEL_CURATED = {
                     "source_version": "curated clinvar:rcv:RCV000186442"}},
 }
 R67_PANEL_SOURCES = {
-    "dbSNP": {"release": "variation-api-2026-11-11 (3 entries) and 2026-11-14 (5 entries)", "retrieved_at": "2026-11-14T14:16:47Z"},
-    "ClinVar": {"release": "variant_summary-2026-11-14", "retrieved_at": "2026-11-14T14:16:47Z"},
-    "gnomAD": {"release": "graphql-2026-11-11 (3 entries) and 2026-11-14 (5 entries)", "retrieved_at": "2026-11-14T14:16:47Z"},
-    "GWAS Catalog": {"release": "opentargets-2026-11-11 (3 entries); opentargets-2026-11-14 (4 carriers); gwas-catalog-rest-2026-11-14 (rs11591147)", "retrieved_at": "2026-11-14T14:16:47Z"},
+    "dbSNP": {"release": "variation-api-2026-11-11 (3 entries), 2026-11-14 (5 entries) and 2026-11-23 (1 entry)", "retrieved_at": "2026-11-23T19:22:03Z"},
+    "ClinVar": {"release": "variant_summary-2026-11-14", "retrieved_at": "2026-11-23T19:22:03Z"},
+    "gnomAD": {"release": "graphql-2026-11-11 (3 entries), 2026-11-14 (5 entries) and 2026-11-23 (1 entry)", "retrieved_at": "2026-11-23T19:22:03Z"},
+    "GWAS Catalog": {"release": "opentargets-2026-11-11 (3 entries); opentargets-2026-11-14 (4 carriers); gwas-catalog-rest-2026-11-14 (rs11591147); gwas-catalog-rest-2026-11-23 (rs10741657)", "retrieved_at": "2026-11-23T19:22:03Z"},
 }
 
 
@@ -4392,7 +4396,7 @@ V030_S1_ROWS = {
                   "no-counted-evidence", "evidence-not-in-pack", [], []),
     "rs2282679": ("GC", "4", "25-hydroxyvitamin D levels", "T", "excluded", "single-study", "0.202", 9,
                   "single-study", "single-study", [["a30522242", "a30522310"]], ["a30522242"]),
-    "rs10741657": ("CYP2R1", "11", "25-hydroxyvitamin D levels", "A", "reserve", "-", "0.162", 5,
+    "rs10741657": ("CYP2R1", "11", "25-hydroxyvitamin D levels", "A", "included", "-", "0.162", 5,
                    "replicated", None, [["a27362261"], ["a64666345"]], ["a27362261", "a64666345"]),
     "rs601338": ("FUT2", "19", "Total vitamin B12 levels", "-", "excluded", "no-independent-confirmation",
                  "0.495", 1, "no-counted-evidence", "no-independent-confirmation", [], []),
@@ -4422,8 +4426,8 @@ V030_S1_ALIAS_GROUPS = {
 }
 V030_S1_STAGED = ("included by owner decision T-1; promoted to `included` in S2 together with "
                   "the targets entry and panel rebuild")
-V030_S1_RESERVES_SENTENCE = ("For v0.3.0 the one `reserve` row, rs10741657 (CYP2R1, trait group), is a "
-                             "staged inclusion, not a coverage swap")
+V030_S1_RESERVES_SENTENCE = ("For v0.3.0 no `reserve` row remains: rs10741657 (CYP2R1, trait group) was a "
+                             "staged inclusion (owner decision T-1) and is now `included` with its targets entry")
 V030_S1_RESERVE_LIMITS = ("may not transfer", "Finnish Health 2011", "SUNLIGHT",
                           "owner decision T-1 (D-4a)")
 V030_S1_PROVENANCE = (
@@ -4527,8 +4531,8 @@ def check_v030_s1_reserve(text, tables, entries):
     if not r["rationale"].startswith(V030_S1_STAGED):
         errors.append("rs10741657: rationale does not open with the staged-inclusion statement")
     errors += [f"rs10741657: limitations lack {p!r}" for p in V030_S1_RESERVE_LIMITS if p not in r["limitations"]]
-    if any(e.get("rsid") == "rs10741657" for e in entries):
-        errors.append("rs10741657: targets entry exists in S1")
+    if not any(e.get("rsid") == "rs10741657" for e in entries):
+        errors.append("rs10741657: targets entry is missing")
     return errors
 
 
@@ -4564,6 +4568,204 @@ def _run_v030_s1(attempt):
     gate("R1B.v030_s1_provenance_names_packs", lambda x, t, g: check_v030_s1_provenance(x))
 
 
+# =============================================================================
+# v0.3.0 S2 panel rebuild (ticket snp-v030-S2-B-BUILD-r145). I-08: a rebuild is
+# deterministic and equals the committed panel. I-09: the eight shipped v0.2.0
+# entries are field-for-field unchanged. I-10: the version policy. R141-F2: the
+# CYP2R1 build input comes from eligible main-effect rows only.
+# =============================================================================
+V030_S2_DATA_FILES = ("data/targets.release.json", "data/targets.release-evidence.json",
+                      "data/targets.release-panel.json")
+V030_S2_FIRST_EIGHT = ("rs1800562", "rs1799963", "rs6025", "rs1799807", "rs121908529",
+                       "rs185803104", "rs180177314", "rs11591147")
+# sha256 of the canonical JSON (sorted keys, compact separators) of the v0.2.0 entries.
+V030_S2_DIGESTS = {
+    "targets": "8d351c2c6977e9cb73b7557a2d71664f9037a3462094350bcb9c843cbeab0861",
+    "evidence": "c5931ee7a46668e20ead39953b98cdd70dd8731ca14256795034511d32127dac",
+    "panel": "e52ba7481e219a46d1078051f649e3438f0f8f88f68916549f5ee0185809078f",
+}
+CYP2R1_RSID = "rs10741657"
+CYP2R1_MAIN_EFFECT = ("GCST005367", "GCST012014")
+# Same publication as GCST005367 (intake interaction), a transcend row without direction,
+# and a vitamin D insufficiency study: none may enter the build input.
+CYP2R1_NOT_MAIN_EFFECT = ("GCST005366", "GCST005782", "GCST000697")
+CYP2R1_ONE_PUBLICATION_PMID = "29343764"
+
+
+def _v030_digest(obj):
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _v030_read_json(rel):
+    with open(os.path.join(ROOT, *rel.split("/")), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def derive_gwas_build_input(t4_rows, rsid):
+    """The GWAS build input for one rsID: the (accession, reported trait) pairs of
+    its T4 rows that are counted as main-effect evidence, in table order, without
+    repeats. A row that is not counted (`counted` is not `yes`: a trait mismatch such
+    as an intake interaction, a missing direction) is never part of it (R141-F2)."""
+    pairs = []
+    for r in t4_rows:
+        if r["rsID"] == rsid and r["counted"] == "yes":
+            pair = (r["study accession"], r["trait (reported)"])
+            if pair not in pairs:
+                pairs.append(pair)
+    return pairs
+
+
+def check_cyp2r1_build_input(t4_rows):
+    errors = []
+    got = [a for a, _t in derive_gwas_build_input(t4_rows, CYP2R1_RSID)]
+    if got != list(CYP2R1_MAIN_EFFECT):
+        errors.append(f"{CYP2R1_RSID}: build input accessions {got!r}, expected {list(CYP2R1_MAIN_EFFECT)!r}")
+    errors += [f"{CYP2R1_RSID}: {a} is in the build input but is not main-effect evidence"
+               for a in CYP2R1_NOT_MAIN_EFFECT if a in got]
+    return errors
+
+
+def _v030_trait_tier(pairs, label="25-hydroxyvitamin D levels"):
+    import build_panel
+    import evidence
+    target = {"rsid": CYP2R1_RSID, "gene": "CYP2R1", "condition": label, "category": "trait",
+              "result_type": "trait", "effect_allele": "A", "assayability": "snp", "strand": "forward"}
+    out = build_panel.build({"variants": [target]}, sources=[], gwas={CYP2R1_RSID: list(pairs)},
+                            aliases=evidence.load_aliases(ALIASES_PATH))
+    return out["variants"][0]["association"]
+
+
+def _v030_write_cache(directory, panel, t4_rows):
+    """A build cache reconstructed from in-repo data only: coordinates, alleles and
+    gnomAD frequencies from the committed panel, ClinVar from its ClinVar block, and
+    the GWAS rows of every trait entry from the main-effect T4 rows."""
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import fetch_reference as fr
+    coords, clinvar, vcf, gwas = {}, {}, [], ["SNPS\tPUBMEDID\tDISEASE/TRAIT"]
+    for v in panel["variants"]:
+        coords[v["rsid"]] = (v["chromosome"], v["position"], v["reference_allele"], v["alternate_alleles"])
+        if v["gnomad_af"] is not None:
+            vcf.append("\t".join([v["chromosome"], str(v["position"]), v["rsid"], v["reference_allele"],
+                                  v["alternate_allele"], ".", "PASS", "AF=%r" % v["gnomad_af"]]))
+        cv = v["clinvar"]
+        if cv is not None and v["category"] == "trait":
+            clinvar[v["rsid"]] = (cv["significance"], cv["review_status_text"], "not specified")
+        if v["category"] == "trait":
+            for acc, trait in derive_gwas_build_input(t4_rows, v["rsid"]):
+                gwas.append(f"{v['rsid']}\t{fr._tsv_field(acc)}\t{fr._tsv_field(trait)}")
+    fr.write_dbsnp_tsv(os.path.join(directory, "dbsnp.tsv"), coords)
+    fr.write_clinvar_tsv(os.path.join(directory, "clinvar.tsv"), clinvar)
+    with open(os.path.join(directory, "gnomad.small.vcf"), "w", encoding="utf-8") as fh:
+        fh.write("\n".join(vcf) + "\n")
+    with open(os.path.join(directory, "gwas.tsv"), "w", encoding="utf-8") as fh:
+        fh.write("\n".join(gwas) + "\n")
+
+
+def _v030_build(directory, panel, out):
+    labels = {s["source"]: s for s in panel["sources"]}
+    stamps = {s["retrieved_at"] for s in panel["sources"]}
+    _require("the panel carries more than one retrieved_at", len(stamps) == 1)
+    cmd = [sys.executable, "-B", os.path.join(ROOT, "tools", "build_panel.py"),
+           "--targets", os.path.join(ROOT, "data", "targets.release.json"),
+           "--curated-evidence", os.path.join(ROOT, "data", "targets.release-evidence.json"),
+           "--cache", directory, "--retrieved-at", stamps.pop(),
+           "--dbsnp-release", labels["dbSNP"]["release"],
+           "--clinvar-release", labels["ClinVar"]["release"],
+           "--gnomad-release", labels["gnomAD"]["release"],
+           "--gwas-release", labels["GWAS Catalog"]["release"], "-o", out]
+    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    _require("rebuild failed: " + proc.stderr.strip()[-300:], proc.returncode == 0)
+
+
+def _run_v030_s2(attempt):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+
+    def rebuild_is_deterministic_and_equals_committed_panel():
+        panel = read_panel()
+        t4 = doc_tables(read_doc())["T4"]
+        directory = tempfile.mkdtemp(prefix="s2-cache-")
+        _v030_write_cache(directory, panel, t4)
+        out1, out2 = os.path.join(directory, "build1.json"), os.path.join(directory, "build2.json")
+        _v030_build(directory, panel, out1)
+        _v030_build(directory, panel, out2)
+        with open(out1, "rb") as a, open(out2, "rb") as b:
+            first, second = a.read(), b.read()
+        _require("two builds from the same cache differ", first == second)
+        with open(RELEASE_PANEL_PATH, "rb") as fh:
+            committed = fh.read()
+        _require("a rebuild from the reconstructed cache differs from the committed panel", first == committed)
+        return True
+    attempt("V030S2.rebuild_is_deterministic_and_equals_committed_panel",
+            rebuild_is_deterministic_and_equals_committed_panel)
+
+    def first_eight_entries_unchanged():
+        targets = _v030_read_json("data/targets.release.json")["variants"]
+        evidence_entries = _v030_read_json("data/targets.release-evidence.json")["entries"]
+        panel = _v030_read_json("data/targets.release-panel.json")["variants"]
+        _require("targets: the first eight rsIDs changed or were reordered",
+                 tuple(v["rsid"] for v in targets[:8]) == V030_S2_FIRST_EIGHT)
+        _require("panel: the first eight rsIDs changed or were reordered",
+                 tuple(v["rsid"] for v in panel[:8]) == V030_S2_FIRST_EIGHT)
+        _require("targets: a v0.2.0 entry changed", _v030_digest(targets[:8]) == V030_S2_DIGESTS["targets"])
+        _require("evidence: a v0.2.0 entry changed", _v030_digest(evidence_entries) == V030_S2_DIGESTS["evidence"])
+        _require("panel: a v0.2.0 entry changed", _v030_digest(panel[:8]) == V030_S2_DIGESTS["panel"])
+        _require("the ninth entry is not rs10741657 in targets and panel",
+                 [v["rsid"] for v in targets[8:]] == [CYP2R1_RSID] and [v["rsid"] for v in panel[8:]] == [CYP2R1_RSID])
+        return True
+    attempt("V030S2.first_eight_entries_unchanged", first_eight_entries_unchanged)
+
+    def version_literals():
+        for rel in V030_S2_DATA_FILES:
+            got = _v030_read_json(rel).get("panel_version")
+            _require(f"{rel}: panel_version {got!r}, expected '0.3.0'", got == "0.3.0")
+        # The package version is the owner's tag decision and does not move with the panel.
+        with open(os.path.join(ROOT, "pyproject.toml"), encoding="utf-8") as fh:
+            pyproject = re.search(r'^version\s*=\s*"([^"]+)"', fh.read(), re.M).group(1)
+        with open(os.path.join(ROOT, "snp_insights", "__init__.py"), encoding="utf-8") as fh:
+            package = re.search(r'^__version__\s*=\s*"([^"]+)"', fh.read(), re.M).group(1)
+        _require(f"package versions {pyproject!r} and {package!r} are not both '0.2.0'",
+                 pyproject == package == "0.2.0")
+        return True
+    attempt("V030S2.version_literals", version_literals)
+
+    def cyp2r1_build_input_is_main_effect_only():
+        t4 = doc_tables(read_doc())["T4"]
+        errors = check_cyp2r1_build_input(t4)
+        _require("; ".join(errors), not errors)
+        _require("the main-effect input does not build a replicated tier",
+                 _v030_trait_tier(derive_gwas_build_input(t4, CYP2R1_RSID)) == "replicated")
+        return True
+    attempt("V030S2.cyp2r1_build_input_is_main_effect_only", cyp2r1_build_input_is_main_effect_only)
+
+    def cyp2r1_one_publication_case():
+        t4 = [r for r in doc_tables(read_doc())["T4"]
+              if r["rsID"] == CYP2R1_RSID and r["PMID"] == CYP2R1_ONE_PUBLICATION_PMID]
+        accessions = sorted(r["study accession"] for r in t4)
+        _require("the one-publication rows changed: %r" % accessions,
+                 accessions == ["GCST005366", "GCST005367"])
+        pairs = derive_gwas_build_input(t4, CYP2R1_RSID)
+        _require("one publication: build input %r, expected only GCST005367" % [a for a, _t in pairs],
+                 [a for a, _t in pairs] == ["GCST005367"])
+        _require("one publication must build as single_study", _v030_trait_tier(pairs) == "single_study")
+        # What the rule prevents: with the interaction accession the count is two and the tier
+        # would read replicated although one publication stands behind both rows.
+        naive = [(r["study accession"], r["trait (reported)"]) for r in t4]
+        _require("the naive input no longer shows the false replication this test guards",
+                 _v030_trait_tier(naive) == "replicated")
+        return True
+    attempt("V030S2.cyp2r1_one_publication_case", cyp2r1_one_publication_case)
+
+    def cyp2r1_input_check_rejects_other_accessions():
+        t4 = doc_tables(read_doc())["T4"]
+        for accession in CYP2R1_NOT_MAIN_EFFECT:
+            changed = [dict(r, counted="yes") if r["study accession"] == accession else r for r in t4]
+            _require(f"the build-input check accepts {accession}", check_cyp2r1_build_input(changed))
+        dropped = [r for r in t4 if r["study accession"] != "GCST012014"]
+        _require("the build-input check accepts a missing main-effect accession", check_cyp2r1_build_input(dropped))
+        return True
+    attempt("V030S2.cyp2r1_input_check_rejects_other_accessions", cyp2r1_input_check_rejects_other_accessions)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -4593,6 +4795,7 @@ def run(check):
     _run_1b_b_char(attempt)
     _run_1b_b(attempt)
     _run_v030_s1(attempt)
+    _run_v030_s2(attempt)
     _run_1b_b_syn(attempt)
     _run_1b_b_r55(attempt)
     _run_r61(attempt)

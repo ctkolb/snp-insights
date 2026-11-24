@@ -89,8 +89,8 @@ NEW_ROW_SHA256 = {
 
 AGENTS_CURRENT_STATE = """## Current state (v0.2.0 release run)
 
-The release branch carries the reviewed v0.2.0 work: a curated eight-entry
-panel (seven health entries, one trait entry), the template report, the owner-checkpoint procedure
+The release branch carries the reviewed v0.2.0 work: a curated nine-entry
+panel (seven health entries, two trait entries), the template report, the owner-checkpoint procedure
 (docs/owner-checkpoint.md) and the accepted-limits register
 (docs/accepted-limits.md). The remaining steps are owner-only: the private
 real-data checkpoint, repository branch protection, and the release tag.
@@ -104,8 +104,8 @@ references only from curated public targets, never personal coverage or genotype
 Do not request private outputs for analysis."""
 
 AGENTS_ROADMAP_ITEMS = (
-    "2. **Curate a usable panel — DONE for v0.2.0** (seven health entries, one "
-    "trait entry; see docs/panel-curation.md).",
+    "2. **Curate a usable panel — DONE for v0.2.0** (seven health entries, two "
+    "trait entries; see docs/panel-curation.md).",
     "9. **Docs polish — DONE for v0.1.0** (README release section, owner "
     "checkpoint, accepted limits).",
 )
@@ -175,7 +175,7 @@ EXPECTED_VERSION = "0.2.0"
 
 README_STATUS = (
     "Release candidate v0.2.0. The pipeline runs end to end on synthetic "
-    "fixtures: parse, annotate, a curated eight-entry release panel, and a "
+    "fixtures: parse, annotate, a curated nine-entry release panel, and a "
     "deterministic template report. The first real-file run is the owner's "
     "local checkpoint (docs/owner-checkpoint.md). Model narration (skeleton "
     "and full modes) and the online path exist but are not part of the "
@@ -191,7 +191,7 @@ LIMITATION_KEYS = (
     ("about 0.02% of the genome", CHECKPOINT, "about 0.02% of the genome"),
     ("array presence of each marker is not verified", CURATION,
      "array presence not verified"),
-    ("seven health entries and one trait entry", CHECKPOINT,
+    ("seven health entries and two trait entries", CHECKPOINT,
      "seven health entries"),
     ("the panel is small and public", None, None),
     ("only template-only narration is verified", LIMITS,
@@ -300,7 +300,7 @@ def _readme_release_panel_workflow():
     _require("release section follows Quickstart", rel[0] > quick)
     _require("requirements phrase", REQUIREMENTS_PHRASE in flat)
     sec = _flat(_release_section())
-    for phrase in ("seven health-related entries", "one trait entry",
+    for phrase in ("seven health-related entries", "two trait entries",
                    "built reproducibly from public references",
                    "docs/panel-curation.md",
                    "data/targets.release-evidence.json",
@@ -1403,8 +1403,9 @@ AL_032_ROW = (
 # Owner-approved rows (decision D-7 on r103, ticket S3-B), appended after AL-032.
 AL_033_ROW = (
     "| AL-033 | REL | The v0.2.0 release panel has seven health-related "
-    "entries (five carrier status, two risk association) and one trait "
-    "entry (rs11591147, LDL cholesterol levels). This row supersedes "
+    "entries (five carrier status, two risk association) and two trait "
+    "entries (rs11591147, LDL cholesterol levels; rs10741657, "
+    "25-hydroxyvitamin D levels). This row supersedes "
     "AL-014 for v0.2.0; AL-014 describes v0.1.0 and stays as recorded. "
     "| LOW | Goals are not quotas; evidence-first curation (owner "
     "decisions on r96 and r97). | 2026-11-14 | The panel changes. |"
@@ -1951,9 +1952,7 @@ CURATION_METHOD_SENTENCES = (
 V020_GROWTH = (11, 34, 5, 6)  # candidates, T1 rows after v0.2.0, included, excluded
 V030_POOL = ("rs10455872", "rs3798220", "rs6544713", "rs2282679", "rs10741657",
              "rs601338", "rs6795970", "rs174537", "rs1801133", "rs11887534")
-V030_GROWTH = (10, 44, 1, 9)  # candidates, T1 rows after v0.3.0, reserve, excluded
-V030_RESERVES = {"rs10741657"}
-V030_RESERVE_SENTENCE = "Recorded as `reserve` (staged inclusion, owner decision T-1)"
+V030_GROWTH = (10, 44, 1, 9)  # candidates, T1 rows after v0.3.0, included, excluded
 
 
 def _t1_dicts():
@@ -2008,8 +2007,9 @@ def _s3b_curation_release_paragraph_matches_tables():
     new = [r for r in rows if r["rsID"] not in draft]
     _require("T1 adds no candidate beyond the DRAFT pool", new)
     # Version split (owner decision R-a on r138): the v0.2.0 growth sentence keeps
-    # its numbers and the v0.3.0 rows have their own sentence. S2 restores the
-    # strict no-reserve assertion when it promotes rs10741657 to `included`.
+    # its numbers and the v0.3.0 rows have their own sentence. The strict
+    # no-reserve rule holds for every T1 row now that rs10741657 is `included`
+    # (R141-F3, S2).
     v030 = [r for r in new if r["rsID"] in V030_POOL]
     v020 = [r for r in new if r["rsID"] not in V030_POOL]
     _require("T1 lacks a v0.3.0 pool row", sorted(r["rsID"] for r in v030) == sorted(V030_POOL))
@@ -2025,13 +2025,15 @@ def _s3b_curation_release_paragraph_matches_tables():
     inc3 = [r for r in v030 if r["decision"] == "included"]
     res3 = [r for r in v030 if r["decision"] == "reserve"]
     exc3 = [r for r in v030 if r["decision"] == "excluded"]
-    _require("a v0.3.0 row is included before S2", not inc3)
-    _require("v0.3.0 rows changed: %d rows, %d reserve, %d excluded" % (len(v030), len(res3), len(exc3)),
-             (len(v030), len(rows), len(res3), len(exc3)) == V030_GROWTH)
-    _require("v0.3.0 pool growth is not stated from T1",
-             "For v0.3.0 the pool grew by %s candidates to %d T1 rows, of which none was included, "
-             "%s is a reserve and %s were excluded"
-             % (w(len(v030)), len(rows), w(len(res3)), w(len(exc3))) in para)
+    _require("no reserve row may exist: %s" % [r["rsID"] for r in rows if r["decision"] == "reserve"],
+             not res3 and not [r for r in rows if r["decision"] == "reserve"])
+    _require("v0.3.0 rows changed: %d rows, %d included, %d excluded" % (len(v030), len(inc3), len(exc3)),
+             (len(v030), len(rows), len(inc3), len(exc3)) == V030_GROWTH)
+    growth030 = ("For v0.3.0 the pool grew by %s candidates to %d T1 rows, of which %s was included, "
+                 "none is a reserve and %s were excluded."
+                 % (w(len(v030)), len(rows), w(len(inc3)), w(len(exc3))))
+    _require("v0.3.0 pool growth must be stated exactly once, as the whole sentence, from T1",
+             [s for s in sentences if s.startswith("For v0.3.0 the pool grew by ")] == [growth030])
     _require("the paragraph names an rsID other than the added T1 candidates",
              set(re.findall(r"\brs\d+\b", para)) == {r["rsID"] for r in new})
     for r in new:
@@ -2046,14 +2048,9 @@ def _s3b_curation_release_paragraph_matches_tables():
                 for phrase in ("Replication rule", "T4", "not ancestry-informative",
                                "criterion 8"):
                     _require("%s: trait sentence lacks %r" % (r["rsID"], phrase), phrase in s)
-        elif r["decision"] == "reserve":
-            _require("%s: reserve sentence is not the staged-inclusion form" % r["rsID"],
-                     s.startswith(V030_RESERVE_SENTENCE))
         else:
             _require("%s: sentence lacks reason code `%s`" % (r["rsID"], r["reason code"]),
                      s.startswith("Excluded with reason code `%s`" % r["reason code"]))
-    _require("the reserve rows are not exactly %s" % sorted(V030_RESERVES),
-             {r["rsID"] for r in rows if r["decision"] == "reserve"} == V030_RESERVES)
     _require("v0.2.0 no-reserves statement is missing or inconsistent",
              [s for s in sentences if s.startswith("No reserves exist for v0.2.0")]
              == ["No reserves exist for v0.2.0 either: none of its rows is a `reserve`."])
@@ -2061,19 +2058,27 @@ def _s3b_curation_release_paragraph_matches_tables():
 
 
 def _s3b_release_paragraph_gate_rejects_contradictions():
-    """R141-F3: the release paragraph gate must reject a false extra v0.2.0
-    growth sentence and a reserve claim after the no-reserves prefix."""
+    """R141-F3: the release paragraph gate must reject a false extra growth
+    sentence and a contradictory claim after the no-reserves prefix, for v0.2.0
+    and for v0.3.0, and must compare the whole v0.3.0 sentence, not a substring."""
     para = _curation_release_paragraph()
     growth = "For v0.2.0 the pool grew by eleven"
     claim = "No reserves exist for v0.2.0 either: none of its rows is a `reserve`."
-    _require("the paragraph lacks the v0.2.0 growth or no-reserves statement",
-             para.count(growth) == 1 and para.count(claim) == 1)
+    growth3 = ("For v0.3.0 the pool grew by ten candidates to 44 T1 rows, of which one was "
+               "included, none is a reserve and nine were excluded.")
+    _require("the paragraph lacks the v0.2.0 or v0.3.0 growth or no-reserves statement",
+             para.count(growth) == 1 and para.count(claim) == 1 and para.count(growth3) == 1)
     variants = {
         "extra false growth sentence": para.replace(
             growth, "For v0.2.0 the pool grew by twelve candidates to 35 T1 rows, "
             "of which six were included and six excluded. " + growth, 1),
         "reserve claim after the no-reserves prefix": para.replace(
             claim, "No reserves exist for v0.2.0 either: one of its rows is a `reserve`.", 1),
+        "extra false v0.3.0 growth sentence": para.replace(
+            growth3, "For v0.3.0 the pool grew by eleven candidates to 45 T1 rows, of which "
+            "two were included, none is a reserve and nine were excluded. " + growth3, 1),
+        "contradictory suffix on the v0.3.0 growth sentence": para.replace(
+            growth3, growth3[:-1] + ", and one is a reserve.", 1),
     }
     accepted = []
     original = globals()["_curation_release_paragraph"]
