@@ -409,7 +409,7 @@ loaded from outside the repository.
 **Decision (User, 2026-10-25).** `pyproject.toml` uses the setuptools backend with
 `packages = ["snp_insights"]`, no runtime dependencies, an optional
 `schema = ["jsonschema"]` extra, license `GPL-3.0-or-later`, and the
-`snp-insights = "snp_insights.cli:main"` console script; version `0.2.0`. In-repo
+`snp-insights = "snp_insights.cli:main"` console script; version `0.3.0`. In-repo
 use works via `python -m snp_insights`; a wheel installed outside the repository
 is **not supported**, because the sub-tools live outside the package. The guard
 allowlist was extended additively to permit `pyproject.toml` and `snp_insights/`.
