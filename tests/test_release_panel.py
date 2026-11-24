@@ -4811,9 +4811,11 @@ S3_FORBIDDEN_STEMS = (
     "diagnos", "deficien", "normal", "high risk", "low risk", "higher risk", "lower risk",
     "increased risk", "absolute risk", "lifetime risk", "risk score", "risk of", "your level",
     "should", "recommend", "supplement", "treat", "chance", "probab", "%")
+# Every stem above is pinned: dropping or renaming one must fail, not silently weaken the scan.
 S3_REQUIRED_STEMS = frozenset((
-    "diagnos", "deficien", "normal", "high risk", "low risk", "your level", "should",
-    "recommend", "supplement", "treat", "absolute risk"))
+    "diagnos", "deficien", "normal", "high risk", "low risk", "higher risk", "lower risk",
+    "increased risk", "absolute risk", "lifetime risk", "risk score", "risk of", "your level",
+    "should", "recommend", "supplement", "treat", "chance", "probab", "%"))
 # W-1 allowlist (exact): the shipped label that is a condition name, not a claim.
 S3_ALLOWED_LABEL = "Deficiency of butyrylcholinesterase"
 
