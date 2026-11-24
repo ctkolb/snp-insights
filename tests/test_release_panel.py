@@ -5233,6 +5233,7 @@ def _run_v030_s3_fix(attempt):
         for name, v, expect in (("equal", variant("rs9000201", "A", "A"), True),
                                 ("different", variant("rs9000202", "G", "A"), None),
                                 ("unknown reference", variant("rs9000203", None, "A"), None),
+                                ("both alleles unknown", variant("rs9000205", None, None), None),
                                 ("legacy panel", variant("rs9000204", "A", "A", None), None)):
             raw = _s3f_raw(directory, dict(v, chromosome="1", position=1000), ("C", "C"), "raw.%s.txt" % name.replace(" ", "_"))
             doc = annotate_mod.build_findings(raw, {"merges": {}, "sources": [], "variants": [v]}, {})
