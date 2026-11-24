@@ -2092,6 +2092,21 @@ def _s3b_release_paragraph_gate_rejects_contradictions():
             accepted.append(name)
     finally:
         globals()["_curation_release_paragraph"] = original
+    # The strict no-reserve rule covers every T1 row, also one outside the v0.3.0 pool, which
+    # no growth count sees.
+    rows = _t1_dicts()
+    _require("the first T1 row is not a decided row", rows[0]["decision"] in ("included", "excluded"))
+    reserve_rows = [dict(rows[0], decision="reserve")] + rows[1:]
+    original_rows = globals()["_t1_dicts"]
+    try:
+        globals()["_t1_dicts"] = lambda: reserve_rows
+        try:
+            _s3b_curation_release_paragraph_matches_tables()
+            accepted.append("a reserve row outside the v0.3.0 pool")
+        except AssertionError:
+            pass
+    finally:
+        globals()["_t1_dicts"] = original_rows
     _require("the release paragraph gate accepts: %s" % accepted, not accepted)
     return True
 
