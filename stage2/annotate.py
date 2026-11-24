@@ -87,6 +87,26 @@ def release_rarity_class(variant, af):
     return "unknown"
 
 
+# Release entries whose gnomad_af was taken from a gnomAD record for a different alternate
+# allele than the panel's singular dbSNP alternate (R151-F2). The panel snapshot keeps only
+# the AF value, so the allele of that record is held here, keyed by the locus it applies to:
+# rs10741657 (NC_000011.9 11:14914878 A>C,G) takes its frequency from the 11-14914878-A-G
+# answer; the A-C answer is "Variant not found" (docs/panel-curation.md, ninth entry).
+GNOMAD_FREQUENCY_ALLELE = {("rs10741657", "11", 14914878, "A"): "G"}
+
+
+def gnomad_link_allele(variant, release_format):
+    """The alternate allele the gnomAD link names: the allele of the record that supplied
+    gnomad_af when it is a declared alternate, else the panel's singular alternate."""
+    alt = variant.get("alternate_allele")
+    if not release_format or variant.get("gnomad_af") is None:
+        return alt
+    key = (variant.get("rsid"), variant.get("chromosome"), variant.get("position"),
+           variant.get("reference_allele"))
+    allele = GNOMAD_FREQUENCY_ALLELE.get(key)
+    return allele if allele and allele in (variant.get("alternate_alleles") or ()) else alt
+
+
 def classify(alleles, ref, alt):
     """Return (zygosity, is_variant). is_variant is None when uninterpretable."""
     if ref is None or alt is None:
@@ -328,7 +348,8 @@ def annotate_variant(variant, raw, merges=None, sex="unknown", panel_build=SUPPO
         "state": state,
         "caveats": [CAVEAT_REGISTRY[k] for k in caveat_keys],
         "references": references_for(variant["rsid"], variant["gene"], variant["condition"],
-                                     chrom, pos, ref, alt, variant["assayability"]),
+                                     chrom, pos, ref, gnomad_link_allele(variant, release_format),
+                                     variant["assayability"]),
     }
     # Release format (ticket 2D): copy the curated report fields the panel
     # variant carries. Absent in the panel -> absent in the finding (no null, no

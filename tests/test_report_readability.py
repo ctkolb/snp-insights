@@ -133,6 +133,12 @@ def _hf(finding_id, rsid, gene, condition, state, zygosity, result_type, effect=
         finding["result_type"] = result_type
     if effect is not None:
         finding["effect_allele"] = effect
+    if state == "covered_reference" and effect is not None and ref != effect:
+        # r152 (G-1): like an annotated finding, carry the locus and its code-built gnomAD
+        # link, which records the reference allele the two called alleles equal.
+        finding.update(chromosome="1", position=1000, references=[{
+            "source": "gnomAD",
+            "url": "https://gnomad.broadinstitute.org/variant/1-1000-%s-%s?dataset=gnomad_r2_1" % (ref, effect)}])
     return finding
 
 
@@ -722,6 +728,8 @@ def _prose_for(doc, only=None):
     by_id = {f["finding_id"]: f for f in doc["findings"]}
     prose = {}
     for cl in stage3_run._state_claims(base):
+        if cl["text"]:
+            continue  # code-owned claim, not sent to the model (r152, G-3)
         if only is not None and cl["claim_id"] not in only:
             continue
         prose[cl["claim_id"]] = STATE_PROSE[by_id[cl["citations"][0]["finding_id"]]["state"]]

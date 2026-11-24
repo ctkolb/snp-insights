@@ -2098,6 +2098,18 @@ def _s3b_curation_release_paragraph_matches_tables():
     _require("v0.2.0 no-reserves statement is missing or inconsistent",
              [s for s in sentences if s.startswith("No reserves exist for v0.2.0")]
              == ["No reserves exist for v0.2.0 either: none of its rows is a `reserve`."])
+    # Full sentence inventory (R151-F5): every sentence is a method statement, a v0.1.0
+    # statement, one of the three exact growth/no-reserves sentences, or a decision sentence
+    # naming T1 rsIDs; anything else (a paraphrase of growth or reserves) fails.
+    exact = set(CURATION_METHOD_SENTENCES) | {
+        growth020, growth030, "No reserves exist for v0.2.0 either: none of its rows is a `reserve`."}
+    for s in sentences:
+        known = (s in exact
+                 or (s.startswith(("For the v0.1.0 curation ", "In the v0.1.0 curation "))
+                     and "reserve" not in s.lower())
+                 or (s.startswith(("Included as `", "Excluded with reason code `"))
+                     and re.search(r"\brs\d+\b", s) and "reserve" not in s.lower()))
+        _require("the release paragraph has an unaccounted sentence: %r" % s, known)
     return True
 
 

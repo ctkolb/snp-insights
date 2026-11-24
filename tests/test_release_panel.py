@@ -4829,11 +4829,20 @@ def _s3_allowed_sentences(condition):
 
 
 def _s3_scan(text, condition, stems=None):
-    """Forbidden stems left in text after removing only the exact allowlist (W-1)."""
+    """Forbidden stems left in text after removing only the exact allowlist (W-1).
+
+    The label is exempt only in its structural contexts (R151-F4): the whole text is the
+    label, or the text starts with the claim prefix "label (GENE):" (or "label:").
+    """
     rest = text
     for sentence in _s3_allowed_sentences(condition):
         rest = rest.replace(sentence, " ")
-    rest = rest.replace(S3_ALLOWED_LABEL, " ")
+    # the het carrier template's fixed fragment is a structural label context too
+    rest = rest.replace("(carrier status for " + S3_ALLOWED_LABEL + "; one copy is not the condition itself)", " ")
+    if rest == S3_ALLOWED_LABEL:
+        rest = " "
+    else:
+        rest = re.sub(r"\A" + re.escape(S3_ALLOWED_LABEL) + r"(?: \([A-Za-z0-9-]+\))?:", " ", rest)
     low = rest.lower()
     return [s for s in (S3_FORBIDDEN_STEMS if stems is None else stems) if s in low]
 
@@ -5023,6 +5032,11 @@ def _run_v030_s3(attempt):
                  not _s3_scan("one copy of the effect allele T were detected (carrier status refers to "
                               "one copy; this report does not diagnose Example disease).", "Example disease"))
         _require("the allowed label is flagged", not _s3_scan(S3_ALLOWED_LABEL + " (BCHE): ok", "x"))
+        _require("the allowed label alone is flagged", not _s3_scan(S3_ALLOWED_LABEL, "x"))
+        _require("the het carrier label fragment is flagged",
+                 not _s3_scan(S3_ALLOWED_LABEL + " (BCHE): one copy of the effect allele C was detected "
+                              "(carrier status for " + S3_ALLOWED_LABEL + "; one copy is not the "
+                              "condition itself).", "x"))
         for bad, why in (
                 (good_trait.replace("not a diagnosis", "not a diagnoses"), "a changed template"),
                 (good_trait + " This is a diagnosis.", "an extra sentence"),

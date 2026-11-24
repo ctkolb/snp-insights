@@ -74,8 +74,9 @@ Rules:
 - Follow the state exactly:
   * detected: the variant was detected. You may mention zygosity, gene,
     condition, and evidence.
-  * covered_reference: this position is on the array and the reference genotype
-    was observed. Do NOT say the variant is present or detected.
+  * covered_reference: this position is on the array and no copy of the effect
+    or variant allele was found. Do NOT say the variant is present or detected,
+    and do NOT say the genotype is the reference genotype.
   * covered_nocall: this position is on the array but genotyping returned no call.
   * covered_uninterpretable: this position was measured but the alleles could not
     be interpreted. Do NOT say the variant was detected.
@@ -170,6 +171,67 @@ def _gene_seg(f):
     return f" ({gene})" if gene else ""
 
 
+GNOMAD_VARIANT_URL = "https://gnomad.broadinstitute.org/variant/"
+
+
+def finding_reference_allele(f):
+    """The reference allele as recorded in the finding's own code-built gnomAD link, or None.
+
+    The findings schema carries no reference allele; tools/references.py builds the gnomAD
+    link from the panel's chromosome, position and reference allele, so the link for this
+    finding's own locus is the code-owned record of it.
+    """
+    prefix = f"{GNOMAD_VARIANT_URL}{f.get('chromosome')}-{f.get('position')}-"
+    for ref in f.get("references") or ():
+        url = ref.get("url") if isinstance(ref, dict) else None
+        if ref.get("source") == "gnomAD" and isinstance(url, str) and url.startswith(prefix):
+            allele = url[len(prefix):].split("-", 1)[0]
+            if allele in ("A", "C", "G", "T"):
+                return allele
+    return None
+
+
+def reference_claim_provable(f):
+    """True when a covered_reference finding may say both copies match the reference.
+
+    A legacy finding (no effect allele) is classified against its single reference allele,
+    so its hom_ref call is the reference genotype. A release finding counts zero effect
+    copies, which may include a declared non-effect alternate: it is the reference genotype
+    only when both called alleles are the recorded reference allele.
+    """
+    if f.get("effect_allele_is_reference") is True:
+        return False
+    if not f.get("effect_allele"):
+        return True
+    reference = finding_reference_allele(f)
+    call = f.get("call") or {}
+    return reference is not None and call.get("allele1") == reference == call.get("allele2")
+
+
+def reference_claim_violations(findings, ir):
+    """G-3 (R151-F3): model text may not claim a reference genotype for a covered_reference
+    finding whose genotype is not shown to be two reference alleles. One ("G3", message)
+    per offending claim; the message names the claim_id so skeleton mode can revert it."""
+    unprovable = {f["finding_id"] for f in findings.get("findings", [])
+                  if f.get("state") == "covered_reference" and not reference_claim_provable(f)}
+    errors = []
+    for sec in (ir.get("sections") or []) if isinstance(ir, dict) else []:
+        for cl in sec.get("claims") or []:
+            cited = {c.get("finding_id") for c in cl.get("citations") or [] if isinstance(c, dict)}
+            text = cl.get("text")
+            if cited & unprovable and isinstance(text, str) and "reference" in text.lower():
+                errors.append(("G3", f"{sec.get('section_id')}/{cl.get('claim_id')}: claims a "
+                                     f"reference genotype for a call not shown to be two "
+                                     f"reference alleles"))
+    return errors
+
+
+def check_report(findings_path, report, findings):
+    """validate_report.check plus the stage-3 reference-claim guard (G-3)."""
+    errors, info = validate_report.check(findings_path, report, findings=findings)
+    return list(errors) + reference_claim_violations(findings, report), info
+
+
 def coverage_sentence(f):
     """A7 exact wording for covered_reference and the four missing-call states."""
     label, gene, state = _label(f), _gene_seg(f), f["state"]
@@ -177,17 +239,20 @@ def coverage_sentence(f):
         return (f"{label}{gene}: this position is on the array, but the array returned no call, "
                 f"so no genotype is available.")
     if state == "covered_uninterpretable":
-        return (f"{label}{gene}: this position was measured, but the alleles did not match the "
-                f"known alleles, so no genotype is interpreted.")
+        # Cause-neutral (R151-F6): the call may be out of the declared allele set, a
+        # duplicate-row conflict, or a sex-chromosome contradiction.
+        return (f"{label}{gene}: this position was measured, but the call could not be "
+                f"interpreted, so no genotype is given.")
     if state == "not_covered":
         return (f"{label}{gene}: this marker was not measured by this array. That gives no "
                 f"information about whether the effect allele is present.")
     if state == "not_assayable":
         return f"{label}{gene}: this locus cannot be assessed from array data."
     if state == "covered_reference":
-        if f.get("effect_allele_is_reference") is True:
-            # The effect allele is the reference allele: the genotype carries no copy of it,
-            # so it must not be called the reference genotype.
+        if not reference_claim_provable(f):
+            # Zero effect copies, but the genotype is not shown to be two reference alleles:
+            # the effect allele is the reference allele, a copy is a declared non-effect
+            # alternate, or the reference allele is not in the finding (G-1, R151-F1).
             return f"{label}{gene}: no copy of the effect allele was found in the genotype at this position."
         return (f"{label}{gene}: both copies match the reference at this position; the effect "
                 f"allele was not found in the genotype.")
@@ -458,7 +523,13 @@ def build_skeleton(findings, findings_hash):
     """Return (skeleton with blank texts, fallback_text by claim_id)."""
     ir = template_ir(findings, findings_hash)
     fallback = {}
+    # G-3: a release covered_reference claim stays the code-owned sentence; it is not sent
+    # to the model and model text cannot replace it.
+    fixed = {f["finding_id"] for f in findings["findings"]
+             if f.get("result_type") and f["state"] == "covered_reference"}
     for cl in _state_claims(ir):
+        if cl["citations"][0]["finding_id"] in fixed:
+            continue
         fallback[cl["claim_id"]] = cl["text"]
         cl["text"] = ""
     return ir, fallback
@@ -468,6 +539,8 @@ def skeleton_prompt(findings, ir, findings_hash):
     by_id = {f["finding_id"]: f for f in findings["findings"]}
     items = []
     for cl in _state_claims(ir):
+        if cl["text"]:
+            continue  # code-owned claim (G-3)
         fid = cl["citations"][0]["finding_id"]
         f = by_id[fid]
         items.append({
@@ -509,6 +582,8 @@ def merge_prose(ir, fallback, prose):
     used = fell_back = 0
     for cl in _state_claims(ir):
         cid = cl["claim_id"]
+        if cid not in fallback:
+            continue  # code-owned claim (G-3)
         text = prose.get(cid) if isinstance(prose, dict) else None
         if isinstance(text, str) and text.strip():
             cl["text"] = text.strip()
@@ -530,7 +605,7 @@ def revert_invalid(ir, fallback, errors):
     for cl in _state_claims(ir):
         if cl["claim_id"] in bad:
             cl["text"] = fallback[cl["claim_id"]]
-    if bad and all(cl["text"] == fallback[cl["claim_id"]] for cl in _state_claims(ir)):
+    if bad and all(cl["text"] == fallback.get(cl["claim_id"], cl["text"]) for cl in _state_claims(ir)):
         ir["generated_by"] = "template"
     return len(bad)
 
@@ -542,7 +617,7 @@ def parse_and_check(text, findings_path, findings):
         return None, [("json", f"unparseable JSON: {exc}")]
     if isinstance(report, dict):
         report.pop("generated_by", None)  # only code labels a report as template-made
-    errors, _ = validate_report.check(findings_path, report, findings=findings)
+    errors, _ = check_report(findings_path, report, findings)
     return report, errors
 
 
@@ -581,13 +656,13 @@ def run_skeleton(findings, findings_path, findings_hash, args, chat_kwargs):
             break
         prose = parse_object(raw)
         prose_used, fell_back = merge_prose(candidate, fallback, prose)
-        errors, _ = validate_report.check(findings_path, candidate, findings=findings)
+        errors, _ = check_report(findings_path, candidate, findings)
         attempt_violations.append([c for c, _ in errors])
         if not errors:
             accepted = candidate
             break
         reverted = revert_invalid(candidate, fallback, errors)
-        errors, _ = validate_report.check(findings_path, candidate, findings=findings)
+        errors, _ = check_report(findings_path, candidate, findings)
         attempt_violations.append([c for c, _ in errors])
         if not errors:
             accepted = candidate
