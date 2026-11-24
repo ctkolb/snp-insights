@@ -185,6 +185,10 @@ def coverage_sentence(f):
     if state == "not_assayable":
         return f"{label}{gene}: this locus cannot be assessed from array data."
     if state == "covered_reference":
+        if f.get("effect_allele_is_reference") is True:
+            # The effect allele is the reference allele: the genotype carries no copy of it,
+            # so it must not be called the reference genotype.
+            return f"{label}{gene}: no copy of the effect allele was found in the genotype at this position."
         return (f"{label}{gene}: both copies match the reference at this position; the effect "
                 f"allele was not found in the genotype.")
     return f"{label}{gene}: this result cannot be interpreted from array data."
@@ -278,6 +282,8 @@ def _plain_citations(f):
             paths.append(key)
     if f.get("effect_allele"):
         paths.append("effect_allele")
+    if f.get("state") == "covered_reference" and f.get("effect_allele_is_reference") is True:
+        paths.append("effect_allele_is_reference")
     return [_citation(f["finding_id"], p) for p in paths]
 
 

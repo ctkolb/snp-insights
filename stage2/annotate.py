@@ -338,6 +338,13 @@ def annotate_variant(variant, raw, merges=None, sex="unknown", panel_build=SUPPO
             value = variant.get(key)
             if value:
                 finding[key] = value
+        # Present and true only when the effect allele is the reference allele, so a
+        # report never calls a genotype without the effect allele "the reference
+        # genotype" for such an entry. Absent otherwise (no null), and absent when
+        # either allele is unknown.
+        effect, reference = variant.get("effect_allele"), variant.get("reference_allele")
+        if effect and reference and effect == reference:
+            finding["effect_allele_is_reference"] = True
     return finding
 
 
