@@ -775,3 +775,25 @@ identifiers only (rsIDs, gene names); no machine paths.
 - **R141-F3 applied.** The S3B growth gate compares the whole v0.3.0 growth
   sentence, rejects every `reserve` row, and its self-check rejects an extra
   false v0.3.0 growth sentence and a contradictory suffix.
+
+## v0.3.0 run: S3 closure records (decisions log)
+
+- **Test edit accepted (owner, "accept", 2026-11-24).** The edit to
+  `tests/test_cli.py` in round r152 sat outside that round's allowed file list.
+  It changes one pinned literal that the owner-checkpoint wording change forced.
+  The owner accepts the edit.
+- **R153-F1 accepted as AL-052 (owner, "accept", 2026-11-24).** The narration
+  guard G3 rejects every claim that contains the word "reference" and cites a
+  covered-reference finding whose reference genotype is not provable, including
+  an accurate sentence that says the call does not establish it. The stage then
+  uses the deterministic template prose for that finding. The behavior is
+  fail-safe, so G3 is not changed, and the row is recorded in
+  `docs/accepted-limits.md`.
+- **Adjacent items known and not fixed in v0.3.0 (owner, "accept", 2026-11-24;
+  deferred to a later release).**
+  - The contradiction text "has no ClinVar classification" for trait entries.
+  - The sixth GWAS association for rs10741657.
+  - The wording of AL-036.
+  - The mixed paths in the v0.2.0 MANIFEST.
+  - `scripts/loop_mutations.py` has no argument parser.
+  - The owner-checkpoint wording "No reserves exist for v0.1.0".

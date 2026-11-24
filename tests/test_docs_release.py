@@ -525,7 +525,7 @@ def _accepted_limits_rows_append_only():
         _require("%s differs from the approved text" % rid, _sha(new[rid]) == digest)
     appended = raw[LIMITS_BASE_BYTES:].decode("utf-8").split("\n")
     appended = [l for l in appended if l.strip()]
-    _require("only the approved rows AL-014..AL-051 were appended",
+    _require("only the approved rows AL-014..AL-052 were appended",
              [l[2:8] for l in appended]
              == sorted(NEW_ROW_SHA256) + sorted(CLOSURE_ROWS) + sorted(APPENDED_ROWS))
     return True
@@ -1639,6 +1639,21 @@ AL_051_ROW = (
     "changes again. |"
 )
 
+AL_052_ROW = (
+    "| AL-052 | REL | The narration guard G3 in stage3/run.py rejects any "
+    "claim that contains the word 'reference' and cites a covered_reference "
+    "finding whose reference genotype is not provable. It therefore also "
+    "rejects the accurate sentence 'This call does not establish the "
+    "reference genotype.' and the stage falls back to the deterministic "
+    "template prose for that finding. The behavior is fail-safe: no false "
+    "claim is emitted, only template wording. | LOW | Owner decision on "
+    "review finding R153-F1 (2026-11-24): accepted; G3 is not changed. | "
+    "2026-11-24 | narration quality for covered_reference findings "
+    "matters, or G3 is next changed (the reviewer's idea: reject "
+    "affirmative false reference-genotype assertions instead of every "
+    "mention of 'reference'). |"
+)
+
 APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
                  "AL-033": AL_033_ROW,
                  "AL-034": AL_034_ROW,
@@ -1658,7 +1673,8 @@ APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
                  "AL-048": AL_048_ROW,
                  "AL-049": AL_049_ROW,
                  "AL-050": AL_050_ROW,
-                 "AL-051": AL_051_ROW}
+                 "AL-051": AL_051_ROW,
+                 "AL-052": AL_052_ROW}
 NARRATION_NOT_VERIFIED = "not verified against a live model"
 FAILURE_EXAMPLE = (
     "template IR failed validation (bug):",
@@ -1787,13 +1803,13 @@ def _r6_template_failure_example_is_real():
 def _r6_accepted_limits_al031_al032_verbatim():
     text = _read(LIMITS)
     found = _rows(text, set(APPENDED_ROWS))
-    _require("AL-031..AL-051 all present", sorted(found) == sorted(APPENDED_ROWS))
+    _require("AL-031..AL-052 all present", sorted(found) == sorted(APPENDED_ROWS))
     for rid, row in APPENDED_ROWS.items():
         _require("%s differs from the approved text" % rid, found[rid] == row)
         _require("%s appears once" % rid, text.count(row) == 1)
     order = [l[2:8] for l in text.split("\n") if re.match(r"\| AL-\d{3} \|", l)]
     tail = len(APPENDED_ROWS)
-    _require("AL-031 starts the appended rows, which end the register in order at AL-051",
+    _require("AL-031 starts the appended rows, which end the register in order at AL-052",
              order == sorted(order) and order[-tail:] == sorted(APPENDED_ROWS)
              and order[-tail:][:2] == ["AL-031", "AL-032"])
     _require("AL-030 sits directly before AL-031", order[-tail - 1] == "AL-030")
@@ -2265,6 +2281,11 @@ def _v030s3_accepted_limits_rows():
     with open(os.path.join(ROOT, "tests", "test_release_panel.py"), encoding="utf-8") as fh:
         _require("the AL-050 pin does not exist in the release-panel tests",
                  'attempt("V030S3.same_label_pair_pins_behavior"' in fh.read())
+    # AL-052 (R153-F1, accepted): the row names the finding and the guard file.
+    rows52 = _rows(text, {"AL-052"})
+    _require("AL-052 is missing", "AL-052" in rows52)
+    _require("AL-052 does not name R153-F1", "R153-F1" in rows52["AL-052"])
+    _require("AL-052 does not name stage3/run.py", "stage3/run.py" in rows52["AL-052"])
     return True
 
 
