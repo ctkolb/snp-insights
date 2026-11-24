@@ -2016,9 +2016,11 @@ def _s3b_curation_release_paragraph_matches_tables():
     exc2 = [r for r in v020 if r["decision"] == "excluded"]
     _require("v0.2.0 rows changed: %d rows, %d included, %d excluded" % (len(v020), len(inc2), len(exc2)),
              (len(v020), len(draft) + len(v020), len(inc2), len(exc2)) == V020_GROWTH)
-    _require("v0.2.0 pool growth is not stated from T1",
-             "For v0.2.0 the pool grew by %s candidates to %d T1 rows, of which %s were included and %s excluded"
-             % (w(len(v020)), len(draft) + len(v020), w(len(inc2)), w(len(exc2))) in para)
+    growth020 = ("For v0.2.0 the pool grew by %s candidates to %d T1 rows, "
+                 "of which %s were included and %s excluded."
+                 % (w(len(v020)), len(draft) + len(v020), w(len(inc2)), w(len(exc2))))
+    _require("v0.2.0 pool growth must be stated exactly once from T1",
+             [s for s in sentences if s.startswith("For v0.2.0 the pool grew by ")] == [growth020])
     inc3 = [r for r in v030 if r["decision"] == "included"]
     res3 = [r for r in v030 if r["decision"] == "reserve"]
     exc3 = [r for r in v030 if r["decision"] == "excluded"]
@@ -2051,7 +2053,9 @@ def _s3b_curation_release_paragraph_matches_tables():
                      s.startswith("Excluded with reason code `%s`" % r["reason code"]))
     _require("the reserve rows are not exactly %s" % sorted(V030_RESERVES),
              {r["rsID"] for r in rows if r["decision"] == "reserve"} == V030_RESERVES)
-    _require("no-reserves statement for v0.2.0 missing", "No reserves exist for v0.2.0" in para)
+    _require("v0.2.0 no-reserves statement is missing or inconsistent",
+             [s for s in sentences if s.startswith("No reserves exist for v0.2.0")]
+             == ["No reserves exist for v0.2.0 either: none of its rows is a `reserve`."])
     return True
 
 
