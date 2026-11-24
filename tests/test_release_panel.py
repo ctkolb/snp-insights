@@ -4401,10 +4401,18 @@ V030_S1_ROWS = {
     "rs174537": ("MYRF", "11", "Arachidonic acid levels", "T", "excluded", "no-independent-confirmation",
                  "0.523", 2, "no-counted-evidence", "no-independent-confirmation", [], []),
     "rs1801133": ("MTHFR", "1", "Plasma total homocysteine", "A", "excluded", "ancestry-informative", "0.393", 7,
-                  "replicated", None, [["a129422187"], ["a134087602"]], ["a129422187", "a134087602"]),
+                  "replicated", None, [["a129422187"], ["a134087602"], ["a14036"]],
+                  ["a129422187", "a134087602", "a14036"]),
     "rs11887534": ("ABCG8", "2", "LDL cholesterol levels", "-", "excluded", "palindromic", "0.085", 0,
                    None, None, [], []),
 }
+# The rationale states the computed group count (R141-F1): {n} is the number,
+# {words} the spelled count, {cohorts} the sorted cohort ids of the groups.
+V030_S1_REPLICATED_TEXT = {
+    "rs10741657": "replicated under the Replication rule, {n} independent groups",
+    "rs1801133": "replication: replicated by {words} groups ({cohorts}), all up",
+}
+V030_S1_WORDS = ("zero", "one", "two", "three", "four", "five", "six")
 V030_S1_REPLICATION_CODES = ("conflicting-evidence", "single-study", "no-independent-confirmation",
                              "evidence-not-in-pack")
 V030_S1_ALIAS_GROUPS = {
@@ -4481,6 +4489,13 @@ def check_v030_s1_replication(tables, aliases):
         if (got, got_code, got_groups, sig) != (status, code, groups, significant):
             errors.append(f"{rs}: computed {got}/{got_code} groups {got_groups} significant {sig}, "
                           f"expected {status}/{code} groups {groups} significant {significant}")
+        if got == "replicated" and rs in V030_S1_REPLICATED_TEXT:
+            cohort = {r["row id"]: r["cohort id"] for r in t4}
+            ids = sorted({cohort[rid] for g in got_groups for rid in g})
+            phrase = V030_S1_REPLICATED_TEXT[rs].format(
+                n=len(got_groups), words=V030_S1_WORDS[len(got_groups)], cohorts=", ".join(ids))
+            if phrase not in base["rationale"]:
+                errors.append(f"{rs}: rationale lacks the computed replication statement {phrase!r}")
         if base["reason code"] in V030_S1_REPLICATION_CODES and base["reason code"] != got_code:
             errors.append(f"{rs}: reason code {base['reason code']!r} differs from the computed {got_code!r}")
     return errors

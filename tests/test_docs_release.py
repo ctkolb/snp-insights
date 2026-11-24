@@ -2055,6 +2055,37 @@ def _s3b_curation_release_paragraph_matches_tables():
     return True
 
 
+def _s3b_release_paragraph_gate_rejects_contradictions():
+    """R141-F3: the release paragraph gate must reject a false extra v0.2.0
+    growth sentence and a reserve claim after the no-reserves prefix."""
+    para = _curation_release_paragraph()
+    growth = "For v0.2.0 the pool grew by eleven"
+    claim = "No reserves exist for v0.2.0 either: none of its rows is a `reserve`."
+    _require("the paragraph lacks the v0.2.0 growth or no-reserves statement",
+             para.count(growth) == 1 and para.count(claim) == 1)
+    variants = {
+        "extra false growth sentence": para.replace(
+            growth, "For v0.2.0 the pool grew by twelve candidates to 35 T1 rows, "
+            "of which six were included and six excluded. " + growth, 1),
+        "reserve claim after the no-reserves prefix": para.replace(
+            claim, "No reserves exist for v0.2.0 either: one of its rows is a `reserve`.", 1),
+    }
+    accepted = []
+    original = globals()["_curation_release_paragraph"]
+    try:
+        for name, changed in variants.items():
+            globals()["_curation_release_paragraph"] = lambda changed=changed: changed
+            try:
+                _s3b_curation_release_paragraph_matches_tables()
+            except AssertionError:
+                continue
+            accepted.append(name)
+    finally:
+        globals()["_curation_release_paragraph"] = original
+    _require("the release paragraph gate accepts: %s" % accepted, not accepted)
+    return True
+
+
 def _runner_copies_guard_selftest_files():
     from guard import SELFTEST_MUST_BE_TRACKED
     from loop_mutations import COPY_DIRS, COPY_FILES
@@ -2143,6 +2174,8 @@ def run(check):
     attempt("S3B.loop_spec_records_d8", _s3b_loop_spec_records_d8)
     attempt("S3B.curation_release_paragraph_matches_tables",
             _s3b_curation_release_paragraph_matches_tables)
+    attempt("S3B.release_paragraph_gate_rejects_contradictions",
+            _s3b_release_paragraph_gate_rejects_contradictions)
     attempt("L.runner_copies_guard_selftest_files", _runner_copies_guard_selftest_files)
 
 
