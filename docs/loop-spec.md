@@ -730,3 +730,16 @@ identifiers only (rsIDs, gene names); no machine paths.
   "-", no odds ratio); the survey draft said up. They are recorded with
   direction `-`. Neither the rs10741657 status (replicated, two groups) nor the
   rs2282679 status (single-study) changes.
+- **Paired review r140/r141 decisions (owner, "accept", 2026-11-23).**
+  R141-F2 is an S2 requirement, recorded as accepted: "S2 derives the CYP2R1
+  build input from eligible main-effect rows only and adds a test for the
+  one-publication case (no intake-interaction or other-trait accession in the
+  build input)." S1 makes no code or alias change for it. FIX r142 corrects
+  R141-F1 (T4 row a14036 records the Women's Genome Health Study named in
+  PMID 20031578, so rs1801133 has three counted groups; the exclusion stays
+  `ancestry-informative`, and the cohorts of the 44,147-participant
+  meta-analysis stay unresolved and uncounted), R141-F3 (the release
+  paragraph gate requires exactly one v0.2.0 growth sentence and the complete
+  no-reserves sentence), R141-F4 (the SUNLIGHT ancestry cell is qualified by
+  phase), R141-F5 (AL-049 names the T1 and T4 cells that record direction)
+  and R141-F6 (the LPA cohort and phenotype summaries).

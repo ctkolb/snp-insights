@@ -1587,8 +1587,9 @@ AL_048_ROW = (
 AL_049_ROW = (
     "| AL-049 | REL | The report does not state the direction of a "
     "trait association (whether the effect allele goes with higher "
-    "or lower values); the direction is recorded only in the T1 "
-    "`direction/meaning` cell of docs/panel-curation.md. | LOW | "
+    "or lower values); the direction is recorded only in "
+    "docs/panel-curation.md: in the T1 `direction/meaning` and "
+    "`rationale` cells and in the T4 `direction` column. | LOW | "
     "Owner decision D-6 (v0.3.0 S1): no direction wording is added "
     "to the report template. | 2026-11-23 | The owner wants the "
     "report to state direction, or a reader takes a trait finding "
