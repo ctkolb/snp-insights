@@ -4501,6 +4501,22 @@ def check_v030_s1_replication(tables, aliases):
     return errors
 
 
+def check_v030_s1_replication_text_gate(tables, aliases):
+    """The rationale count check must reject a stale count (R141-F1)."""
+    t1 = [dict(r) for r in tables["T1"]]
+    stale = "replicated by two groups (korea4k, stromics), all up"
+    for r in t1:
+        if r["rsID"] == "rs1801133":
+            r["rationale"] = r["rationale"].replace(
+                "replicated by three groups (korea4k, stromics, wghs), all up", stale, 1)
+    if not any(stale in r["rationale"] for r in t1):
+        return ["rs1801133: rationale lacks the three-group statement to replace"]
+    errors = check_v030_s1_replication(dict(tables, T1=t1), aliases)
+    if not any("rs1801133: rationale lacks the computed replication statement" in e for e in errors):
+        return ["the rationale count check accepts a stale two-group statement for rs1801133"]
+    return []
+
+
 def check_v030_s1_reserve(text, tables, entries):
     errors, rows = _v030_rows(tables)
     if V030_S1_RESERVES_SENTENCE not in " ".join((section_body(text, "Reserves and goals") or "").split()):
@@ -4541,6 +4557,8 @@ def _run_v030_s1(attempt):
 
     gate("R1B.v030_s1_rows_recorded", lambda x, t, g: check_v030_s1_rows(t))
     gate("R1B.v030_s1_replication_recomputed", lambda x, t, g: check_v030_s1_replication(t, aliases()))
+    gate("R1B.v030_s1_replication_text_gate_rejects_stale_count",
+         lambda x, t, g: check_v030_s1_replication_text_gate(t, aliases()))
     gate("R1B.v030_s1_reserve_is_staged_inclusion", lambda x, t, g: check_v030_s1_reserve(x, t, _entries(g)))
     gate("R1B.v030_s1_alias_groups", lambda x, t, g: check_v030_s1_alias_groups(aliases()))
     gate("R1B.v030_s1_provenance_names_packs", lambda x, t, g: check_v030_s1_provenance(x))
