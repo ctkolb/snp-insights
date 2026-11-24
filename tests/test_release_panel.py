@@ -4723,8 +4723,8 @@ def _run_v030_s2(attempt):
             pyproject = re.search(r'^version\s*=\s*"([^"]+)"', fh.read(), re.M).group(1)
         with open(os.path.join(ROOT, "snp_insights", "__init__.py"), encoding="utf-8") as fh:
             package = re.search(r'^__version__\s*=\s*"([^"]+)"', fh.read(), re.M).group(1)
-        _require(f"package versions {pyproject!r} and {package!r} are not both '0.2.0'",
-                 pyproject == package == "0.2.0")
+        _require(f"package versions {pyproject!r} and {package!r} are not both '0.3.0'",
+                 pyproject == package == "0.3.0")
         return True
     attempt("V030S2.version_literals", version_literals)
 
