@@ -2,6 +2,8 @@
 
 ## v0.3.0 — Test cleanup and biomarker panel expansion
 
+**Status: shipped.** Released as v0.3.0 (merged to main in pull request #17, commit 97b1869, tagged v0.3.0). The panel version is 0.3.0. The package reported 0.2.0 at the tag; the post-release prep corrects it to 0.3.0.
+
 ### S0 — Stop test temporary-directory leaks (GitHub issue #14)
 
 Fix test and build-loop scratch cleanup first. Close this stage with independent review before planning biomarker work or capturing public references.
