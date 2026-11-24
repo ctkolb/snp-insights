@@ -797,3 +797,12 @@ identifiers only (rsIDs, gene names); no machine paths.
   - The mixed paths in the v0.2.0 MANIFEST.
   - `scripts/loop_mutations.py` has no argument parser.
   - The owner-checkpoint wording "No reserves exist for v0.1.0".
+
+## v0.4.0 run: Part P prep (decisions log)
+
+- **D-P1 (owner, 2026-11-24).** The package version is 0.3.0 now; v0.4.0 gets its own bump at release verification.
+- **D-P2 (owner, 2026-11-24).** The prep branch is `codex/post-v0.3.0-prep`, cut from local main at c3e2786 (the v0.3.0 merge 97b1869 plus one CI dependency commit).
+- **D-P3 (owner, 2026-11-24).** Part P gets no independent code review; the owner reviews the pull request.
+- **D-P4 (owner, 2026-11-24).** The roadmap gains a shipped-status line under the v0.3.0 heading, and nothing else in the roadmap changes.
+- **D-P5 (owner, 2026-11-24).** `stage2/annotate.py` `PIPELINE_VERSION` is bumped to 0.3.0 as version metadata (it stamps `provenance.pipeline_version` and `tests/test_docs_release.py` pins it); no other findings content changes.
+- **D-P6 (owner, 2026-11-24).** `scripts/loop_mutations.py` changes only the two anchor strings that named 0.2.0 (the `S4 pyproject version mismatch` and `S4 __version__ changed` mutants); the owner accepts this tooling edit without independent review.
