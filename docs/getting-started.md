@@ -27,7 +27,7 @@ has already computed.
 It does **not** diagnose anything, give a personal risk estimate, or replace a
 clinician or genetic counselor. A consumer DNA chip measures a tiny part of the
 genome (about 0.02%), and a rare result on a chip can be wrong. This is a research
-and curiosity tool, not medical advice. The v0.2.0 panel has seven health entries
+and curiosity tool, not medical advice. In panel version 0.3.0 the panel has seven health entries
 and two trait entries, so most of what you might wonder about is not covered.
 
 ## Prerequisites
@@ -117,7 +117,7 @@ Names can mislead. Three kinds of file sit in `data/`:
   is its built panel. `check-raw` uses that sample panel unless you name another.
 - `data/targets.carrier.json` and `data/targets.traits.json` are **draft starter
   sets**. They are not reviewed and are not for reports.
-- The **v0.2.0 release set**: `data/targets.release.json` (the curated targets),
+- The **release set** (panel version 0.3.0): `data/targets.release.json` (the curated targets),
   `data/targets.release-evidence.json` (the evidence file) and
   `data/targets.release-panel.json`. Despite its name, the last one is a built
   **panel**, not a targets file. It is the file you give to `check-raw` and `run`.
@@ -171,7 +171,7 @@ synthetic fixture (`...` marks skipped lines). Its genotypes are invented:
 
 ```report
 ## Summary
-- five carrier status markers were examined: five were measured, zero were not measured, and zero returned no call or an uninterpretable result. [f_065a9790e8ec · state] [f_a96ae54fd3b4 · state] [f_45738a4169e2 · state] [f_267e6220ca25 · state] [f_9c828d9896e4 · state]
+- five carrier status markers were examined: four were measured, one was not measured, and zero returned no call or an uninterpretable result. [f_065a9790e8ec · state] [f_a96ae54fd3b4 · state] [f_45738a4169e2 · state] [f_267e6220ca25 · state] [f_9c828d9896e4 · state]
 ...
 - Prothrombin thrombophilia (F2): two copies of the effect allele A were detected. Evidence tier: replicated, from ClinVar's review level: ClinVar lists this record as Pathogenic with two review stars (criteria provided, multiple submitters, no conflicts); this is a review level, not a count of independent studies. This is an association with Prothrombin thrombophilia; this report does not diagnose the condition. [f_b7dae4647a6b · state] [f_b7dae4647a6b · call.zygosity] [f_b7dae4647a6b · result_type] [f_b7dae4647a6b · effect_allele] [f_b7dae4647a6b · condition] [f_b7dae4647a6b · evidence.association] [f_b7dae4647a6b · evidence.clinvar.significance] [f_b7dae4647a6b · evidence.clinvar.review_stars] [f_b7dae4647a6b · evidence.clinvar.review_status_text]
 ...
