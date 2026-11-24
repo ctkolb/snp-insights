@@ -1082,7 +1082,8 @@ def run(check):
             return False
         if "aggregate judgment" not in flat or "counts only" not in flat:
             return False
-        return "trait-count cutoff cannot distinguish" in flat
+        # R151-F7 (r152): the count is stated, no cutoff is prescribed or implied.
+        return "no count cutoff is prescribed" in flat and "cannot distinguish" not in flat
     attempt("R3A.checkpoint_doc_adequacy_no_trait_cutoff",
             r3a_checkpoint_doc_adequacy_no_trait_cutoff)
 

@@ -525,7 +525,7 @@ def _accepted_limits_rows_append_only():
         _require("%s differs from the approved text" % rid, _sha(new[rid]) == digest)
     appended = raw[LIMITS_BASE_BYTES:].decode("utf-8").split("\n")
     appended = [l for l in appended if l.strip()]
-    _require("only the approved rows AL-014..AL-050 were appended",
+    _require("only the approved rows AL-014..AL-051 were appended",
              [l[2:8] for l in appended]
              == sorted(NEW_ROW_SHA256) + sorted(CLOSURE_ROWS) + sorted(APPENDED_ROWS))
     return True
@@ -1420,10 +1420,16 @@ AL_033_ROW = (
 
 AL_034_ROW = (
     "| AL-034 | REL | The release panel carries one retrieved_at per "
-    "source (2026-11-14T14:16:47Z, a capture file time), although the "
-    "rows of three entries were captured on 2026-11-11 and those of "
-    "five on 2026-11-14. The dbSNP, gnomAD and GWAS Catalog labels name "
-    "both dates, docs/panel-curation.md records the split, and the "
+    "source, a capture file time, although its entries were captured "
+    "on more than one date. In panel version 0.2.0 that time was "
+    "2026-11-14T14:16:47Z, although the rows of three entries were "
+    "captured on 2026-11-11 and those of five on 2026-11-14. In panel "
+    "version 0.3.0 it is 2026-11-23T19:22:03Z, the file time of the "
+    "supplement's 11-14914878-A-G gnomAD answer, although the rows of "
+    "three entries were captured on 2026-11-11, those of five on "
+    "2026-11-14 and those of one on 2026-11-23; the dbSNP, gnomAD and "
+    "GWAS Catalog labels name the 2026-11-11, 2026-11-14 and 2026-11-23 "
+    "captures. docs/panel-curation.md records the split, and the "
     "report prints the single time for every source. | LOW | Accepted "
     "with the rebuild plan (owner decision R-1 on r100); per-entry "
     "dates need a panel format change. | 2026-11-14 | The panel gains "
@@ -1619,6 +1625,20 @@ AL_050_ROW = (
     "contradiction rule changes. |"
 )
 
+AL_051_ROW = (
+    "| AL-051 | REL | The findings schema keeps schema_version 1.2.0 "
+    "after it gained the optional effect_allele_is_reference property "
+    "(present and true only when the curated effect allele is the "
+    "reference allele). The change is additive: the current schema "
+    "accepts older 1.2.0 findings, but an older strict copy of the 1.2.0 "
+    "schema (additionalProperties false) rejects a findings document "
+    "that carries the property, although both say 1.2.0. | LOW | Owner "
+    "decision on review finding R150-F1 (2026-11-24): document only; "
+    "schema_version is not bumped. | 2026-11-24 | A consumer validates "
+    "findings with an older copy of the schema, or the findings schema "
+    "changes again. |"
+)
+
 APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
                  "AL-033": AL_033_ROW,
                  "AL-034": AL_034_ROW,
@@ -1637,7 +1657,8 @@ APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
                  "AL-047": AL_047_ROW,
                  "AL-048": AL_048_ROW,
                  "AL-049": AL_049_ROW,
-                 "AL-050": AL_050_ROW}
+                 "AL-050": AL_050_ROW,
+                 "AL-051": AL_051_ROW}
 NARRATION_NOT_VERIFIED = "not verified against a live model"
 FAILURE_EXAMPLE = (
     "template IR failed validation (bug):",
@@ -1766,13 +1787,13 @@ def _r6_template_failure_example_is_real():
 def _r6_accepted_limits_al031_al032_verbatim():
     text = _read(LIMITS)
     found = _rows(text, set(APPENDED_ROWS))
-    _require("AL-031..AL-050 all present", sorted(found) == sorted(APPENDED_ROWS))
+    _require("AL-031..AL-051 all present", sorted(found) == sorted(APPENDED_ROWS))
     for rid, row in APPENDED_ROWS.items():
         _require("%s differs from the approved text" % rid, found[rid] == row)
         _require("%s appears once" % rid, text.count(row) == 1)
     order = [l[2:8] for l in text.split("\n") if re.match(r"\| AL-\d{3} \|", l)]
     tail = len(APPENDED_ROWS)
-    _require("AL-031 starts the appended rows, which end the register in order at AL-050",
+    _require("AL-031 starts the appended rows, which end the register in order at AL-051",
              order == sorted(order) and order[-tail:] == sorted(APPENDED_ROWS)
              and order[-tail:][:2] == ["AL-031", "AL-032"])
     _require("AL-030 sits directly before AL-031", order[-tail - 1] == "AL-030")
@@ -1831,7 +1852,7 @@ def _expected_count_phrases():
     traits = ", ".join(v["rsid"] for v in _release_panel_variants()
                        if v["result_type"] == "trait")
     return (
-        (CHECKPOINT, "This release has %s, so a trait-count cutoff" % t),
+        (CHECKPOINT, "This release has %s; no count cutoff is prescribed." % t),
         (CHECKPOINT, "%s health %s (%s carrier status, %s risk association) and %s."
          % (h, _entries(c["health"]), w(c["carrier"]), w(c["risk"]), t)),
         (README, "small public panel of %s health-related %s and %s,"
@@ -2102,6 +2123,11 @@ def _s3b_release_paragraph_gate_rejects_contradictions():
             "two were included, none is a reserve and nine were excluded. " + growth3, 1),
         "contradictory suffix on the v0.3.0 growth sentence": para.replace(
             growth3, growth3[:-1] + ", and one is a reserve.", 1),
+        "false growth paraphrase without the canonical prefix": para.replace(
+            CURATION_METHOD_SENTENCES[-1], "In v0.3.0 the pool added eleven candidates, and one "
+            "is a reserve. " + CURATION_METHOD_SENTENCES[-1], 1),
+        "extra unaccounted sentence": para.replace(
+            CURATION_METHOD_SENTENCES[-1], "The pool is complete. " + CURATION_METHOD_SENTENCES[-1], 1),
     }
     accepted = []
     original = globals()["_curation_release_paragraph"]
@@ -2186,6 +2212,21 @@ def _v030s3_release_wording():
     return True
 
 
+def _v030s3g_no_release_claim_in_release_docs():
+    """Sol mutant r151-12: no release, tag or publication claim anywhere in the release
+    docs, not only in their Status sections."""
+    for path in (README, GETTING_STARTED, CHECKPOINT, AGENTS):
+        text = _flat(_read(path))
+        for pattern in RELEASE_CLAIM_PATTERNS:
+            hit = re.search(pattern, text, re.I)
+            _require("%s claims a release, tag or publication: %r" % (
+                os.path.basename(path), hit.group(0) if hit else ""), hit is None)
+    bad = _flat(_read(GETTING_STARTED)) + " The v0.3.0 package has been released."
+    _require("the control claim is not detected",
+             any(re.search(p, bad, re.I) for p in RELEASE_CLAIM_PATTERNS))
+    return True
+
+
 def _v030s3_accepted_limits_rows():
     text = _read(LIMITS)
     rows = _rows(text, {"AL-033", "AL-050"})
@@ -2195,6 +2236,20 @@ def _v030s3_accepted_limits_rows():
     _require("AL-033 says the second trait entry is new in 0.3.0",
              "new in panel version 0.3.0" in rows["AL-033"])
     _require("AL-050 names its pin", "V030S3.same_label_pair_pins_behavior" in rows["AL-050"])
+    # AL-051 (R150-F1, document only): the row matches the schema it describes.
+    rows51 = _rows(text, {"AL-051"})
+    _require("AL-051 is missing", "AL-051" in rows51)
+    import json
+    with open(os.path.join(ROOT, "schema", "findings.schema.json"), encoding="utf-8") as fh:
+        schema = json.load(fh)
+    finding = schema["$defs"]["finding"]
+    version = schema["properties"]["schema_version"]
+    _require("AL-051 names schema_version 1.2.0, the schema does not",
+             "schema_version 1.2.0" in rows51["AL-051"] and "1.2.0" in json.dumps(version))
+    _require("AL-051 describes an optional property the schema does not have",
+             "effect_allele_is_reference" in finding["properties"]
+             and "effect_allele_is_reference" not in finding["required"]
+             and finding.get("additionalProperties") is False)
     with open(os.path.join(ROOT, "tests", "test_release_panel.py"), encoding="utf-8") as fh:
         _require("the AL-050 pin does not exist in the release-panel tests",
                  'attempt("V030S3.same_label_pair_pins_behavior"' in fh.read())
@@ -2299,6 +2354,7 @@ def run(check):
     attempt("V030S3.accepted_limits_rows", _v030s3_accepted_limits_rows)
     attempt("V030S3F.docs_excerpt_reflects_equal_reference_sentence",
             _v030s3f_excerpt_reflects_equal_reference_sentence)
+    attempt("V030S3G.no_release_claim_in_release_docs", _v030s3g_no_release_claim_in_release_docs)
 
 
 def main():

@@ -399,7 +399,8 @@ def _run_behavior(attempt):
         _require(f"unexpected validation errors: {errors}", not errors)
         texts = _texts(ir)
         _require("no-call wording", "returned no call" in texts.get("cl_000000000001", ""))
-        _require("uninterpretable wording", "did not match the known alleles" in texts.get("cl_000000000002", ""))
+        _require("uninterpretable wording", "the call could not be interpreted, so no genotype is given"
+                 in texts.get("cl_000000000002", ""))
         return True
     attempt("R4A.nocall_and_uninterpretable_wording", nocall_and_uninterpretable_wording)
 
