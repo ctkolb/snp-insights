@@ -1,6 +1,6 @@
 {
   "_note": "The curated release targets of ticket 1B-B; source-backed from the frozen evidence pack, not a clinical panel",
-  "panel_version": "0.2.0",
+  "panel_version": "0.3.0",
   "genome_build": "GRCh37",
   "strand": "forward",
   "variants": [
@@ -81,6 +81,16 @@
       "category": "trait",
       "result_type": "trait",
       "effect_allele": "T",
+      "assayability": "snp",
+      "strand": "forward"
+    },
+    {
+      "rsid": "rs10741657",
+      "gene": "CYP2R1",
+      "condition": "25-hydroxyvitamin D levels",
+      "category": "trait",
+      "result_type": "trait",
+      "effect_allele": "A",
       "assayability": "snp",
       "strand": "forward"
     }

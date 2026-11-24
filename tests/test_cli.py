@@ -1082,7 +1082,8 @@ def run(check):
             return False
         if "aggregate judgment" not in flat or "counts only" not in flat:
             return False
-        return "trait-count cutoff cannot distinguish" in flat
+        # R151-F7 (r152): the count is stated, no cutoff is prescribed or implied.
+        return "no count cutoff is prescribed" in flat and "cannot distinguish" not in flat
     attempt("R3A.checkpoint_doc_adequacy_no_trait_cutoff",
             r3a_checkpoint_doc_adequacy_no_trait_cutoff)
 
@@ -1104,6 +1105,9 @@ def run(check):
 
 
 def main():
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import runtmp
+    runtmp.activate(tool="test_cli")
     passed, failed = [], []
 
     def check(name, cond):

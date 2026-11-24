@@ -1,30 +1,30 @@
 {
-  "panel_version": "0.2.0",
+  "panel_version": "0.3.0",
   "genome_build": "GRCh37",
   "strand": "forward",
   "sources": [
     {
       "source": "dbSNP",
-      "release": "variation-api-2026-11-11 (3 entries) and 2026-11-14 (5 entries)",
-      "retrieved_at": "2026-11-14T14:16:47Z",
+      "release": "variation-api-2026-11-11 (3 entries), 2026-11-14 (5 entries) and 2026-11-23 (1 entry)",
+      "retrieved_at": "2026-11-23T19:22:03Z",
       "license": "public domain (NCBI)"
     },
     {
       "source": "ClinVar",
       "release": "variant_summary-2026-11-14",
-      "retrieved_at": "2026-11-14T14:16:47Z",
+      "retrieved_at": "2026-11-23T19:22:03Z",
       "license": "public domain (NCBI)"
     },
     {
       "source": "gnomAD",
-      "release": "graphql-2026-11-11 (3 entries) and 2026-11-14 (5 entries)",
-      "retrieved_at": "2026-11-14T14:16:47Z",
+      "release": "graphql-2026-11-11 (3 entries), 2026-11-14 (5 entries) and 2026-11-23 (1 entry)",
+      "retrieved_at": "2026-11-23T19:22:03Z",
       "license": "free (Broad)"
     },
     {
       "source": "GWAS Catalog",
-      "release": "opentargets-2026-11-11 (3 entries); opentargets-2026-11-14 (4 carriers); gwas-catalog-rest-2026-11-14 (rs11591147)",
-      "retrieved_at": "2026-11-14T14:16:47Z",
+      "release": "opentargets-2026-11-11 (3 entries); opentargets-2026-11-14 (4 carriers); gwas-catalog-rest-2026-11-14 (rs11591147); gwas-catalog-rest-2026-11-23 (rs10741657)",
+      "retrieved_at": "2026-11-23T19:22:03Z",
       "license": "free (EMBL-EBI)"
     }
   ],
@@ -242,6 +242,28 @@
         "review_status_text": "criteria provided, multiple submitters, no conflicts",
         "source_version": "ClinVar variant_summary-2026-11-14"
       },
+      "snpedia": null,
+      "association": "replicated"
+    },
+    {
+      "rsid": "rs10741657",
+      "gene": "CYP2R1",
+      "condition": "25-hydroxyvitamin D levels",
+      "category": "trait",
+      "result_type": "trait",
+      "effect_allele": "A",
+      "assayability": "snp",
+      "strand": "forward",
+      "chromosome": "11",
+      "position": 14914878,
+      "reference_allele": "A",
+      "alternate_alleles": [
+        "C",
+        "G"
+      ],
+      "alternate_allele": "C",
+      "gnomad_af": 0.6375207349751181,
+      "clinvar": null,
       "snpedia": null,
       "association": "replicated"
     }

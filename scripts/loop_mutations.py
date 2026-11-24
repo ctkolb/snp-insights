@@ -11,7 +11,10 @@ mutations mean the tests do not pin that behavior.
 The unmutated copy runs first to record baseline failures. The copy has no
 .git directory. Its tracked-file manifest comes from the source Git index
 and is used by the pipeline's history fixtures. Only NEW failures count.
-Your working tree is never modified; the temp directory is removed at the end.
+Your working tree is never modified. Everything temporary lives in one owned
+run root (scripts/runtmp.py): the copy, and a per-mutation scratch directory
+that the suites get as TMPDIR and that is removed after each run. The root is
+removed on exit, Ctrl-C, SIGTERM and SIGHUP; only SIGKILL leaves it behind.
 
     python scripts/loop_mutations.py            # run all mutations, exit 1 on any survivor
     python scripts/loop_mutations.py --list     # print the mutation names
@@ -21,6 +24,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import runtmp  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 E_ = "tools/evidence.py"
@@ -173,10 +179,15 @@ def fresh(tmp):
         fh.write(listing)
 
 
-def failing_checks(tmp):
+def failing_checks(tmp, scratch=None):
+    env = None
+    if scratch is not None:
+        env = dict(os.environ)
+        env["TMPDIR"] = scratch
     out = set()
     for suite in SUITES:
-        proc = subprocess.run([sys.executable, suite], cwd=tmp, capture_output=True, text=True)
+        proc = subprocess.run([sys.executable, suite], cwd=tmp, env=env,
+                              capture_output=True, text=True)
         lines = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip().startswith("FAIL")]
         out |= set(lines)
         if proc.returncode != 0 and not lines:
@@ -184,16 +195,27 @@ def failing_checks(tmp):
     return out
 
 
+def checks_in_scratch(tmp):
+    """failing_checks() with TMPDIR in a fresh scratch dir that is removed afterwards."""
+    runtmp.activate(tool="loop_mutations")
+    scratch = tempfile.mkdtemp(prefix="loop-mut-suite-")
+    try:
+        return failing_checks(tmp, scratch)
+    finally:
+        runtmp.release(scratch)
+
+
 def main():
     if "--list" in sys.argv[1:]:
         for name, _, _, _ in MUTATIONS:
             print(name)
         return 0
+    runtmp.activate(tool="loop_mutations")
     tmp = tempfile.mkdtemp(prefix="loop-mut-")
     survivors = []
     try:
         fresh(tmp)
-        base = failing_checks(tmp)
+        base = checks_in_scratch(tmp)
         print("baseline failing checks in the temp copy (ignored): %s" % (sorted(base) or "none"))
         for name, rel, old, new in MUTATIONS:
             fresh(tmp)
@@ -206,14 +228,14 @@ def main():
                 continue
             with open(path, "w") as fh:
                 fh.write(text.replace(old, new, 1))
-            new_fails = failing_checks(tmp) - base
+            new_fails = checks_in_scratch(tmp) - base
             if new_fails:
                 print("KILLED   %s  <- %s" % (name, sorted(new_fails)[0][:60]))
             else:
                 print("SURVIVED %s" % name)
                 survivors.append(name)
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        runtmp.release(tmp)
     print("survivors: %d of %d" % (len(survivors), len(MUTATIONS)))
     for name in survivors:
         print("  - " + name)

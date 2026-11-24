@@ -160,6 +160,10 @@
         "condition": { "type": ["string", "null"] },
         "result_type": { "enum": ["trait", "carrier_status", "risk_association"] },
         "effect_allele": { "type": "string", "minLength": 1 },
+        "effect_allele_is_reference": {
+          "description": "Present and true only when the curated effect allele is the panel's reference allele; absent otherwise. It lets the report avoid calling a genotype without the effect allele the reference genotype.",
+          "type": "boolean"
+        },
         "cls": { "type": "string" },
         "assayability": {
           "description": "snp/indel are measurable by this array; not_assayable marks loci (repeat expansions, copy-number variants) no SNP array can call regardless of coverage.",

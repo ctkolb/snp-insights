@@ -24,6 +24,7 @@ import validate_report  # noqa: E402
 
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import check_raw  # noqa: E402
+import runtmp  # noqa: E402
 
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 import test_guard  # noqa: E402
@@ -34,6 +35,7 @@ import test_interpretation  # noqa: E402
 import test_release_panel  # noqa: E402
 import test_report_readability  # noqa: E402
 import test_docs_release  # noqa: E402
+import test_tmp_hygiene  # noqa: E402
 
 FIX = os.path.join(ROOT, "fixtures")
 DATA = os.path.join(ROOT, "data")
@@ -352,6 +354,7 @@ def test_validator_e2e():
 
 
 def main():
+    runtmp.activate(tool="test_pipeline")
     test_parser()
     test_annotator()
     test_condition_normalization()
@@ -376,6 +379,7 @@ def main():
     test_release_panel.run(check)
     test_report_readability.run(check)
     test_docs_release.run(check)
+    test_tmp_hygiene.run(check)
     for name in PASSED:
         print(f"  ok   {name}")
     for name in FAILED:

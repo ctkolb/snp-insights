@@ -46,7 +46,9 @@ PINNED_HASHES = {
     "targets.carrier.json": "e9e7453a440ce51609b350b62a2f321c12374286355178edd3a52b47698c4f10",
     "targets.traits.json": "aabf84bfc412144214fc8f4f09eac8983a4ebaec0095c9cd2c9b16f6735fa6ce",
     "targets.sample.json": "0f1ae6151508f8bafeb3c64986d5f59c4cd0704f4ee6a859d795fe97047a93ad",
-    "condition_aliases.json": "61a09b1be59412d998698933f284e149d74e02b267bf82538ee5789f4d6cb5dd",
+    # Re-pinned by v0.3.0 S1 (r139): three alias groups added for the v0.3.0 labels
+    # (owner decision Q3 on r138); was 61a09b1be59412d998698933f284e149d74e02b267bf82538ee5789f4d6cb5dd.
+    "condition_aliases.json": "bc233a8d5642530ae829cfbfb1833f0136186340ad51df81c70a6964726d04ce",
 }
 
 # --- rule constants (single source of truth for the checkers) ----------------
@@ -484,7 +486,7 @@ def check_targets_shape(obj):
         return _result(["shape: top level is not an object"], 0)
     if not isinstance(obj.get("_note"), str):
         errors.append("shape: _note missing")
-    if obj.get("panel_version") != "0.2.0":
+    if obj.get("panel_version") != "0.3.0":
         errors.append(f"shape: panel_version {obj.get('panel_version')!r}")
     variants = obj.get("variants")
     if not isinstance(variants, list):
@@ -1412,17 +1414,17 @@ def _run_invariants(attempt):
         ("allele_differs", _set_row("rs9000003", allele="I"), "row-field-differs"),
     ])
     _syn(attempt, "targets_shape", lambda w: check_targets_shape(
-        {"_note": "x", "panel_version": "0.2.0", "genome_build": "GRCh37", "strand": "forward",
+        {"_note": "x", "panel_version": "0.3.0", "genome_build": "GRCh37", "strand": "forward",
          "variants": w["entries"]}), [
         ("entry_missing_field", lambda w: w["entries"][0].pop("effect_allele"), "shape"),
         ("entry_bad_rsid", _set_entry("rs9000001", rsid="9000001"), "shape"),
     ])
 
     def targets_shape_top_level():
-        base = {"_note": "x", "panel_version": "0.2.0", "variants": []}
+        base = {"_note": "x", "panel_version": "0.3.0", "variants": []}
         _clean(check_targets_shape(base), "shape/empty")
         for defect, obj in (("not an object", []), ("wrong version", dict(base, panel_version="0.1.0")),
-                            ("variants not a list", dict(base, variants={})), ("no note", {"panel_version": "0.2.0", "variants": []})):
+                            ("variants not a list", dict(base, variants={})), ("no note", {"panel_version": "0.3.0", "variants": []})):
             _has(check_targets_shape(obj), "shape", f"shape/{defect}")
         return True
     attempt("R1B.syn_targets_shape_top_level", targets_shape_top_level)
@@ -2775,7 +2777,7 @@ def _target_entry(**kw):
 
 
 def _targets_obj(*entries):
-    return {"_note": "invented", "panel_version": "0.2.0", "genome_build": "GRCh37",
+    return {"_note": "invented", "panel_version": "0.3.0", "genome_build": "GRCh37",
             "strand": "forward", "variants": list(entries)}
 
 
@@ -2839,7 +2841,8 @@ def _run_r50(attempt):
 # ADD-ONLY: a new section appended after the 1B-A sections; no existing line is
 # edited. The pool is the 23 DRAFT rsIDs of data/targets.carrier.json and
 # data/targets.traits.json (read-only), in ticket order, followed by the 11 v0.2.0
-# candidates (added by the v0.2.0 curation ticket).
+# candidates (added by the v0.2.0 curation ticket), followed by the 10 v0.3.0
+# rows (nine candidates and the rs11887534 identity record; ticket S1 r139).
 # =============================================================================
 POOL_RSIDS = (
     "rs334", "rs33930165", "rs113993960", "rs1800562", "rs1799945", "rs6025",
@@ -2848,6 +2851,8 @@ POOL_RSIDS = (
     "rs1426654", "rs16891982", "rs1800407", "rs1042602", "rs6152",
     "rs61752717", "rs28940579", "rs28940578", "rs104895097", "rs28940580", "rs104895085",
     "rs1799807", "rs121908529", "rs185803104", "rs180177314", "rs11591147",
+    "rs10455872", "rs3798220", "rs6544713", "rs2282679", "rs10741657",
+    "rs601338", "rs6795970", "rs174537", "rs1801133", "rs11887534",
 )
 NON_AUTOSOMAL_POOL = ("rs1050828", "rs6152")
 GOAL_BOUND = 7
@@ -3358,7 +3363,7 @@ def check_evidence_file(evidence, targets, t1, t2, t5):
         errors.append(f"top_level_unknown_key: {key}")
     if not isinstance(evidence.get("_note"), str):
         errors.append("shape: _note missing")
-    if evidence.get("panel_version") != "0.2.0":
+    if evidence.get("panel_version") != "0.3.0":
         errors.append(f"shape: panel_version {evidence.get('panel_version')!r}")
     entries = evidence.get("entries")
     if not isinstance(entries, list):
@@ -3423,7 +3428,7 @@ def _evidence_world():
     target = {"rsid": "rs9000002", "gene": "GENEB", "condition": "Example condition one",
               "category": "carrier", "result_type": "carrier_status",
               "effect_allele": "G", "assayability": "snp", "strand": "forward"}
-    targets = {"_note": "invented", "panel_version": "0.2.0", "genome_build": "GRCh37",
+    targets = {"_note": "invented", "panel_version": "0.3.0", "genome_build": "GRCh37",
                "strand": "forward", "variants": [target]}
     t1 = {"rs9000002": {"rsID": "rs9000002", "label used in report": "Example condition one",
                         "sources (typed ids)":
@@ -3432,7 +3437,7 @@ def _evidence_world():
                         "matched review status": "criteria provided, multiple submitters, no conflicts"}}
     t5 = {"rs9000002": {"pack file index id":
                         "dbsnp:rs9000002;clinvar:vcv:9001001;clinvar:rcv:RCV900000001"}}
-    evidence = {"_note": "invented", "panel_version": "0.2.0", "entries": [
+    evidence = {"_note": "invented", "panel_version": "0.3.0", "entries": [
         {"rsid": "rs9000002", "condition": "Example condition one",
          "clinvar_record": "clinvar:rcv:RCV900000001", "significance": "Pathogenic",
          "review_status": "criteria provided, multiple submitters, no conflicts", "review_stars": 2}]}
@@ -3926,20 +3931,22 @@ R2E_EXPECTED = {
         "rs1799963": ("detected", "hom_alt"),
         "rs6025": ("covered_reference", "hom_ref"),
         "rs1799807": ("detected", "het"),
-        "rs121908529": ("covered_reference", "hom_ref"),
+        "rs121908529": ("not_covered", None),
         "rs185803104": ("detected", "hom_alt"),
         "rs180177314": ("detected", "het"),
         "rs11591147": ("detected", "het"),
+        "rs10741657": ("detected", "het"),
     },
     "raw.release.synthetic.states.txt": {
         "rs1800562": ("covered_nocall", "unknown"),
         "rs1799963": ("covered_uninterpretable", "unknown"),
         "rs6025": ("not_covered", None),
         "rs1799807": ("covered_nocall", "unknown"),
-        "rs121908529": ("not_covered", None),
+        "rs121908529": ("covered_reference", "hom_ref"),
         "rs185803104": ("covered_uninterpretable", "unknown"),
         "rs180177314": ("covered_reference", "hom_ref"),
         "rs11591147": ("detected", "hom_alt"),
+        "rs10741657": ("covered_nocall", "unknown"),
     },
 }
 
@@ -4225,7 +4232,7 @@ def _run_r65(attempt):
 # compared against literal values from the reviewed N1 dbSNP capture, and the
 # curated ClinVar blocks and source labels are literals from the committed panel.
 # =============================================================================
-REVIEWED_PANEL_SHA256 = "7acfdde8e216a97e2d245c324af9a2f588b3578a5b3bf3bd32f025a94469c6d7"
+REVIEWED_PANEL_SHA256 = "379f050163dc37430b6e493b20749958a058c8df48124606951f6b10a0bcaa0e"
 N1_DBSNP_ORACLE = {
     "rs1800562": {"chromosome": "6", "position": 26093141,
                   "reference_allele": "G", "alternate_alleles": ["A", "T"]},
@@ -4243,6 +4250,8 @@ N1_DBSNP_ORACLE = {
                "reference_allele": "G", "alternate_alleles": ["A"]},
     "rs11591147": {"chromosome": "1", "position": 55505647,
                "reference_allele": "G", "alternate_alleles": ["A", "T"]},
+    "rs10741657": {"chromosome": "11", "position": 14914878,
+               "reference_allele": "A", "alternate_alleles": ["C", "G"]},
 }
 R67_PANEL_CURATED = {
     "rs1800562": {
@@ -4282,10 +4291,10 @@ R67_PANEL_CURATED = {
                     "source_version": "curated clinvar:rcv:RCV000186442"}},
 }
 R67_PANEL_SOURCES = {
-    "dbSNP": {"release": "variation-api-2026-11-11 (3 entries) and 2026-11-14 (5 entries)", "retrieved_at": "2026-11-14T14:16:47Z"},
-    "ClinVar": {"release": "variant_summary-2026-11-14", "retrieved_at": "2026-11-14T14:16:47Z"},
-    "gnomAD": {"release": "graphql-2026-11-11 (3 entries) and 2026-11-14 (5 entries)", "retrieved_at": "2026-11-14T14:16:47Z"},
-    "GWAS Catalog": {"release": "opentargets-2026-11-11 (3 entries); opentargets-2026-11-14 (4 carriers); gwas-catalog-rest-2026-11-14 (rs11591147)", "retrieved_at": "2026-11-14T14:16:47Z"},
+    "dbSNP": {"release": "variation-api-2026-11-11 (3 entries), 2026-11-14 (5 entries) and 2026-11-23 (1 entry)", "retrieved_at": "2026-11-23T19:22:03Z"},
+    "ClinVar": {"release": "variant_summary-2026-11-14", "retrieved_at": "2026-11-23T19:22:03Z"},
+    "gnomAD": {"release": "graphql-2026-11-11 (3 entries), 2026-11-14 (5 entries) and 2026-11-23 (1 entry)", "retrieved_at": "2026-11-23T19:22:03Z"},
+    "GWAS Catalog": {"release": "opentargets-2026-11-11 (3 entries); opentargets-2026-11-14 (4 carriers); gwas-catalog-rest-2026-11-14 (rs11591147); gwas-catalog-rest-2026-11-23 (rs10741657)", "retrieved_at": "2026-11-23T19:22:03Z"},
 }
 
 
@@ -4365,6 +4374,1247 @@ def _run_r67_report_safety(attempt):
             risk_association_report_never_says_carrier)
 
 
+# =============================================================================
+# v0.3.0 S1 curation records (ticket snp-v030-S1-B-BUILD-r139). Pins each v0.3.0
+# row against the owner's triage (T-1..T-6), the staged inclusion of rs10741657
+# (recorded `reserve` until S2 adds its targets entry; orchestrator Option A on
+# r137) and the r138 decisions (Q2 evidence effect alleles, Q3 alias groups).
+# The D-3 value is the gnomAD v2.1.1 continental effect-allele spread recorded
+# in the rationale; 0.20 or more is flagged (D-3). Status, groups and the rows
+# meeting the significance requirement are recomputed with evaluate_replication.
+# =============================================================================
+V030_S1_RETRIEVED = "2026-11-23"
+V030_S1_FLAG_AT = 0.20
+V030_S1_ROWS = {
+    # rsID: (gene, chrom, label, effect allele, decision, reason code, D-3 spread,
+    #        T4 rows, computed status, exclusion code, groups, significant rows)
+    "rs10455872": ("LPA", "6", "Lipoprotein(a) levels", "G", "excluded", "single-study", "0.070", 4,
+                   "single-study", "single-study", [["a19037"]], ["a19037"]),
+    "rs3798220": ("LPA", "6", "Lipoprotein(a) levels", "C", "excluded", "no-independent-confirmation",
+                  "0.275", 1, "no-counted-evidence", "no-independent-confirmation", [], []),
+    "rs6544713": ("ABCG8", "2", "LDL cholesterol levels", "T", "excluded", "evidence-not-in-pack", "0.314", 4,
+                  "no-counted-evidence", "evidence-not-in-pack", [], []),
+    "rs2282679": ("GC", "4", "25-hydroxyvitamin D levels", "T", "excluded", "single-study", "0.202", 9,
+                  "single-study", "single-study", [["a30522242", "a30522310"]], ["a30522242"]),
+    "rs10741657": ("CYP2R1", "11", "25-hydroxyvitamin D levels", "A", "included", "-", "0.162", 5,
+                   "replicated", None, [["a27362261"], ["a64666345"]], ["a27362261", "a64666345"]),
+    "rs601338": ("FUT2", "19", "Total vitamin B12 levels", "-", "excluded", "no-independent-confirmation",
+                 "0.495", 1, "no-counted-evidence", "no-independent-confirmation", [], []),
+    "rs6795970": ("SCN10A", "3", "ECG PR interval", "A", "excluded", "no-independent-confirmation", "0.366", 3,
+                  "no-counted-evidence", "no-independent-confirmation", [], []),
+    "rs174537": ("MYRF", "11", "Arachidonic acid levels", "T", "excluded", "no-independent-confirmation",
+                 "0.523", 2, "no-counted-evidence", "no-independent-confirmation", [], []),
+    "rs1801133": ("MTHFR", "1", "Plasma total homocysteine", "A", "excluded", "ancestry-informative", "0.393", 7,
+                  "replicated", None, [["a129422187"], ["a134087602"], ["a14036"]],
+                  ["a129422187", "a134087602", "a14036"]),
+    "rs11887534": ("ABCG8", "2", "LDL cholesterol levels", "-", "excluded", "palindromic", "0.085", 0,
+                   None, None, [], []),
+}
+# The rationale states the computed group count (R141-F1): {n} is the number,
+# {words} the spelled count, {cohorts} the sorted cohort ids of the groups.
+V030_S1_REPLICATED_TEXT = {
+    "rs10741657": "replicated under the Replication rule, {n} independent groups",
+    "rs1801133": "replication: replicated by {words} groups ({cohorts}), all up",
+}
+V030_S1_WORDS = ("zero", "one", "two", "three", "four", "five", "six")
+V030_S1_REPLICATION_CODES = ("conflicting-evidence", "single-study", "no-independent-confirmation",
+                             "evidence-not-in-pack")
+V030_S1_ALIAS_GROUPS = {
+    "lipoprotein(a) levels": ["lp(a) levels"],
+    "25-hydroxyvitamin d levels": ["serum 25-hydroxyvitamin d levels", "vitamin d levels"],
+    "plasma total homocysteine": ["homocysteine levels", "plasma homocysteine levels"],
+}
+V030_S1_STAGED = ("included by owner decision T-1; promoted to `included` in S2 together with "
+                  "the targets entry and panel rebuild")
+V030_S1_RESERVES_SENTENCE = ("For v0.3.0 no `reserve` row remains: rs10741657 (CYP2R1, trait group) was a "
+                             "staged inclusion (owner decision T-1) and is now `included` with its targets entry")
+V030_S1_RESERVE_LIMITS = ("may not transfer", "Finnish Health 2011", "SUNLIGHT",
+                          "owner decision T-1 (D-4a)")
+V030_S1_PROVENANCE = (
+    "a67ffeea8f69210b9e79816a5e4b357f052a62a7b82e563e88825725dd704882",
+    "945768a5ffa75ea9906c895eff18d7125d0bf46bbcb409d8fccd913270719567",
+    "v0.3.0 pack 2026-11-23", "the GWAS Catalog release was not recorded",
+    "no public array manifest was found",
+)
+
+
+def _v030_rows(tables):
+    errors, out = [], {}
+    for rs in V030_S1_ROWS:
+        hits = [r for r in tables["T1"] if r["rsID"] == rs]
+        if len(hits) != 1:
+            errors.append(f"{rs}: {len(hits)} T1 rows, expected 1")
+        else:
+            out[rs] = hits[0]
+    return errors, out
+
+
+def check_v030_s1_rows(tables):
+    errors, rows = _v030_rows(tables)
+    t5 = [r["rsID"] for r in tables["T5"]]
+    for rs, (gene, chrom, label, allele, dec, code, spread, *_rest) in V030_S1_ROWS.items():
+        r = rows.get(rs)
+        if r is None:
+            continue
+        want = {"gene": gene, "chrom (GRCh37)": chrom, "label used in report": label,
+                "result type": "trait", "category": "trait", "effect allele (fwd, GRCh37)": allele,
+                "decision": dec, "reason code": code, "assayability_status": "unknown-provisional",
+                "assayability_source": "-", "retrieved (UTC date)": V030_S1_RETRIEVED}
+        for cell, value in want.items():
+            if r[cell] != value:
+                errors.append(f"{rs}: {cell} {r[cell]!r} != {value!r}")
+        flagged = float(spread) >= V030_S1_FLAG_AT
+        screen = ("at or above the 0.20 threshold, flagged" if flagged
+                  else "below the 0.20 threshold, not flagged")
+        if (f"spread {spread}" not in r["rationale"] or screen not in r["rationale"]
+                or (flagged and "not flagged" in r["rationale"])):
+            errors.append(f"{rs}: rationale lacks the D-3 screen {spread} ({'flagged' if flagged else 'not flagged'})")
+        if t5.count(rs) != 1:
+            errors.append(f"{rs}: {t5.count(rs)} T5 rows, expected 1")
+    return errors
+
+
+def check_v030_s1_replication(tables, aliases):
+    errors, rows = _v030_rows(tables)
+    pack = pack_ids_from_inventory(tables["T5"])
+    for rs, (*_head, n_t4, status, code, groups, significant) in V030_S1_ROWS.items():
+        base = rows.get(rs)
+        t4 = [r for r in tables["T4"] if r["rsID"] == rs]
+        if len(t4) != n_t4:
+            errors.append(f"{rs}: {len(t4)} T4 rows, expected {n_t4}")
+        if base is None or not t4:
+            continue
+        got, got_groups, drops = evaluate_replication(t4, base["effect allele (fwd, GRCh37)"],
+                                                      base["label used in report"], aliases, pack)
+        sig = sorted(rid for rid, c in drops.items() if c is None and row_kind(
+            next(r for r in t4 if r["row id"] == rid)) == "gwas" and _parse_p(
+            next(r for r in t4 if r["row id"] == rid)["p-value"])[0] <= P_THRESHOLD)
+        got_code = replication_exclusion_code(got, drops)
+        if (got, got_code, got_groups, sig) != (status, code, groups, significant):
+            errors.append(f"{rs}: computed {got}/{got_code} groups {got_groups} significant {sig}, "
+                          f"expected {status}/{code} groups {groups} significant {significant}")
+        if got == "replicated" and rs in V030_S1_REPLICATED_TEXT:
+            cohort = {r["row id"]: r["cohort id"] for r in t4}
+            ids = sorted({cohort[rid] for g in got_groups for rid in g})
+            phrase = V030_S1_REPLICATED_TEXT[rs].format(
+                n=len(got_groups), words=V030_S1_WORDS[len(got_groups)], cohorts=", ".join(ids))
+            if phrase not in base["rationale"]:
+                errors.append(f"{rs}: rationale lacks the computed replication statement {phrase!r}")
+        if base["reason code"] in V030_S1_REPLICATION_CODES and base["reason code"] != got_code:
+            errors.append(f"{rs}: reason code {base['reason code']!r} differs from the computed {got_code!r}")
+    return errors
+
+
+def check_v030_s1_replication_text_gate(tables, aliases):
+    """The rationale count check must reject a stale count (R141-F1)."""
+    t1 = [dict(r) for r in tables["T1"]]
+    stale = "replicated by two groups (korea4k, stromics), all up"
+    for r in t1:
+        if r["rsID"] == "rs1801133":
+            r["rationale"] = r["rationale"].replace(
+                "replicated by three groups (korea4k, stromics, wghs), all up", stale, 1)
+    if not any(stale in r["rationale"] for r in t1):
+        return ["rs1801133: rationale lacks the three-group statement to replace"]
+    errors = check_v030_s1_replication(dict(tables, T1=t1), aliases)
+    if not any("rs1801133: rationale lacks the computed replication statement" in e for e in errors):
+        return ["the rationale count check accepts a stale two-group statement for rs1801133"]
+    return []
+
+
+def check_v030_s1_reserve(text, tables, entries):
+    errors, rows = _v030_rows(tables)
+    if V030_S1_RESERVES_SENTENCE not in " ".join((section_body(text, "Reserves and goals") or "").split()):
+        errors.append("Reserves and goals lacks the staged-inclusion sentence")
+    r = rows.get("rs10741657")
+    if r is None:
+        return errors
+    if not r["rationale"].startswith(V030_S1_STAGED):
+        errors.append("rs10741657: rationale does not open with the staged-inclusion statement")
+    errors += [f"rs10741657: limitations lack {p!r}" for p in V030_S1_RESERVE_LIMITS if p not in r["limitations"]]
+    if not any(e.get("rsid") == "rs10741657" for e in entries):
+        errors.append("rs10741657: targets entry is missing")
+    return errors
+
+
+def check_v030_s1_alias_groups(aliases):
+    return [f"alias group {k!r} is {aliases.get(k)!r}, expected {v!r}"
+            for k, v in V030_S1_ALIAS_GROUPS.items() if aliases.get(k) != v]
+
+
+def check_v030_s1_provenance(text):
+    body = section_body(text, "Provenance block") or ""
+    return [f"Provenance block lacks {p!r}" for p in V030_S1_PROVENANCE if p not in body]
+
+
+def _run_v030_s1(attempt):
+    def aliases():
+        import evidence
+        return evidence.load_aliases(ALIASES_PATH)
+
+    def gate(name, fn):
+        def body():
+            text, tables, targets = _real_world()
+            errors = fn(text, tables, targets)
+            _require(name + ": " + "; ".join(errors), not errors)
+            return True
+        attempt(name, body)
+
+    gate("R1B.v030_s1_rows_recorded", lambda x, t, g: check_v030_s1_rows(t))
+    gate("R1B.v030_s1_replication_recomputed", lambda x, t, g: check_v030_s1_replication(t, aliases()))
+    gate("R1B.v030_s1_replication_text_gate_rejects_stale_count",
+         lambda x, t, g: check_v030_s1_replication_text_gate(t, aliases()))
+    gate("R1B.v030_s1_reserve_is_staged_inclusion", lambda x, t, g: check_v030_s1_reserve(x, t, _entries(g)))
+    gate("R1B.v030_s1_alias_groups", lambda x, t, g: check_v030_s1_alias_groups(aliases()))
+    gate("R1B.v030_s1_provenance_names_packs", lambda x, t, g: check_v030_s1_provenance(x))
+
+
+# =============================================================================
+# v0.3.0 S2 panel rebuild (ticket snp-v030-S2-B-BUILD-r145). I-08: a rebuild is
+# deterministic and equals the committed panel. I-09: the eight shipped v0.2.0
+# entries are field-for-field unchanged. I-10: the version policy. R141-F2: the
+# CYP2R1 build input comes from eligible main-effect rows only.
+# =============================================================================
+V030_S2_DATA_FILES = ("data/targets.release.json", "data/targets.release-evidence.json",
+                      "data/targets.release-panel.json")
+V030_S2_FIRST_EIGHT = ("rs1800562", "rs1799963", "rs6025", "rs1799807", "rs121908529",
+                       "rs185803104", "rs180177314", "rs11591147")
+# sha256 of the canonical JSON (sorted keys, compact separators) of the v0.2.0 entries.
+V030_S2_DIGESTS = {
+    "targets": "8d351c2c6977e9cb73b7557a2d71664f9037a3462094350bcb9c843cbeab0861",
+    "evidence": "c5931ee7a46668e20ead39953b98cdd70dd8731ca14256795034511d32127dac",
+    "panel": "e52ba7481e219a46d1078051f649e3438f0f8f88f68916549f5ee0185809078f",
+}
+CYP2R1_RSID = "rs10741657"
+CYP2R1_MAIN_EFFECT = ("GCST005367", "GCST012014")
+# Same publication as GCST005367 (intake interaction), a transcend row without direction,
+# and a vitamin D insufficiency study: none may enter the build input.
+CYP2R1_NOT_MAIN_EFFECT = ("GCST005366", "GCST005782", "GCST000697")
+CYP2R1_ONE_PUBLICATION_PMID = "29343764"
+
+
+def _v030_digest(obj):
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _v030_read_json(rel):
+    with open(os.path.join(ROOT, *rel.split("/")), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def derive_gwas_build_input(t4_rows, rsid):
+    """The GWAS build input for one rsID: the (accession, reported trait) pairs of
+    its T4 rows that are counted as main-effect evidence, in table order, without
+    repeats. A row that is not counted (`counted` is not `yes`: a trait mismatch such
+    as an intake interaction, a missing direction) is never part of it (R141-F2)."""
+    pairs = []
+    for r in t4_rows:
+        if r["rsID"] == rsid and r["counted"] == "yes":
+            pair = (r["study accession"], r["trait (reported)"])
+            if pair not in pairs:
+                pairs.append(pair)
+    return pairs
+
+
+def check_cyp2r1_build_input(t4_rows):
+    errors = []
+    got = [a for a, _t in derive_gwas_build_input(t4_rows, CYP2R1_RSID)]
+    if got != list(CYP2R1_MAIN_EFFECT):
+        errors.append(f"{CYP2R1_RSID}: build input accessions {got!r}, expected {list(CYP2R1_MAIN_EFFECT)!r}")
+    errors += [f"{CYP2R1_RSID}: {a} is in the build input but is not main-effect evidence"
+               for a in CYP2R1_NOT_MAIN_EFFECT if a in got]
+    return errors
+
+
+def _v030_trait_tier(pairs, label="25-hydroxyvitamin D levels"):
+    import build_panel
+    import evidence
+    target = {"rsid": CYP2R1_RSID, "gene": "CYP2R1", "condition": label, "category": "trait",
+              "result_type": "trait", "effect_allele": "A", "assayability": "snp", "strand": "forward"}
+    out = build_panel.build({"variants": [target]}, sources=[], gwas={CYP2R1_RSID: list(pairs)},
+                            aliases=evidence.load_aliases(ALIASES_PATH))
+    return out["variants"][0]["association"]
+
+
+def _v030_write_cache(directory, panel, t4_rows):
+    """A build cache reconstructed from in-repo data only: coordinates, alleles and
+    gnomAD frequencies from the committed panel, ClinVar from its ClinVar block, and
+    the GWAS rows of every trait entry from the main-effect T4 rows."""
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import fetch_reference as fr
+    coords, clinvar, vcf, gwas = {}, {}, [], ["SNPS\tPUBMEDID\tDISEASE/TRAIT"]
+    for v in panel["variants"]:
+        coords[v["rsid"]] = (v["chromosome"], v["position"], v["reference_allele"], v["alternate_alleles"])
+        if v["gnomad_af"] is not None:
+            vcf.append("\t".join([v["chromosome"], str(v["position"]), v["rsid"], v["reference_allele"],
+                                  v["alternate_allele"], ".", "PASS", "AF=%r" % v["gnomad_af"]]))
+        cv = v["clinvar"]
+        if cv is not None and v["category"] == "trait":
+            clinvar[v["rsid"]] = (cv["significance"], cv["review_status_text"], "not specified")
+        if v["category"] == "trait":
+            for acc, trait in derive_gwas_build_input(t4_rows, v["rsid"]):
+                gwas.append(f"{v['rsid']}\t{fr._tsv_field(acc)}\t{fr._tsv_field(trait)}")
+    fr.write_dbsnp_tsv(os.path.join(directory, "dbsnp.tsv"), coords)
+    fr.write_clinvar_tsv(os.path.join(directory, "clinvar.tsv"), clinvar)
+    with open(os.path.join(directory, "gnomad.small.vcf"), "w", encoding="utf-8") as fh:
+        fh.write("\n".join(vcf) + "\n")
+    with open(os.path.join(directory, "gwas.tsv"), "w", encoding="utf-8") as fh:
+        fh.write("\n".join(gwas) + "\n")
+
+
+def _v030_build(directory, panel, out):
+    labels = {s["source"]: s for s in panel["sources"]}
+    stamps = {s["retrieved_at"] for s in panel["sources"]}
+    _require("the panel carries more than one retrieved_at", len(stamps) == 1)
+    cmd = [sys.executable, "-B", os.path.join(ROOT, "tools", "build_panel.py"),
+           "--targets", os.path.join(ROOT, "data", "targets.release.json"),
+           "--curated-evidence", os.path.join(ROOT, "data", "targets.release-evidence.json"),
+           "--cache", directory, "--retrieved-at", stamps.pop(),
+           "--dbsnp-release", labels["dbSNP"]["release"],
+           "--clinvar-release", labels["ClinVar"]["release"],
+           "--gnomad-release", labels["gnomAD"]["release"],
+           "--gwas-release", labels["GWAS Catalog"]["release"], "-o", out]
+    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    _require("rebuild failed: " + proc.stderr.strip()[-300:], proc.returncode == 0)
+
+
+def _run_v030_s2(attempt):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+
+    def rebuild_is_deterministic_and_equals_committed_panel():
+        panel = read_panel()
+        t4 = doc_tables(read_doc())["T4"]
+        directory = tempfile.mkdtemp(prefix="s2-cache-")
+        _v030_write_cache(directory, panel, t4)
+        out1, out2 = os.path.join(directory, "build1.json"), os.path.join(directory, "build2.json")
+        _v030_build(directory, panel, out1)
+        _v030_build(directory, panel, out2)
+        with open(out1, "rb") as a, open(out2, "rb") as b:
+            first, second = a.read(), b.read()
+        _require("two builds from the same cache differ", first == second)
+        with open(RELEASE_PANEL_PATH, "rb") as fh:
+            committed = fh.read()
+        _require("a rebuild from the reconstructed cache differs from the committed panel", first == committed)
+        return True
+    attempt("V030S2.rebuild_is_deterministic_and_equals_committed_panel",
+            rebuild_is_deterministic_and_equals_committed_panel)
+
+    def first_eight_entries_unchanged():
+        targets = _v030_read_json("data/targets.release.json")["variants"]
+        evidence_entries = _v030_read_json("data/targets.release-evidence.json")["entries"]
+        panel = _v030_read_json("data/targets.release-panel.json")["variants"]
+        _require("targets: the first eight rsIDs changed or were reordered",
+                 tuple(v["rsid"] for v in targets[:8]) == V030_S2_FIRST_EIGHT)
+        _require("panel: the first eight rsIDs changed or were reordered",
+                 tuple(v["rsid"] for v in panel[:8]) == V030_S2_FIRST_EIGHT)
+        _require("targets: a v0.2.0 entry changed", _v030_digest(targets[:8]) == V030_S2_DIGESTS["targets"])
+        _require("evidence: a v0.2.0 entry changed", _v030_digest(evidence_entries) == V030_S2_DIGESTS["evidence"])
+        _require("panel: a v0.2.0 entry changed", _v030_digest(panel[:8]) == V030_S2_DIGESTS["panel"])
+        _require("the ninth entry is not rs10741657 in targets and panel",
+                 [v["rsid"] for v in targets[8:]] == [CYP2R1_RSID] and [v["rsid"] for v in panel[8:]] == [CYP2R1_RSID])
+        return True
+    attempt("V030S2.first_eight_entries_unchanged", first_eight_entries_unchanged)
+
+    def version_literals():
+        for rel in V030_S2_DATA_FILES:
+            got = _v030_read_json(rel).get("panel_version")
+            _require(f"{rel}: panel_version {got!r}, expected '0.3.0'", got == "0.3.0")
+        # The package version is the owner's tag decision and does not move with the panel.
+        with open(os.path.join(ROOT, "pyproject.toml"), encoding="utf-8") as fh:
+            pyproject = re.search(r'^version\s*=\s*"([^"]+)"', fh.read(), re.M).group(1)
+        with open(os.path.join(ROOT, "snp_insights", "__init__.py"), encoding="utf-8") as fh:
+            package = re.search(r'^__version__\s*=\s*"([^"]+)"', fh.read(), re.M).group(1)
+        _require(f"package versions {pyproject!r} and {package!r} are not both '0.2.0'",
+                 pyproject == package == "0.2.0")
+        return True
+    attempt("V030S2.version_literals", version_literals)
+
+    def cyp2r1_build_input_is_main_effect_only():
+        t4 = doc_tables(read_doc())["T4"]
+        errors = check_cyp2r1_build_input(t4)
+        _require("; ".join(errors), not errors)
+        _require("the main-effect input does not build a replicated tier",
+                 _v030_trait_tier(derive_gwas_build_input(t4, CYP2R1_RSID)) == "replicated")
+        return True
+    attempt("V030S2.cyp2r1_build_input_is_main_effect_only", cyp2r1_build_input_is_main_effect_only)
+
+    def cyp2r1_one_publication_case():
+        t4 = [r for r in doc_tables(read_doc())["T4"]
+              if r["rsID"] == CYP2R1_RSID and r["PMID"] == CYP2R1_ONE_PUBLICATION_PMID]
+        accessions = sorted(r["study accession"] for r in t4)
+        _require("the one-publication rows changed: %r" % accessions,
+                 accessions == ["GCST005366", "GCST005367"])
+        pairs = derive_gwas_build_input(t4, CYP2R1_RSID)
+        _require("one publication: build input %r, expected only GCST005367" % [a for a, _t in pairs],
+                 [a for a, _t in pairs] == ["GCST005367"])
+        _require("one publication must build as single_study", _v030_trait_tier(pairs) == "single_study")
+        # What the rule prevents: with the interaction accession the count is two and the tier
+        # would read replicated although one publication stands behind both rows.
+        naive = [(r["study accession"], r["trait (reported)"]) for r in t4]
+        _require("the naive input no longer shows the false replication this test guards",
+                 _v030_trait_tier(naive) == "replicated")
+        return True
+    attempt("V030S2.cyp2r1_one_publication_case", cyp2r1_one_publication_case)
+
+    def cyp2r1_input_check_rejects_other_accessions():
+        t4 = doc_tables(read_doc())["T4"]
+        for accession in CYP2R1_NOT_MAIN_EFFECT:
+            changed = [dict(r, counted="yes") if r["study accession"] == accession else r for r in t4]
+            _require(f"the build-input check accepts {accession}", check_cyp2r1_build_input(changed))
+        dropped = [r for r in t4 if r["study accession"] != "GCST012014"]
+        _require("the build-input check accepts a missing main-effect accession", check_cyp2r1_build_input(dropped))
+        return True
+    attempt("V030S2.cyp2r1_input_check_rejects_other_accessions", cyp2r1_input_check_rejects_other_accessions)
+
+
+# =============================================================================
+# V030S3: v0.3.0 S3 release verification of the nine-entry panel (I-11, I-12,
+# I-13; owner decisions W-1 to W-3 on r146). Offline, invented data only.
+# =============================================================================
+S3_LABEL = "25-hydroxyvitamin D levels"
+S3_GENE = "CYP2R1"
+S3_NUMBER_WORDS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
+S3_TRAIT_TAIL = ("Evidence tier: replicated, from the GWAS Catalog association count. "
+                 "This is a statistical association with {label} in published studies; "
+                 "it is not a measurement of {label} and not a diagnosis.")
+# One synthetic genotype per coverage state for the new marker (W-3): the committed fixtures give
+# detected het (A) and no-call (B); the rest run through the same path from in-test raw files.
+S3_STATE_CASES = (
+    ("detected_het", ("A", "C"), "detected", "het",
+     "one copy of the effect allele A was detected. " + S3_TRAIT_TAIL),
+    ("detected_hom_alt", ("A", "A"), "detected", "hom_alt",
+     "two copies of the effect allele A were detected. " + S3_TRAIT_TAIL),
+    ("covered_reference", ("C", "C"), "covered_reference", "hom_ref",
+     "no copy of the effect allele was found in the genotype at this position."),
+    ("covered_nocall", ("0", "0"), "covered_nocall", "unknown",
+     "this position is on the array, but the array returned no call, so no genotype is available."),
+    ("covered_uninterpretable", ("T", "T"), "covered_uninterpretable", "unknown",
+     "this position was measured, but the call could not be interpreted, so no genotype is given."),
+    ("not_covered", None, "not_covered", None,
+     "this marker was not measured by this array. That gives no information about whether "
+     "the effect allele is present."),
+)
+# The nine-entry findings count claim for each committed fixture (eight + one; three + one + five).
+S3_TOTAL_LITERALS = {
+    "raw.release.synthetic.txt": (
+        "nine curated markers were examined: eight were measured, one was not measured, "
+        "and zero returned no call or an uninterpretable result."),
+    "raw.release.synthetic.states.txt": (
+        "nine curated markers were examined: three were measured, one was not measured, "
+        "and five returned no call or an uninterpretable result."),
+}
+S3_REQUIRED_STATES = frozenset((
+    ("detected", "het"), ("detected", "hom_alt"), ("covered_reference", "hom_ref"),
+    ("covered_nocall", "unknown"), ("covered_uninterpretable", "unknown"), ("not_covered", None)))
+S3_FORBIDDEN_STEMS = (
+    "diagnos", "deficien", "normal", "high risk", "low risk", "higher risk", "lower risk",
+    "increased risk", "absolute risk", "lifetime risk", "risk score", "risk of", "your level",
+    "should", "recommend", "supplement", "treat", "chance", "probab", "%")
+# Every stem above is pinned: dropping or renaming one must fail, not silently weaken the scan.
+S3_REQUIRED_STEMS = frozenset((
+    "diagnos", "deficien", "normal", "high risk", "low risk", "higher risk", "lower risk",
+    "increased risk", "absolute risk", "lifetime risk", "risk score", "risk of", "your level",
+    "should", "recommend", "supplement", "treat", "chance", "probab", "%"))
+# W-1 allowlist (exact): the shipped label that is a condition name, not a claim.
+S3_ALLOWED_LABEL = "Deficiency of butyrylcholinesterase"
+
+
+def _s3_allowed_sentences(condition):
+    """The three fixed negated 'diagnos' templates, whole, with the condition substituted."""
+    return (
+        "(carrier status refers to one copy; this report does not diagnose " + condition + ")",
+        "This is an association with " + condition + "; this report does not diagnose the condition.",
+        "This is a statistical association with " + condition + " in published studies; "
+        "it is not a measurement of " + condition + " and not a diagnosis.",
+    )
+
+
+def _s3_scan(text, condition, stems=None):
+    """Forbidden stems left in text after removing only the exact allowlist (W-1).
+
+    The label is exempt only in its structural contexts (R151-F4): the whole text is the
+    label, or the text starts with the claim prefix "label (GENE):" (or "label:").
+    """
+    rest = text
+    for sentence in _s3_allowed_sentences(condition):
+        rest = rest.replace(sentence, " ")
+    # the het carrier template's fixed fragment is a structural label context too
+    rest = rest.replace("(carrier status for " + S3_ALLOWED_LABEL + "; one copy is not the condition itself)", " ")
+    if rest == S3_ALLOWED_LABEL:
+        rest = " "
+    else:
+        rest = re.sub(r"\A" + re.escape(S3_ALLOWED_LABEL) + r"(?: \([A-Za-z0-9-]+\))?:", " ", rest)
+    low = rest.lower()
+    return [s for s in (S3_FORBIDDEN_STEMS if stems is None else stems) if s in low]
+
+
+def _s3_raw(directory, genotype, name="raw.s3.txt"):
+    lines = ["#Invented synthetic raw data for the v0.3.0 S3 state tests; not a real person.",
+             "#Data was collected using AncestryDNA array version: TESTARRAY-1",
+             "#Data is formatted using AncestryDNA converter version: TESTCONVERTER-1",
+             "#Genetic data is provided below as five TAB delimited columns.",
+             "#using human reference build 37.1 coordinates.",
+             "rsid\tchromosome\tposition\tallele1\tallele2",
+             "rs6025\t1\t169519049\tC\tC"]
+    if genotype is not None:
+        lines.append("rs10741657\t11\t14914878\t%s\t%s" % genotype)
+    path = os.path.join(directory, name)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    return path
+
+
+def _s3_e2e(raw_path, panel, aliases=None):
+    """annotate -> template_ir -> validate_report for any raw file; (doc, ir, errors)."""
+    import validate_report
+    sys.path.insert(0, os.path.join(ROOT, "stage2"))
+    sys.path.insert(0, os.path.join(ROOT, "stage3"))
+    import annotate
+    import run as stage3_run
+    doc = annotate.build_findings(raw_path, panel, aliases or {})
+    directory = tempfile.mkdtemp(prefix="s3-e2e-")
+    findings_path = os.path.join(directory, "findings.json")
+    with open(findings_path, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+    ir = stage3_run.template_ir(doc, stage3_run.sha256_file(findings_path))
+    errors, _ = validate_report.check(findings_path, ir, findings=doc)
+    return doc, ir, errors
+
+
+def _s3_claims(doc, ir):
+    """(section_id, claim_id, text, [cited rsIDs]) for every claim in the IR."""
+    by = {f["finding_id"]: f for f in doc["findings"]}
+    rows = []
+    for sec in ir["sections"]:
+        for cl in sec["claims"]:
+            rsids = sorted({by[c["finding_id"]]["rsid"] for c in cl["citations"]
+                            if c["finding_id"] in by and by[c["finding_id"]].get("rsid")})
+            rows.append((sec["section_id"], cl["claim_id"], cl["text"], rsids))
+    return rows
+
+
+def _s3_total_sentence(doc):
+    states = [f["state"] for f in doc["findings"]]
+    measured = sum(1 for s in states if s in ("detected", "covered_reference"))
+    absent = sum(1 for s in states if s in ("not_covered", "not_assayable"))
+    other = sum(1 for s in states if s in ("covered_nocall", "covered_uninterpretable"))
+    _require("states not partitioned: %r" % sorted(set(states)), measured + absent + other == len(states))
+    w = S3_NUMBER_WORDS
+
+    def verb(n):
+        return "was" if n == 1 else "were"
+    return ("%s curated markers were examined: %s %s measured, %s %s not measured, and %s returned "
+            "no call or an uninterpretable result."
+            % (w[len(states)], w[measured], verb(measured), w[absent], verb(absent), w[other]))
+
+
+def _run_v030_s3(attempt):
+    sys.path.insert(0, os.path.join(ROOT, "stage2"))
+    import annotate as annotate_mod
+
+    def new_marker_every_state_sentence():
+        panel = read_panel()
+        directory = tempfile.mkdtemp(prefix="s3-states-")
+        seen = set()
+        for name, genotype, state, zygosity, tail in S3_STATE_CASES:
+            doc, ir, errors = _s3_e2e(_s3_raw(directory, genotype, "raw.%s.txt" % name), panel)
+            _require(f"{name}: template IR fails validation: {errors}", not errors)
+            f = {x["rsid"]: x for x in doc["findings"]}["rs10741657"]
+            _require(f"{name}: state {f['state']!r}, expected {state!r}", f["state"] == state)
+            _require(f"{name}: zygosity {f['call'].get('zygosity')!r}, expected {zygosity!r}",
+                     f["call"].get("zygosity") == zygosity)
+            seen.add((f["state"], f["call"].get("zygosity")))
+            mine = [c for c in _s3_claims(doc, ir)
+                    if c[0] == "s_traits" and c[3] == ["rs10741657"]]
+            _require(f"{name}: expected one trait claim for the marker, got {len(mine)}", len(mine) == 1)
+            want = "%s (%s): %s" % (S3_LABEL, S3_GENE, tail.format(label=S3_LABEL))
+            _require(f"{name}: sentence differs:\n  got  {mine[0][2]!r}\n  want {want!r}", mine[0][2] == want)
+            # W-2: only the no-call template speaks of the position being on the array.
+            on_array = "on the array" in mine[0][2]
+            _require(f"{name}: 'on the array' wording is {on_array}", on_array == (state == "covered_nocall"))
+            if state == "covered_reference":
+                cited = {c["field_path"] for sec in ir["sections"] for cl in sec["claims"]
+                         if cl["claim_id"] == mine[0][1] for c in cl["citations"]}
+                _require("the covered_reference claim does not cite effect_allele_is_reference: %r"
+                         % sorted(cited), "effect_allele_is_reference" in cited)
+            if state == "not_covered":
+                _require("not_covered lacks the no-information sentence",
+                         "gives no information about whether the effect allele is present"
+                         in mine[0][2])
+            for _sec, _cid, text, _rs in _s3_claims(doc, ir):
+                if state != "covered_nocall" and "rs10741657" in _rs and _sec != "s_summary":
+                    _require(f"{name}: a claim for the new marker says it is on the array",
+                             "on the array" not in text)
+        _require("the state loop does not cover every coverage state: %r" % sorted(
+            S3_REQUIRED_STATES - seen, key=str), seen == S3_REQUIRED_STATES)
+        return True
+    attempt("V030S3.new_marker_every_state_sentence", new_marker_every_state_sentence)
+
+    def committed_fixtures_hold_new_marker_states():
+        panel = read_panel()
+        expect = {"raw.release.synthetic.txt": ("detected", "het"),
+                  "raw.release.synthetic.states.txt": ("covered_nocall", "unknown")}
+        for name, (state, zygosity) in expect.items():
+            path = _fixture_path(name)
+            doc, ir, errors = _s3_e2e(path, panel)
+            _require(f"{name}: IR fails validation: {errors}", not errors)
+            f = {x["rsid"]: x for x in doc["findings"]}["rs10741657"]
+            _require(f"{name}: rs10741657 is {f['state']!r}, expected {state!r}", f["state"] == state)
+            _require(f"{name}: rs10741657 zygosity {f['call'].get('zygosity')!r}",
+                     f["call"].get("zygosity") == zygosity)
+            mine = [c for c in _s3_claims(doc, ir) if c[0] == "s_traits" and c[3] == ["rs10741657"]]
+            _require(f"{name}: expected one trait claim for rs10741657, got {len(mine)}", len(mine) == 1)
+            wanted = [c for c in S3_STATE_CASES if c[2] == state and c[3] == zygosity][0]
+            want = "%s (%s): %s" % (S3_LABEL, S3_GENE, wanted[4].format(label=S3_LABEL))
+            _require(f"{name}: sentence differs: {mine[0][2]!r}", mine[0][2] == want)
+            with open(path, encoding="utf-8") as fh:
+                rows = [ln for ln in fh.read().splitlines()
+                        if ln and not ln.startswith("#") and not ln.startswith("rsid")]
+            _require(f"{name}: {len(rows)} data rows exceed the 8-row cap", len(rows) <= 8)
+        return True
+    attempt("V030S3.committed_fixtures_hold_new_marker_states", committed_fixtures_hold_new_marker_states)
+
+    def count_claims_sum_with_nine_entries():
+        panel = read_panel()
+        entries = panel["variants"]
+        _require("the panel does not have nine entries", len(entries) == 9)
+        per_type = {"carrier_status": "carrier status", "risk_association": "association",
+                    "trait": "trait"}
+        w = S3_NUMBER_WORDS
+        for name in R2E_FIXTURES:
+            doc, ir, errors = _s3_e2e(_fixture_path(name), panel)
+            _require(f"{name}: IR fails validation: {errors}", not errors)
+            _require(f"{name}: {len(doc['findings'])} findings, expected 9", len(doc["findings"]) == 9)
+            claims = {c[1]: c[2] for c in _s3_claims(doc, ir)}
+            want = _s3_total_sentence(doc)
+            _require(f"{name}: total claim differs:\n  got  {claims.get('cl_summary_total')!r}\n"
+                     f"  want {want!r}", claims.get("cl_summary_total") == want)
+            _require(f"{name}: the total claim is not the pinned literal: {want!r}",
+                     want == S3_TOTAL_LITERALS[name])
+            counts = [sum(1 for f in doc["findings"] if f["state"] in group)
+                      for group in (("detected", "covered_reference"), ("not_covered", "not_assayable"),
+                                    ("covered_nocall", "covered_uninterpretable"))]
+            _require(f"{name}: counts {counts} do not sum to nine", sum(counts) == 9)
+            by_type = {}
+            for f in doc["findings"]:
+                by_type.setdefault(f["result_type"], []).append(f["state"])
+            _require(f"{name}: result types {sorted(by_type)}", set(by_type) == set(per_type))
+            _require(f"{name}: type sizes do not sum to nine",
+                     sum(len(v) for v in by_type.values()) == 9)
+            for rt, label in per_type.items():
+                states = by_type[rt]
+                m = sum(1 for s in states if s in ("detected", "covered_reference"))
+                a = sum(1 for s in states if s in ("not_covered", "not_assayable"))
+                o = len(states) - m - a
+                sentence = ("%s %s markers were examined: %s %s measured, %s %s not measured, and %s "
+                            "returned no call or an uninterpretable result."
+                            % (w[len(states)], label, w[m], "was" if m == 1 else "were",
+                               w[a], "was" if a == 1 else "were", w[o]))
+                got = claims.get("cl_summary_" + rt)
+                _require(f"{name}: {rt} claim differs: {got!r} != {sentence!r}", got == sentence)
+        return True
+    attempt("V030S3.count_claims_sum_with_nine_entries", count_claims_sum_with_nine_entries)
+
+    def wording_scan_self_test():
+        _require("a required forbidden stem is missing from the scan: %r"
+                 % sorted(S3_REQUIRED_STEMS - set(S3_FORBIDDEN_STEMS)),
+                 S3_REQUIRED_STEMS <= set(S3_FORBIDDEN_STEMS))
+        for stem in S3_FORBIDDEN_STEMS:
+            bad = "Example trait (GENEZ): this is a %s sentence." % stem
+            _require(f"the scan misses the stem {stem!r}", stem in _s3_scan(bad, S3_LABEL))
+        # The allowlist is exact: only the three fixed negated templates and the one label.
+        good_trait = "This is a statistical association with %s in published studies; it is not a " \
+                     "measurement of %s and not a diagnosis." % (S3_LABEL, S3_LABEL)
+        _require("the allowed trait template is flagged", not _s3_scan(good_trait, S3_LABEL))
+        _require("the allowed risk-association template is flagged",
+                 not _s3_scan("This is an association with Example thrombophilia; this report does "
+                              "not diagnose the condition.", "Example thrombophilia"))
+        _require("the allowed carrier template is flagged",
+                 not _s3_scan("one copy of the effect allele T were detected (carrier status refers to "
+                              "one copy; this report does not diagnose Example disease).", "Example disease"))
+        _require("the allowed label is flagged", not _s3_scan(S3_ALLOWED_LABEL + " (BCHE): ok", "x"))
+        _require("the allowed label alone is flagged", not _s3_scan(S3_ALLOWED_LABEL, "x"))
+        _require("the het carrier label fragment is flagged",
+                 not _s3_scan(S3_ALLOWED_LABEL + " (BCHE): one copy of the effect allele C was detected "
+                              "(carrier status for " + S3_ALLOWED_LABEL + "; one copy is not the "
+                              "condition itself).", "x"))
+        for bad, why in (
+                (good_trait.replace("not a diagnosis", "not a diagnoses"), "a changed template"),
+                (good_trait + " This is a diagnosis.", "an extra sentence"),
+                (good_trait.replace(S3_LABEL, "LDL cholesterol levels", 1), "a substituted label"),
+                ("Your diagnosis: " + good_trait, "a prefix"),
+                ("This report does not diagnose anything.", "a free negation"),
+                ("deficiency of butyrylcholinesterase", "a lowercase label"),
+                (S3_ALLOWED_LABEL + " deficiency", "the label plus a stem"),
+                ("Deficiency of vitamin D", "another deficiency label"),
+                ("You have Deficiency of butyrylcholinesterase.", "an affirmative claim with the label"),
+                (S3_ALLOWED_LABEL + " (BCHE): no call. You have " + S3_ALLOWED_LABEL + ".",
+                 "the label repeated inside an affirmative claim after its label context"),
+                ("Result: " + S3_ALLOWED_LABEL + " (BCHE): ok", "the label away from the start")):
+            _require(f"the scan accepts {why}: {bad!r}", _s3_scan(bad, S3_LABEL))
+        return True
+    attempt("V030S3.wording_scan_self_test", wording_scan_self_test)
+
+    def wording_scan_nine_entries():
+        panel = read_panel()
+        entries = {v["rsid"]: v for v in panel["variants"]}
+        _require("the panel does not have nine entries", len(entries) == 9)
+        directory = tempfile.mkdtemp(prefix="s3-scan-")
+        sources = [(name, _fixture_path(name)) for name in R2E_FIXTURES]
+        sources += [(case[0], _s3_raw(directory, case[1], "raw.%s.txt" % case[0]))
+                    for case in S3_STATE_CASES]
+        scanned, seen_rs = 0, set()
+        for name, path in sources:
+            doc, ir, errors = _s3_e2e(path, panel)
+            _require(f"{name}: IR fails validation: {errors}", not errors)
+            for sec, cid, text, rsids in _s3_claims(doc, ir):
+                cond = entries[rsids[0]]["condition"] if len(rsids) == 1 else ""
+                hits = _s3_scan(text, cond)
+                _require(f"{name}/{cid}: forbidden wording {hits}: {text!r}", not hits)
+                scanned += 1
+                seen_rs.update(rsids)
+        for rsid, v in entries.items():
+            hits = _s3_scan(v["condition"], v["condition"])
+            _require(f"label of {rsid}: forbidden wording {hits}: {v['condition']!r}", not hits)
+            scanned += 1
+        _require("the scan did not reach every entry: %r" % sorted(set(entries) - seen_rs),
+                 seen_rs >= set(entries))
+        _require(f"only {scanned} texts scanned", scanned >= 60)
+        return True
+    attempt("V030S3.wording_scan_nine_entries", wording_scan_nine_entries)
+
+    def same_label_pair_pins_behavior():
+        aliases = {}
+
+        def variant(rsid, position, association):
+            return {"rsid": rsid, "chromosome": "1", "position": position, "gene": "GENEZ",
+                    "condition": "Example trait one", "category": "trait", "result_type": "trait",
+                    "effect_allele": "A", "assayability": "snp", "reference_allele": "G",
+                    "alternate_allele": "A", "cls": "risk", "association": association,
+                    "gnomad_af": 0.2, "clinvar": None, "snpedia": None, "strand": "forward"}
+
+        def run(first, second):
+            directory = tempfile.mkdtemp(prefix="s3-label-")
+            lines = ["#synthetic raw data for the same-label test",
+                     "#Data was collected using AncestryDNA array version: TESTARRAY-1",
+                     "#using human reference build 37.1 coordinates.",
+                     "rsid\tchromosome\tposition\tallele1\tallele2",
+                     "rs9000101\t1\t1000\tA\tG", "rs9000102\t1\t2000\tA\tG"]
+            path = os.path.join(directory, "raw.txt")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("\n".join(lines) + "\n")
+            panel = {"merges": {}, "sources": [], "variants": [variant("rs9000101", 1000, first),
+                                                               variant("rs9000102", 2000, second)]}
+            return _s3_e2e(path, panel, aliases)
+
+        doc, ir, errors = run("replicated", "replicated")
+        _require("equal tiers: report fails validation: %s" % errors, not errors)
+        _require("equal tiers: a contradiction was emitted: %r" % doc["contradictions"],
+                 doc["contradictions"] == [])
+        doc, ir, errors = run("replicated", "single_study")
+        _require("differing tiers: report fails validation: %s" % errors, not errors)
+        _require("differing tiers: expected one contradiction, got %r" % doc["contradictions"],
+                 len(doc["contradictions"]) == 1)
+        c = doc["contradictions"][0]
+        want = ("Multiple variants are reported for the same condition (Example trait one) with "
+                "differing evidence: rs9000101 has no ClinVar classification; rs9000102 has no "
+                "ClinVar classification. Both are reported as-is; they are not reconciled.")
+        _require("differing tiers: contradiction kind %r" % c["kind"],
+                 c["kind"] == "overlapping_condition_mixed_evidence")
+        _require("differing tiers: contradiction text differs: %r" % c["description"], c["description"] == want)
+        by = {f["finding_id"]: f["rsid"] for f in doc["findings"]}
+        _require("differing tiers: the contradiction does not name both findings",
+                 sorted(by[i] for i in c["finding_ids"]) == ["rs9000101", "rs9000102"])
+        reported = [i for sec in ir["sections"] for i in sec.get("contradiction_ids", [])]
+        _require("differing tiers: the report does not carry the contradiction: %r" % reported,
+                 reported == [c["contradiction_id"]])
+        # D-5: no entry in the real panel shares a label (no real pair is changed or added).
+        panel = read_panel()
+        real = annotate_mod.load_aliases(ALIASES_PATH)
+        keys = [annotate_mod.normalize_condition(v["condition"], real) for v in panel["variants"]]
+        _require("two release entries share a label: %r" % keys, len(set(keys)) == 9)
+        for name in R2E_FIXTURES:
+            real_doc, _ir, _errors = _s3_e2e(_fixture_path(name), panel, real)
+            _require(f"{name}: a release fixture emits a contradiction", real_doc["contradictions"] == [])
+        return True
+    attempt("V030S3.same_label_pair_pins_behavior", same_label_pair_pins_behavior)
+
+
+# =============================================================================
+# V030S3F: F-1 fix (r149). When the effect allele equals the reference allele the
+# covered_reference sentence must not say the genotype matches the reference.
+# =============================================================================
+S3F_SHIPPED = "{label}{gene}: both copies match the reference at this position; the effect allele was not found in the genotype."
+S3F_EQUAL = "{label}{gene}: no copy of the effect allele was found in the genotype at this position."
+# sha256 of each shipped covered_reference sentence, computed at the base commit (21636ee) with
+# the first non-effect declared allele as a homozygous genotype; rs6025 is the one entry whose
+# effect allele equals the reference allele, so it is pinned by its new exact sentence instead.
+S3F_SHIPPED_DIGESTS = {
+    "rs1800562": "e33d6d73a9e3fbf9aa932013199f9cefca5fa6d8b0407cb6c9c1bbd87e22ac7b",
+    "rs1799963": "d3eb5fb22a75d8acc994615b1c059f2184472860acfe115d12dc631af275317d",
+    "rs1799807": "630740ae35f1a791ae2d99c4984f97fe55d0d6e79dc5180f92c4f2b131cd6988",
+    "rs121908529": "df20e9dd220752269eebb5a2d7bb08218df263eaccfacf2909df7bfc21f41cbb",
+    "rs185803104": "bf1c10abf33f2effa2716b8664625a4e01dc8611b80f29838d511d38c44d5532",
+    "rs180177314": "aae20f74e61bf1c90fd350cb03096b02f04e7bc6e21017f55e824ad6c2962f7e",
+    "rs11591147": "0872305fb367e95b7b6912017de48cf660d9e6c14403c15b0ff3769a25912eff",
+}
+S3F_SHIPPED_EIGHT = ("rs1800562", "rs1799963", "rs6025", "rs1799807", "rs121908529",
+                     "rs185803104", "rs180177314", "rs11591147")
+S3F_EQUAL_ENTRIES = ("rs6025", "rs10741657")
+# Base digests of the findings schema (canonical JSON, without the one new property) and of the
+# report IR schema file: the flag is the only schema change.
+S3F_FINDINGS_SCHEMA_DIGEST = "f56ac7f119394f58e8c284cca90216d00a34267b668a15ad47c0146756fba69d"
+S3F_REPORT_IR_SCHEMA_SHA256 = "23d9d820d556dba804e3950a5e252e5dfa5b4d8fd402fff4c452fe9de36ec406"
+
+
+def _s3f_genotype(v):
+    eff, ref = v["effect_allele"], v["reference_allele"]
+    other = ref if ref != eff else [a for a in v["alternate_alleles"] if a != eff][0]
+    return other
+
+
+def _s3f_raw(directory, v, genotype, name="raw.s3f.txt"):
+    lines = ["#Invented synthetic raw data for the F-1 tests; not a real person.",
+             "#Data was collected using AncestryDNA array version: TESTARRAY-1",
+             "#Data is formatted using AncestryDNA converter version: TESTCONVERTER-1",
+             "#Genetic data is provided below as five TAB delimited columns.",
+             "#using human reference build 37.1 coordinates.",
+             "rsid\tchromosome\tposition\tallele1\tallele2",
+             "%s\t%s\t%s\t%s\t%s" % (v["rsid"], v["chromosome"], v["position"], genotype[0], genotype[1])]
+    path = os.path.join(directory, name)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    return path
+
+
+def _run_v030_s3_fix(attempt):
+    sys.path.insert(0, os.path.join(ROOT, "stage2"))
+    sys.path.insert(0, os.path.join(ROOT, "stage3"))
+    import annotate as annotate_mod
+    import run as stage3_run
+
+    def finding(flag="absent", effect="A"):
+        # r152 (G-1): the call is two reference alleles and the finding's own gnomAD link names
+        # that reference, so the shipped sentence is provable unless the flag is boolean true.
+        f = {"finding_id": "f_000000000001", "rsid": "rs9000200", "gene": "GENEZ",
+             "condition": "Example trait one", "state": "covered_reference", "effect_allele": effect,
+             "chromosome": "1", "position": 1000,
+             "call": {"state": "called", "allele1": "G", "allele2": "G", "zygosity": "hom_ref"},
+             "references": [{"source": "gnomAD",
+                             "url": "https://gnomad.broadinstitute.org/variant/1-1000-G-A?dataset=gnomad_r2_1"}]}
+        if flag != "absent":
+            f["effect_allele_is_reference"] = flag
+        return f
+
+    def coverage_sentence_reference_equality():
+        label = {"label": "Example trait one", "gene": " (GENEZ)"}
+        _require("flag true: wrong sentence: %r" % stage3_run.coverage_sentence(finding(True)),
+                 stage3_run.coverage_sentence(finding(True)) == S3F_EQUAL.format(**label))
+        # The effect allele differs from the reference, or the reference is unknown: the flag is
+        # absent and the sentence stays the shipped text (the documented safe default). An
+        # explicit false is treated like an absent flag.
+        for flag in ("absent", False):
+            got = stage3_run.coverage_sentence(finding(flag))
+            _require("flag %r: sentence changed: %r" % (flag, got), got == S3F_SHIPPED.format(**label))
+        for bad in ("true", 1, None):
+            got = stage3_run.coverage_sentence(finding(bad))
+            _require("flag %r (not a boolean true): sentence changed: %r" % (bad, got),
+                     got == S3F_SHIPPED.format(**label))
+        # the other four missing-call states are untouched by the flag
+        for state in ("covered_nocall", "covered_uninterpretable", "not_covered", "not_assayable"):
+            f = dict(finding(True), state=state)
+            g = {k: v for k, v in f.items() if k != "effect_allele_is_reference"}
+            _require("%s: the flag changed its sentence" % state,
+                     stage3_run.coverage_sentence(f) == stage3_run.coverage_sentence(g))
+        return True
+    attempt("V030S3F.coverage_sentence_reference_equality", coverage_sentence_reference_equality)
+
+    def annotate_emits_flag_only_when_equal():
+        panel = read_panel()
+        directory = tempfile.mkdtemp(prefix="s3f-flag-")
+        for v in panel["variants"]:
+            equal = v["effect_allele"] == v["reference_allele"]
+            _require("%s: unexpected equality %r" % (v["rsid"], equal), equal == (v["rsid"] in S3F_EQUAL_ENTRIES))
+            for geno in ((v["effect_allele"],) * 2, (_s3f_genotype(v),) * 2, ("0", "0")):
+                doc = annotate_mod.build_findings(_s3f_raw(directory, v, geno), panel, {})
+                f = [x for x in doc["findings"] if x["rsid"] == v["rsid"]][0]
+                if equal:
+                    _require("%s %s: flag %r, expected True" % (v["rsid"], geno, f.get("effect_allele_is_reference")),
+                             f.get("effect_allele_is_reference") is True)
+                else:
+                    _require("%s %s: the flag is present (%r)" % (v["rsid"], geno, f.get("effect_allele_is_reference")),
+                             "effect_allele_is_reference" not in f)
+        # synthetic variants: equal, different, unknown reference, legacy format
+        def variant(rsid, ref, effect, result_type="trait"):
+            v = {"rsid": rsid, "chromosome": "1", "position": 1000, "gene": "GENEZ",
+                 "condition": "Example trait one", "category": "trait", "effect_allele": effect,
+                 "assayability": "snp", "reference_allele": ref, "alternate_allele": "C",
+                 "cls": "risk", "association": "replicated", "gnomad_af": 0.2, "clinvar": None,
+                 "snpedia": None, "strand": "forward"}
+            if result_type:
+                v["result_type"] = result_type
+            return v
+        for name, v, expect in (("equal", variant("rs9000201", "A", "A"), True),
+                                ("different", variant("rs9000202", "G", "A"), None),
+                                ("unknown reference", variant("rs9000203", None, "A"), None),
+                                ("both alleles unknown", variant("rs9000205", None, None), None),
+                                ("legacy panel", variant("rs9000204", "A", "A", None), None)):
+            raw = _s3f_raw(directory, dict(v, chromosome="1", position=1000), ("C", "C"), "raw.%s.txt" % name.replace(" ", "_"))
+            doc = annotate_mod.build_findings(raw, {"merges": {}, "sources": [], "variants": [v]}, {})
+            f = doc["findings"][0]
+            _require("%s: flag %r, expected %r" % (name, f.get("effect_allele_is_reference"), expect),
+                     f.get("effect_allele_is_reference") is expect and (expect is True or "effect_allele_is_reference" not in f))
+        return True
+    attempt("V030S3F.annotate_emits_flag_only_when_equal", annotate_emits_flag_only_when_equal)
+
+    def schema_flag_is_the_only_schema_change():
+        with open(os.path.join(ROOT, "schema", "findings.schema.json"), encoding="utf-8") as fh:
+            schema = json.load(fh)
+        finding_def = schema["$defs"]["finding"]
+        prop = finding_def["properties"].get("effect_allele_is_reference")
+        _require("the schema does not declare effect_allele_is_reference", prop is not None)
+        _require("the flag is not a boolean: %r" % prop, prop.get("type") == "boolean")
+        _require("the flag is required", "effect_allele_is_reference" not in finding_def["required"])
+        _require("the finding allows additional properties", finding_def.get("additionalProperties") is False)
+        del finding_def["properties"]["effect_allele_is_reference"]
+        digest = hashlib.sha256(json.dumps(schema, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        _require("the findings schema changed beyond the flag: %s" % digest, digest == S3F_FINDINGS_SCHEMA_DIGEST)
+        got = _sha256_file(os.path.join(ROOT, "schema", "report_ir.schema.json"))
+        _require("report_ir.schema.json changed: %s" % got, got == S3F_REPORT_IR_SCHEMA_SHA256)
+        try:
+            import jsonschema
+        except ImportError:
+            return True
+        panel = read_panel()
+        directory = tempfile.mkdtemp(prefix="s3f-schema-")
+        v = [x for x in panel["variants"] if x["rsid"] == "rs6025"][0]
+        doc = annotate_mod.build_findings(_s3f_raw(directory, v, ("C", "C")), panel, {})
+        with open(os.path.join(ROOT, "schema", "findings.schema.json"), encoding="utf-8") as fh:
+            jsonschema.Draft202012Validator(json.load(fh)).validate(doc)
+        flagged = [f for f in doc["findings"] if f["rsid"] == "rs6025"][0]
+        _require("the schema-validated document lacks the flag", flagged.get("effect_allele_is_reference") is True)
+        return True
+    attempt("V030S3F.schema_flag_is_the_only_schema_change", schema_flag_is_the_only_schema_change)
+
+    def covered_reference_sentences_first_eight():
+        panel = read_panel()
+        entries = {v["rsid"]: v for v in panel["variants"]}
+        directory = tempfile.mkdtemp(prefix="s3f-eight-")
+        for rsid in S3F_SHIPPED_EIGHT:
+            v = entries[rsid]
+            g = _s3f_genotype(v)
+            doc, ir, errors = _s3_e2e(_s3f_raw(directory, v, (g, g)), panel)
+            _require("%s: IR fails validation: %s" % (rsid, errors), not errors)
+            claim = [c for c in _s3_claims(doc, ir) if c[3] == [rsid] and c[0] != "s_summary"][0][2]
+            if rsid == "rs6025":
+                want = S3F_EQUAL.format(label="Factor V Leiden thrombophilia", gene=" (F5)")
+                _require("rs6025: sentence differs: %r" % claim, claim == want)
+                continue
+            digest = hashlib.sha256(claim.encode()).hexdigest()
+            _require("%s: the shipped covered_reference sentence changed: %r" % (rsid, claim),
+                     digest == S3F_SHIPPED_DIGESTS[rsid])
+            _require("%s: the sentence is not the shipped template" % rsid, claim.endswith(
+                S3F_SHIPPED.format(label="", gene="").split(": ", 1)[1]))
+        _require("the digest table does not name the seven unchanged entries",
+                 sorted(S3F_SHIPPED_DIGESTS) == sorted(set(S3F_SHIPPED_EIGHT) - {"rs6025"}))
+        # rs10741657 (ninth entry): the new sentence too
+        v = entries["rs10741657"]
+        doc, ir, errors = _s3_e2e(_s3f_raw(directory, v, ("C", "C"), "raw.ninth.txt"), panel)
+        claim = [c for c in _s3_claims(doc, ir) if c[3] == ["rs10741657"] and c[0] != "s_summary"][0][2]
+        _require("rs10741657: sentence differs: %r" % claim,
+                 claim == S3F_EQUAL.format(label="25-hydroxyvitamin D levels", gene=" (CYP2R1)"))
+        return True
+    attempt("V030S3F.covered_reference_sentences_first_eight", covered_reference_sentences_first_eight)
+
+    def new_sentence_is_traceable_and_scan_clean():
+        panel = read_panel()
+        entries = {v["rsid"]: v for v in panel["variants"]}
+        directory = tempfile.mkdtemp(prefix="s3f-trace-")
+        for rsid in ("rs6025", "rs10741657", "rs1800562"):
+            v = entries[rsid]
+            g = _s3f_genotype(v)
+            doc, ir, errors = _s3_e2e(_s3f_raw(directory, v, (g, g), "raw.%s.txt" % rsid), panel)
+            _require("%s: IR fails validation: %s" % (rsid, errors), not errors)
+            row = [c for c in _s3_claims(doc, ir) if c[3] == [rsid] and c[0] != "s_summary"][0]
+            cited = {c["field_path"] for sec in ir["sections"] for cl in sec["claims"]
+                     if cl["claim_id"] == row[1] for c in cl["citations"]}
+            if rsid in S3F_EQUAL_ENTRIES:
+                _require("%s: the claim does not cite the flag: %r" % (rsid, sorted(cited)),
+                         "effect_allele_is_reference" in cited)
+                for bad in ("match the reference", "reference genotype"):
+                    _require("%s: the sentence still says %r: %r" % (rsid, bad, row[2]), bad not in row[2])
+                _require("%s: the sentence has no 'no copy' statement" % rsid, "no copy of the effect allele" in row[2])
+            else:
+                _require("%s: a claim cites a flag the finding does not carry: %r" % (rsid, sorted(cited)),
+                         "effect_allele_is_reference" not in cited)
+            hits = _s3_scan(row[2], entries[rsid]["condition"])
+            _require("%s: the wording scan flags %s: %r" % (rsid, hits, row[2]), not hits)
+        return True
+    attempt("V030S3F.new_sentence_is_traceable_and_scan_clean", new_sentence_is_traceable_and_scan_clean)
+
+
+# =============================================================================
+# V030S3G: FIX round 2 (r152) of the paired review r150/r151. Offline, invented data only.
+# G-1 (R151-F1): "both copies match the reference" only when both called alleles are the
+#   reference allele; any other zero-copy genotype (a declared non-effect alternate) gets the
+#   zero-copy sentence. G-2 (R151-F2): the CYP2R1 gnomAD link names the A-G record that
+#   supplied gnomad_af. G-3 (R151-F3): model output cannot assert a reference genotype for a
+#   release covered_reference claim. G-6 (R151-F6): an uninterpretable call gets cause-neutral
+#   prose. G-9: the not-assayable sentence is pinned exactly.
+# =============================================================================
+S3G_UNINTERPRETABLE = ("{label}{gene}: this position was measured, but the call could not be "
+                       "interpreted, so no genotype is given.")
+S3G_NOT_ASSAYABLE = "{label}{gene}: this locus cannot be assessed from array data."
+S3G_FREQUENCY_LINK = "https://gnomad.broadinstitute.org/variant/11-14914878-A-G?dataset=gnomad_r2_1"
+S3G_REFERENCE_LIE = "this position is on the array and the reference genotype was observed."
+
+
+def _s3g_non_effect_pairs(v):
+    """Every unordered genotype of declared non-effect alleles (zero effect copies)."""
+    declared = [v["reference_allele"]] + [a for a in v["alternate_alleles"] if a != v["reference_allele"]]
+    non_effect = [a for a in declared if a != v["effect_allele"]]
+    return [(a, b) for i, a in enumerate(non_effect) for b in non_effect[i:]]
+
+
+def _s3g_claim(doc, ir, rsid):
+    return [c for c in _s3_claims(doc, ir) if c[3] == [rsid] and c[0] != "s_summary"][0]
+
+
+def _run_v030_s3_fix2(attempt):
+    sys.path.insert(0, os.path.join(ROOT, "stage2"))
+    sys.path.insert(0, os.path.join(ROOT, "stage3"))
+    import run as stage3_run
+
+    def covered_reference_true_for_every_genotype():
+        panel = read_panel()
+        directory = tempfile.mkdtemp(prefix="s3g-geno-")
+        checked = alternates = 0
+        for v in panel["variants"]:
+            label = {"label": v["condition"], "gene": " (%s)" % v["gene"]}
+            for pair in _s3g_non_effect_pairs(v):
+                raw = _s3f_raw(directory, v, pair, "raw.%s.%s%s.txt" % ((v["rsid"],) + pair))
+                doc, ir, errors = _s3_e2e(raw, panel)
+                _require("%s %s: IR fails validation: %s" % (v["rsid"], pair, errors), not errors)
+                f = [x for x in doc["findings"] if x["rsid"] == v["rsid"]][0]
+                _require("%s %s: state %r" % (v["rsid"], pair, f["state"]), f["state"] == "covered_reference")
+                text = _s3g_claim(doc, ir, v["rsid"])[2]
+                reference = pair == (v["reference_allele"],) * 2
+                want = (S3F_SHIPPED if reference else S3F_EQUAL).format(**label)
+                _require("%s %s: sentence %r, want %r" % (v["rsid"], pair, text, want), text == want)
+                if not reference:
+                    alternates += 1
+                    for bad in ("match the reference", "reference genotype"):
+                        _require("%s %s: says %r" % (v["rsid"], pair, bad), bad not in text)
+                checked += 1
+        _require("only %d genotypes, %d with a non-effect alternate" % (checked, alternates),
+                 checked >= 20 and alternates >= 12)
+        return True
+    attempt("V030S3G.covered_reference_true_for_every_genotype", covered_reference_true_for_every_genotype)
+
+    def shipped_digests_pin_reference_genotypes_only():
+        # Re-scope of the S3F digest pin (G-1): it pins the seven entries' sentence for the
+        # genotype of two reference alleles, which is the only genotype that keeps it.
+        entries = {v["rsid"]: v for v in read_panel()["variants"]}
+        for rsid in S3F_SHIPPED_DIGESTS:
+            v = entries[rsid]
+            _require("%s: the digest genotype is not two reference alleles" % rsid,
+                     _s3f_genotype(v) == v["reference_allele"] != v["effect_allele"])
+        return True
+    attempt("V030S3G.shipped_digests_pin_reference_genotypes_only", shipped_digests_pin_reference_genotypes_only)
+
+    def unprovable_reference_gets_zero_copy_sentence():
+        # A release finding whose reference allele cannot be read from its own record never
+        # claims the reference; a legacy finding (no effect allele) keeps its sentence.
+        base = {"finding_id": "f_000000000001", "rsid": "rs9000200", "gene": "GENEZ",
+                "condition": "Example trait one", "state": "covered_reference", "effect_allele": "A",
+                "chromosome": "1", "position": 1000,
+                "call": {"state": "called", "allele1": "G", "allele2": "G", "zygosity": "hom_ref"}}
+        label = {"label": "Example trait one", "gene": " (GENEZ)"}
+        link = "https://gnomad.broadinstitute.org/variant/1-1000-G-A?dataset=gnomad_r2_1"
+        cases = (("no references", dict(base), S3F_EQUAL),
+                 ("reference genotype", dict(base, references=[{"source": "gnomAD", "url": link}]), S3F_SHIPPED),
+                 ("other locus link", dict(base, references=[{"source": "gnomAD", "url": link.replace("1-1000-", "1-1001-")}]), S3F_EQUAL),
+                 ("alternate genotype", dict(base, references=[{"source": "gnomAD", "url": link}],
+                                             call=dict(base["call"], allele2="T")), S3F_EQUAL),
+                 ("flag true", dict(base, references=[{"source": "gnomAD", "url": link}],
+                                    effect_allele_is_reference=True), S3F_EQUAL))
+        for name, f, want in cases:
+            got = stage3_run.coverage_sentence(f)
+            _require("%s: %r" % (name, got), got == want.format(**label))
+        legacy = {k: v for k, v in base.items() if k != "effect_allele"}
+        _require("legacy sentence changed", stage3_run.coverage_sentence(legacy) == S3F_SHIPPED.format(**label))
+        return True
+    attempt("V030S3G.unprovable_reference_gets_zero_copy_sentence", unprovable_reference_gets_zero_copy_sentence)
+
+    def cyp2r1_gnomad_link_uses_frequency_allele():
+        panel = read_panel()
+        directory = tempfile.mkdtemp(prefix="s3g-link-")
+        for v in panel["variants"]:
+            doc, ir, errors = _s3_e2e(_s3f_raw(directory, v, (v["effect_allele"],) * 2,
+                                               "raw.link.%s.txt" % v["rsid"]), panel)
+            _require("%s: IR fails validation: %s" % (v["rsid"], errors), not errors)
+            f = [x for x in doc["findings"] if x["rsid"] == v["rsid"]][0]
+            links = [r["url"] for r in f["references"] if r["source"] == "gnomAD"]
+            if v["rsid"] == "rs10741657":
+                want = S3G_FREQUENCY_LINK
+                _require("C-2: rs10741657 rarity changed: %r" % f["confidence"]["array_reliability"]["rarity_class"],
+                         f["confidence"]["array_reliability"]["rarity_class"] == "common")
+                from render_report import render
+                _require("the frequency link is not in the rendered report", want in render(doc, ir))
+            else:
+                want = "https://gnomad.broadinstitute.org/variant/%s-%s-%s-%s?dataset=gnomad_r2_1" % (
+                    v["chromosome"], v["position"], v["reference_allele"], v["alternate_allele"])
+            _require("%s: gnomAD links %r, want %r" % (v["rsid"], links, want), links == [want])
+        return True
+    attempt("V030S3G.cyp2r1_gnomad_link_uses_frequency_allele", cyp2r1_gnomad_link_uses_frequency_allele)
+
+    def _model_case(directory):
+        panel = read_panel()
+        entries = {v["rsid"]: v for v in panel["variants"]}
+        lines = ["#Invented synthetic raw data for the G-3 tests; not a real person.",
+                 "#Data was collected using AncestryDNA array version: TESTARRAY-1",
+                 "#Data is formatted using AncestryDNA converter version: TESTCONVERTER-1",
+                 "#Genetic data is provided below as five TAB delimited columns.",
+                 "#using human reference build 37.1 coordinates.",
+                 "rsid\tchromosome\tposition\tallele1\tallele2"]
+        for rsid, geno in (("rs6025", "CC"), ("rs10741657", "GG"), ("rs1800562", "GT"), ("rs1799963", "GG")):
+            v = entries[rsid]
+            lines.append("%s\t%s\t%s\t%s\t%s" % (rsid, v["chromosome"], v["position"], geno[0], geno[1]))
+        raw = os.path.join(directory, "raw.model.txt")
+        with open(raw, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+        sys.path.insert(0, os.path.join(ROOT, "stage2"))
+        import annotate
+        doc = annotate.build_findings(raw, panel, {})
+        path = os.path.join(directory, "findings.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, indent=2)
+        return doc, path, stage3_run.sha256_file(path)
+
+    def _with_chat(reply, fn):
+        orig = stage3_run.llm.chat
+        stage3_run.llm.chat = lambda **kw: reply(kw)
+        try:
+            return fn()
+        finally:
+            stage3_run.llm.chat = orig
+
+    def skeleton_model_cannot_claim_reference():
+        import types
+        directory = tempfile.mkdtemp(prefix="s3g-skel-")
+        doc, path, digest = _model_case(directory)
+        template = stage3_run.template_ir(doc, digest)
+        by = {f["finding_id"]: f for f in doc["findings"]}
+        ref_claims = {cl["claim_id"]: cl["text"] for sec in template["sections"] for cl in sec["claims"]
+                      if cl["citations"] and by.get(cl["citations"][0]["finding_id"], {}).get("state") == "covered_reference"
+                      and sec["section_id"] != "s_summary"}
+        _require("the case lacks four covered_reference claims: %r" % sorted(ref_claims), len(ref_claims) == 4)
+        system = " ".join(stage3_run.SKELETON_SYSTEM.split())
+        _require("the skeleton prompt still asks for a reference genotype",
+                 "reference genotype was observed" not in system
+                 and "do NOT say the genotype is the reference genotype" in system)
+        sent = []
+
+        def reply(kw):
+            payload = json.loads(kw["messages"][1]["content"].split("\n")[-1])
+            sent.extend(c["claim_id"] for c in payload["claims"])
+            return json.dumps({c["claim_id"]: "%s (%s): %s" % (c["condition"], c["gene"], S3G_REFERENCE_LIE)
+                               for c in payload["claims"]})
+        args = types.SimpleNamespace(attempts=2)
+        ir, _, _, _, _, _ = _with_chat(reply, lambda: stage3_run.run_skeleton(doc, path, digest, args, {}))
+        _require("a release covered_reference claim was sent to the model: %r" % sorted(set(sent) & set(ref_claims)),
+                 not set(sent) & set(ref_claims))
+        got = {cl["claim_id"]: cl["text"] for sec in ir["sections"] for cl in sec["claims"] if cl["claim_id"] in ref_claims}
+        _require("covered_reference text is not code-owned: %r" % got, got == ref_claims)
+        for cid, text in got.items():
+            _require("%s claims a reference genotype: %r" % (cid, text), "reference genotype" not in text)
+        return True
+    attempt("V030S3G.skeleton_model_cannot_claim_reference", skeleton_model_cannot_claim_reference)
+
+    def full_model_reference_claim_is_rejected():
+        import types
+        directory = tempfile.mkdtemp(prefix="s3g-full-")
+        doc, path, digest = _model_case(directory)
+        by = {f["finding_id"]: f for f in doc["findings"]}
+        for rsid, lie in (("rs6025", "Factor V Leiden thrombophilia (F5): both copies match the reference at "
+                                     "this position; the effect allele was not found in the genotype."),
+                          ("rs1800562", "rs1800562 is on the array and shows the reference genotype.")):
+            fid = [f["finding_id"] for f in doc["findings"] if f["rsid"] == rsid][0]
+            report = stage3_run.template_ir(doc, digest)
+            for sec in report["sections"]:
+                for cl in sec["claims"]:
+                    if sec["section_id"] != "s_summary" and cl["citations"] and cl["citations"][0]["finding_id"] == fid:
+                        cl["text"] = lie
+            report.pop("generated_by", None)
+            reply = json.dumps(report)
+            args = types.SimpleNamespace(attempts=2)
+            out, used, violations, fallback = _with_chat(
+                lambda kw: reply, lambda: stage3_run.run_full(doc, path, digest, args, [], {}))
+            _require("%s: a false reference claim was accepted (violations %r)" % (rsid, violations), fallback)
+            _require("%s: no attempt names the reference-claim guard: %r" % (rsid, violations),
+                     all("G3" in v for v in violations))
+        # a covered_reference claim on two reference alleles keeps its true sentence
+        report = stage3_run.template_ir(doc, digest)
+        report.pop("generated_by", None)
+        out, used, violations, fallback = _with_chat(
+            lambda kw: json.dumps(report), lambda: stage3_run.run_full(doc, path, digest, types.SimpleNamespace(attempts=1), [], {}))
+        _require("the true template report was rejected: %r" % violations, not fallback)
+        _require("the rs1799963 reference claim is missing",
+                 any("both copies match the reference" in cl["text"] for sec in out["sections"] for cl in sec["claims"]
+                     if cl["citations"] and by[cl["citations"][0]["finding_id"]]["rsid"] == "rs1799963"))
+        return True
+    attempt("V030S3G.full_model_reference_claim_is_rejected", full_model_reference_claim_is_rejected)
+
+    def duplicate_conflict_is_cause_neutral():
+        panel = read_panel()
+        entries = {v["rsid"]: v for v in panel["variants"]}
+        directory = tempfile.mkdtemp(prefix="s3g-dup-")
+        for rsid, rows in (("rs6025", ("CC", "TT")), ("rs10741657", ("AA", "GG"))):
+            v = entries[rsid]
+            lines = ["#Invented synthetic raw data for the G-6 tests; not a real person.",
+                     "#Data was collected using AncestryDNA array version: TESTARRAY-1",
+                     "#Data is formatted using AncestryDNA converter version: TESTCONVERTER-1",
+                     "#Genetic data is provided below as five TAB delimited columns.",
+                     "#using human reference build 37.1 coordinates.",
+                     "rsid\tchromosome\tposition\tallele1\tallele2"]
+            lines += ["%s\t%s\t%s\t%s\t%s" % (rsid, v["chromosome"], v["position"], g[0], g[1]) for g in rows]
+            raw = os.path.join(directory, "raw.dup.%s.txt" % rsid)
+            with open(raw, "w", encoding="utf-8") as fh:
+                fh.write("\n".join(lines) + "\n")
+            doc, ir, errors = _s3_e2e(raw, panel)
+            _require("%s: IR fails validation: %s" % (rsid, errors), not errors)
+            f = [x for x in doc["findings"] if x["rsid"] == rsid][0]
+            _require("%s: duplicate conflict not recorded: %r" % (rsid, f["state"]),
+                     f["state"] == "covered_uninterpretable"
+                     and "conflicting duplicate rows for this rsID in the file" in f["confidence"]["annotation_mapping"]["basis"])
+            text = _s3g_claim(doc, ir, rsid)[2]
+            want = S3G_UNINTERPRETABLE.format(label=v["condition"], gene=" (%s)" % v["gene"])
+            _require("%s: sentence %r, want %r" % (rsid, text, want), text == want)
+            _require("%s: the sentence names a cause" % rsid, "did not match" not in text)
+        return True
+    attempt("V030S3G.duplicate_conflict_is_cause_neutral", duplicate_conflict_is_cause_neutral)
+
+    def not_assayable_sentence_is_exact():
+        panel = read_panel()
+        directory = tempfile.mkdtemp(prefix="s3g-na-")
+        for v in panel["variants"][:1] + [x for x in panel["variants"] if x["rsid"] == "rs10741657"]:
+            override = dict(panel, variants=[dict(x, assayability="not_assayable") if x is v else x
+                                             for x in panel["variants"]])
+            for geno in ((v["effect_allele"],) * 2, None):
+                if geno is None:
+                    raw = _s3_raw(directory, None, "raw.na.%s.txt" % v["rsid"])
+                else:
+                    raw = _s3f_raw(directory, v, geno, "raw.na.%s.eff.txt" % v["rsid"])
+                doc, ir, errors = _s3_e2e(raw, override)
+                _require("%s: IR fails validation: %s" % (v["rsid"], errors), not errors)
+                f = [x for x in doc["findings"] if x["rsid"] == v["rsid"]][0]
+                _require("%s: state %r" % (v["rsid"], f["state"]), f["state"] == "not_assayable")
+                text = _s3g_claim(doc, ir, v["rsid"])[2]
+                want = S3G_NOT_ASSAYABLE.format(label=v["condition"], gene=" (%s)" % v["gene"])
+                _require("%s %s: sentence %r" % (v["rsid"], geno, text), text == want)
+        return True
+    attempt("V030S3G.not_assayable_sentence_is_exact", not_assayable_sentence_is_exact)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -4393,6 +5643,11 @@ def run(check):
     _run_real(attempt)
     _run_1b_b_char(attempt)
     _run_1b_b(attempt)
+    _run_v030_s1(attempt)
+    _run_v030_s2(attempt)
+    _run_v030_s3(attempt)
+    _run_v030_s3_fix(attempt)
+    _run_v030_s3_fix2(attempt)
     _run_1b_b_syn(attempt)
     _run_1b_b_r55(attempt)
     _run_r61(attempt)
@@ -4403,6 +5658,9 @@ def run(check):
 
 
 def main():
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import runtmp
+    runtmp.activate(tool="test_release_panel")
     passed, failed = [], []
 
     def check(name, cond):

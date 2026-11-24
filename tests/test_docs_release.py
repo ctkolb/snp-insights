@@ -87,13 +87,14 @@ NEW_ROW_SHA256 = {
     "AL-027": "febfaee03490fa6dcdcf28a9771bf4805110a29b287af7a40cd51bac3305e20f",
 }
 
-AGENTS_CURRENT_STATE = """## Current state (v0.2.0 release run)
+AGENTS_CURRENT_STATE = """## Current state (v0.3.0 release run)
 
-The release branch carries the reviewed v0.2.0 work: a curated eight-entry
-panel (seven health entries, one trait entry), the template report, the owner-checkpoint procedure
-(docs/owner-checkpoint.md) and the accepted-limits register
-(docs/accepted-limits.md). The remaining steps are owner-only: the private
-real-data checkpoint, repository branch protection, and the release tag.
+The release branch carries the v0.3.0 work: a curated nine-entry panel (seven
+health entries, two trait entries), panel_version 0.3.0, the template report,
+the owner-checkpoint procedure (docs/owner-checkpoint.md) and the
+accepted-limits register (docs/accepted-limits.md). The package version stays
+0.2.0 until the owner decides on a tag. The remaining steps are owner-only: the
+private real-data checkpoint, repository branch protection, and the release tag.
 
 The real-data checkpoint is owner-only, in a separate local environment. Keep
 real DNA, findings, reports, private logs, and hashes outside all agent-accessible
@@ -104,8 +105,8 @@ references only from curated public targets, never personal coverage or genotype
 Do not request private outputs for analysis."""
 
 AGENTS_ROADMAP_ITEMS = (
-    "2. **Curate a usable panel — DONE for v0.2.0** (seven health entries, one "
-    "trait entry; see docs/panel-curation.md).",
+    "2. **Curate a usable panel — DONE for v0.3.0** (seven health entries, two "
+    "trait entries; see docs/panel-curation.md).",
     "9. **Docs polish — DONE for v0.1.0** (README release section, owner "
     "checkpoint, accepted limits).",
 )
@@ -174,13 +175,14 @@ CURATION_RESERVES_PARAGRAPH = (
 EXPECTED_VERSION = "0.2.0"
 
 README_STATUS = (
-    "Release candidate v0.2.0. The pipeline runs end to end on synthetic "
-    "fixtures: parse, annotate, a curated eight-entry release panel, and a "
-    "deterministic template report. The first real-file run is the owner's "
-    "local checkpoint (docs/owner-checkpoint.md). Model narration (skeleton "
-    "and full modes) and the online path exist but are not part of the "
-    "verified v0.2.0 scope. Known gaps and accepted limits are listed in "
-    "docs/accepted-limits.md and DESIGN.md."
+    "Release run for panel version 0.3.0; the package version stays 0.2.0 "
+    "until the owner decides on a tag. The pipeline runs end to end on "
+    "synthetic fixtures: parse, annotate, a curated nine-entry release "
+    "panel, and a deterministic template report. The first real-file run is "
+    "the owner's local checkpoint (docs/owner-checkpoint.md). Model "
+    "narration (skeleton and full modes) and the online path exist but are "
+    "not part of the verified scope. Known gaps and accepted limits are "
+    "listed in docs/accepted-limits.md and DESIGN.md."
 )
 
 REQUIREMENTS_PHRASE = ("Python 3.12 or 3.14 (the CI matrix); other 3.12+ "
@@ -191,7 +193,7 @@ LIMITATION_KEYS = (
     ("about 0.02% of the genome", CHECKPOINT, "about 0.02% of the genome"),
     ("array presence of each marker is not verified", CURATION,
      "array presence not verified"),
-    ("seven health entries and one trait entry", CHECKPOINT,
+    ("seven health entries and two trait entries", CHECKPOINT,
      "seven health entries"),
     ("the panel is small and public", None, None),
     ("only template-only narration is verified", LIMITS,
@@ -300,7 +302,7 @@ def _readme_release_panel_workflow():
     _require("release section follows Quickstart", rel[0] > quick)
     _require("requirements phrase", REQUIREMENTS_PHRASE in flat)
     sec = _flat(_release_section())
-    for phrase in ("seven health-related entries", "one trait entry",
+    for phrase in ("seven health-related entries", "two trait entries",
                    "built reproducibly from public references",
                    "docs/panel-curation.md",
                    "data/targets.release-evidence.json",
@@ -442,8 +444,11 @@ def _version_consistent():
     _require("README version output", "snp-insights %s" % EXPECTED_VERSION in flat)
     _require("getting-started version output",
              "snp-insights %s" % EXPECTED_VERSION in _flat(_read(GETTING_STARTED)))
-    _require("README release-candidate status",
-             "Release candidate v%s." % EXPECTED_VERSION in flat)
+    _require("README package-version status",
+             "the package version stays %s until the owner decides on a tag"
+             % EXPECTED_VERSION in flat)
+    _require("README no longer calls itself a release candidate",
+             "Release candidate" not in flat)
     return True
 
 
@@ -487,7 +492,7 @@ def _agents_md_current_state():
              "Complete independent review of the initial CI/support stage"
              not in text)
     _require("Current state heading present",
-             re.search(r"^## Current state \(v0\.2\.0 release run\)$", text, re.M))
+             re.search(r"^## Current state \(v0\.3\.0 release run\)$", text, re.M))
     _require("current state block is exact", AGENTS_CURRENT_STATE in text)
     _require("current state precedes the roadmap",
              text.index("## Current state") < text.index("## Roadmap to beta"))
@@ -520,7 +525,7 @@ def _accepted_limits_rows_append_only():
         _require("%s differs from the approved text" % rid, _sha(new[rid]) == digest)
     appended = raw[LIMITS_BASE_BYTES:].decode("utf-8").split("\n")
     appended = [l for l in appended if l.strip()]
-    _require("only the approved rows AL-014..AL-040 were appended",
+    _require("only the approved rows AL-014..AL-052 were appended",
              [l[2:8] for l in appended]
              == sorted(NEW_ROW_SHA256) + sorted(CLOSURE_ROWS) + sorted(APPENDED_ROWS))
     return True
@@ -1402,20 +1407,29 @@ AL_032_ROW = (
 
 # Owner-approved rows (decision D-7 on r103, ticket S3-B), appended after AL-032.
 AL_033_ROW = (
-    "| AL-033 | REL | The v0.2.0 release panel has seven health-related "
-    "entries (five carrier status, two risk association) and one trait "
-    "entry (rs11591147, LDL cholesterol levels). This row supersedes "
-    "AL-014 for v0.2.0; AL-014 describes v0.1.0 and stays as recorded. "
+    "| AL-033 | REL | The release panel has seven health-related "
+    "entries (five carrier status, two risk association) and two trait "
+    "entries (rs11591147, LDL cholesterol levels; rs10741657, "
+    "25-hydroxyvitamin D levels). The second trait entry is new in "
+    "panel version 0.3.0; the v0.2.0 panel had seven health-related "
+    "entries and one trait entry. This row supersedes AL-014 for the "
+    "release panel; AL-014 describes v0.1.0 and stays as recorded. "
     "| LOW | Goals are not quotas; evidence-first curation (owner "
     "decisions on r96 and r97). | 2026-11-14 | The panel changes. |"
 )
 
 AL_034_ROW = (
     "| AL-034 | REL | The release panel carries one retrieved_at per "
-    "source (2026-11-14T14:16:47Z, a capture file time), although the "
-    "rows of three entries were captured on 2026-11-11 and those of "
-    "five on 2026-11-14. The dbSNP, gnomAD and GWAS Catalog labels name "
-    "both dates, docs/panel-curation.md records the split, and the "
+    "source, a capture file time, although its entries were captured "
+    "on more than one date. In panel version 0.2.0 that time was "
+    "2026-11-14T14:16:47Z, although the rows of three entries were "
+    "captured on 2026-11-11 and those of five on 2026-11-14. In panel "
+    "version 0.3.0 it is 2026-11-23T19:22:03Z, the file time of the "
+    "supplement's 11-14914878-A-G gnomAD answer, although the rows of "
+    "three entries were captured on 2026-11-11, those of five on "
+    "2026-11-14 and those of one on 2026-11-23; the dbSNP, gnomAD and "
+    "GWAS Catalog labels name the 2026-11-11, 2026-11-14 and 2026-11-23 "
+    "captures. docs/panel-curation.md records the split, and the "
     "report prints the single time for every source. | LOW | Accepted "
     "with the rebuild plan (owner decision R-1 on r100); per-entry "
     "dates need a panel format change. | 2026-11-14 | The panel gains "
@@ -1493,6 +1507,153 @@ AL_040_ROW = (
     "source changes. |"
 )
 
+AL_041_ROW = (
+    "| AL-041 | TMP | A stale run root means only that its owning "
+    "process ended. A child process it started can outlive it and "
+    "keep writing into the root, so the sweep can list a root that "
+    "is still in use. The docs tell the owner to confirm no process "
+    "uses a root (for example `lsof +D PATH`) before any removal. | "
+    "MEDIUM | Owner decision on R128-F3: documented, with a caution "
+    "line in the sweep output; no marker or process-group redesign. "
+    "| 2026-11-22 | A leftover root is removed while a process still "
+    "uses it, or the owner wants process-group tracking. |"
+)
+
+AL_042_ROW = (
+    "| AL-042 | TMP | Run-root markers are not authenticated: any "
+    "process running as the same user can create a directory with a "
+    "matching name and a made-up marker, and the sweep lists it as "
+    "stale. The sweep only lists; removal needs the owner's explicit "
+    "approval of exact names. | LOW | Owner decision on R128-F4: "
+    "documented. | 2026-11-22 | The sweep gains a removal mode, or a "
+    "marker is trusted for something beyond listing. |"
+)
+
+AL_043_ROW = (
+    "| AL-043 | TMP | Removal binds to the opened directory and "
+    "re-checks each directory right after opening it, but a process "
+    "running as the same user can still rename a directory in the "
+    "short window between that check and an individual removal, so "
+    "the removal can reach an entry in the moved directory before "
+    "the final refusal. | LOW | Owner decision on the S0 FIX round "
+    "2: close the deterministic windows only; a portable containment "
+    "design is out of scope. | 2026-11-22 | The helper runs where "
+    "another user's or untrusted code shares the same account, or a "
+    "portable containment primitive is available. |"
+)
+
+AL_044_ROW = (
+    "| AL-044 | TMP | Cleanup of a run root walks nested directories "
+    "recursively. Beyond a depth of roughly 700 on the reviewed "
+    "host, `RecursionError` is caught and logged, cleanup returns "
+    "False and a partially cleaned root stays (one root, listed by "
+    "the sweep). Test and build-loop trees are far shallower. | LOW "
+    "| Owner decision on R132-F1 (accepted rather than spend fix "
+    "round 3). | 2026-11-22 | A test or tool builds trees of several "
+    "hundred levels, or cleanup is reused for arbitrary trees. |"
+)
+
+AL_045_ROW = (
+    "| AL-045 | TMP | A process ended by SIGKILL or `os._exit`, or "
+    "killed before its handlers run, leaves exactly one run root; "
+    "the next sweep lists it. A recorded pid that is later reused by "
+    "another process can make a dead root show as live (the safe "
+    "direction: it is not listed stale). | LOW | Bounded by design "
+    "(at most one owned root per process, list-only sweep); no "
+    "deletion code in S0. | 2026-11-22 | Leftover roots accumulate, "
+    "or pid reuse hides a root for long. |"
+)
+
+AL_046_ROW = (
+    "| AL-046 | TMP | The SIGTERM and SIGHUP handlers end the "
+    "process through SystemExit, so a check that catches SystemExit "
+    "can let a terminated run continue. Runs started under `nohup` "
+    "(SIGHUP ignored) fail the SIGHUP hygiene checks by design. | "
+    "LOW | Handler left unchanged; documented. | 2026-11-22 | A test "
+    "or tool starts catching SystemExit around long work, or the "
+    "hygiene suite is run under `nohup`. |"
+)
+
+AL_047_ROW = (
+    "| AL-047 | TMP | The peak-bytes and tracked-file-copy gate "
+    "(T-12) runs only when tests/test_tmp_hygiene.py runs directly, "
+    "not inside the pipeline run. The metric is tracked-file copies "
+    "(41 to 1, bound 14); the number of fixture directories (41) is "
+    "recorded only and did not change. | LOW | Owner confirmed this "
+    "reading of T-12 (accept all). | 2026-11-22 | The copy count "
+    "regresses unnoticed in pipeline-only runs. |"
+)
+
+AL_048_ROW = (
+    "| AL-048 | REL | A GWAS p-value whose value underflows to 0.0 "
+    "as a float (for example 6e-22136 or 2e-456) is rejected as "
+    "`p-malformed`, so the row can neither count as a group nor "
+    "meet the significance requirement, even when it is the "
+    "strongest row in the pack. In v0.3.0 this removed the UK "
+    "Biobank Lp(a) rows for rs10455872 and rs3798220. | LOW | Owner "
+    "decision T-4 (v0.3.0 S1 triage): the existing `p-malformed` "
+    "rule stands; it can only exclude evidence, never add it. | "
+    "2026-11-23 | A candidate's replication outcome depends on an "
+    "underflowed row, or the rule is changed to parse such values. "
+    "|"
+)
+
+AL_049_ROW = (
+    "| AL-049 | REL | The report does not state the direction of a "
+    "trait association (whether the effect allele goes with higher "
+    "or lower values); the direction is recorded only in "
+    "docs/panel-curation.md: in the T1 `direction/meaning` and "
+    "`rationale` cells and in the T4 `direction` column. | LOW | "
+    "Owner decision D-6 (v0.3.0 S1): no direction wording is added "
+    "to the report template. | 2026-11-23 | The owner wants the "
+    "report to state direction, or a reader takes a trait finding "
+    "to mean higher or lower values. |"
+)
+
+AL_050_ROW = (
+    "| AL-050 | REL | Curated trait labels can be shared by more than one "
+    "candidate: rs6544713 and rs11591147 share \"LDL cholesterol levels\", "
+    "and rs2282679 and rs10741657 share \"25-hydroxyvitamin D levels\". "
+    "The release panel carries one entry per label, so it reports no "
+    "same-label pair. If a panel carries two entries with one label, the "
+    "findings document reports a mixed-evidence contradiction as-is when "
+    "their evidence differs and none when it is equal; it never "
+    "reconciles them. | LOW | Owner decision D-5 (v0.3.0 S1): "
+    "same-label pairs are accepted; the behavior is pinned by the "
+    "synthetic two-entry test V030S3.same_label_pair_pins_behavior. | "
+    "2026-11-23 | A panel carries two entries with one label, or the "
+    "contradiction rule changes. |"
+)
+
+AL_051_ROW = (
+    "| AL-051 | REL | The findings schema keeps schema_version 1.2.0 "
+    "after it gained the optional effect_allele_is_reference property "
+    "(present and true only when the curated effect allele is the "
+    "reference allele). The change is additive: the current schema "
+    "accepts older 1.2.0 findings, but an older strict copy of the 1.2.0 "
+    "schema (additionalProperties false) rejects a findings document "
+    "that carries the property, although both say 1.2.0. | LOW | Owner "
+    "decision on review finding R150-F1 (2026-11-24): document only; "
+    "schema_version is not bumped. | 2026-11-24 | A consumer validates "
+    "findings with an older copy of the schema, or the findings schema "
+    "changes again. |"
+)
+
+AL_052_ROW = (
+    "| AL-052 | REL | The narration guard G3 in stage3/run.py rejects any "
+    "claim that contains the word 'reference' and cites a covered_reference "
+    "finding whose reference genotype is not provable. It therefore also "
+    "rejects the accurate sentence 'This call does not establish the "
+    "reference genotype.' and the stage falls back to the deterministic "
+    "template prose for that finding. The behavior is fail-safe: no false "
+    "claim is emitted, only template wording. | LOW | Owner decision on "
+    "review finding R153-F1 (2026-11-24): accepted; G3 is not changed. | "
+    "2026-11-24 | narration quality for covered_reference findings "
+    "matters, or G3 is next changed (the reviewer's idea: reject "
+    "affirmative false reference-genotype assertions instead of every "
+    "mention of 'reference'). |"
+)
+
 APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
                  "AL-033": AL_033_ROW,
                  "AL-034": AL_034_ROW,
@@ -1501,7 +1662,19 @@ APPENDED_ROWS = {"AL-031": AL_031_ROW, "AL-032": AL_032_ROW,
                  "AL-037": AL_037_ROW,
                  "AL-038": AL_038_ROW,
                  "AL-039": AL_039_ROW,
-                 "AL-040": AL_040_ROW}
+                 "AL-040": AL_040_ROW,
+                 "AL-041": AL_041_ROW,
+                 "AL-042": AL_042_ROW,
+                 "AL-043": AL_043_ROW,
+                 "AL-044": AL_044_ROW,
+                 "AL-045": AL_045_ROW,
+                 "AL-046": AL_046_ROW,
+                 "AL-047": AL_047_ROW,
+                 "AL-048": AL_048_ROW,
+                 "AL-049": AL_049_ROW,
+                 "AL-050": AL_050_ROW,
+                 "AL-051": AL_051_ROW,
+                 "AL-052": AL_052_ROW}
 NARRATION_NOT_VERIFIED = "not verified against a live model"
 FAILURE_EXAMPLE = (
     "template IR failed validation (bug):",
@@ -1630,13 +1803,13 @@ def _r6_template_failure_example_is_real():
 def _r6_accepted_limits_al031_al032_verbatim():
     text = _read(LIMITS)
     found = _rows(text, set(APPENDED_ROWS))
-    _require("AL-031 and AL-032 present", sorted(found) == sorted(APPENDED_ROWS))
+    _require("AL-031..AL-052 all present", sorted(found) == sorted(APPENDED_ROWS))
     for rid, row in APPENDED_ROWS.items():
         _require("%s differs from the approved text" % rid, found[rid] == row)
         _require("%s appears once" % rid, text.count(row) == 1)
     order = [l[2:8] for l in text.split("\n") if re.match(r"\| AL-\d{3} \|", l)]
     tail = len(APPENDED_ROWS)
-    _require("AL-031 and AL-032 start the appended rows, which end the register in order",
+    _require("AL-031 starts the appended rows, which end the register in order at AL-052",
              order == sorted(order) and order[-tail:] == sorted(APPENDED_ROWS)
              and order[-tail:][:2] == ["AL-031", "AL-032"])
     _require("AL-030 sits directly before AL-031", order[-tail - 1] == "AL-030")
@@ -1695,7 +1868,7 @@ def _expected_count_phrases():
     traits = ", ".join(v["rsid"] for v in _release_panel_variants()
                        if v["result_type"] == "trait")
     return (
-        (CHECKPOINT, "This release has %s, so a trait-count cutoff" % t),
+        (CHECKPOINT, "This release has %s; no count cutoff is prescribed." % t),
         (CHECKPOINT, "%s health %s (%s carrier status, %s risk association) and %s."
          % (h, _entries(c["health"]), w(c["carrier"]), w(c["risk"]), t)),
         (README, "small public panel of %s health-related %s and %s,"
@@ -1835,6 +2008,12 @@ CURATION_METHOD_SENTENCES = (
     "judgment (counts only).",
 )
 
+# Owner decision R-a on r138: the pool paragraph is checked per panel version.
+V020_GROWTH = (11, 34, 5, 6)  # candidates, T1 rows after v0.2.0, included, excluded
+V030_POOL = ("rs10455872", "rs3798220", "rs6544713", "rs2282679", "rs10741657",
+             "rs601338", "rs6795970", "rs174537", "rs1801133", "rs11887534")
+V030_GROWTH = (10, 44, 1, 9)  # candidates, T1 rows after v0.3.0, included, excluded
+
 
 def _t1_dicts():
     """Every T1 data row as a dict keyed by the header cells."""
@@ -1886,12 +2065,35 @@ def _s3b_curation_release_paragraph_matches_tables():
             _require("%r is not scoped to v0.1.0: %r" % (phrase, s), "v0.1.0" in s)
     rows = _t1_dicts()
     new = [r for r in rows if r["rsID"] not in draft]
-    inc = [r for r in new if r["decision"] == "included"]
-    exc = [r for r in new if r["decision"] == "excluded"]
     _require("T1 adds no candidate beyond the DRAFT pool", new)
-    _require("pool growth is not stated from T1",
-             "grew by %s candidates to %d T1 rows, of which %s were included and %s excluded"
-             % (w(len(new)), len(rows), w(len(inc)), w(len(exc))) in para)
+    # Version split (owner decision R-a on r138): the v0.2.0 growth sentence keeps
+    # its numbers and the v0.3.0 rows have their own sentence. The strict
+    # no-reserve rule holds for every T1 row now that rs10741657 is `included`
+    # (R141-F3, S2).
+    v030 = [r for r in new if r["rsID"] in V030_POOL]
+    v020 = [r for r in new if r["rsID"] not in V030_POOL]
+    _require("T1 lacks a v0.3.0 pool row", sorted(r["rsID"] for r in v030) == sorted(V030_POOL))
+    inc2 = [r for r in v020 if r["decision"] == "included"]
+    exc2 = [r for r in v020 if r["decision"] == "excluded"]
+    _require("v0.2.0 rows changed: %d rows, %d included, %d excluded" % (len(v020), len(inc2), len(exc2)),
+             (len(v020), len(draft) + len(v020), len(inc2), len(exc2)) == V020_GROWTH)
+    growth020 = ("For v0.2.0 the pool grew by %s candidates to %d T1 rows, "
+                 "of which %s were included and %s excluded."
+                 % (w(len(v020)), len(draft) + len(v020), w(len(inc2)), w(len(exc2))))
+    _require("v0.2.0 pool growth must be stated exactly once from T1",
+             [s for s in sentences if s.startswith("For v0.2.0 the pool grew by ")] == [growth020])
+    inc3 = [r for r in v030 if r["decision"] == "included"]
+    res3 = [r for r in v030 if r["decision"] == "reserve"]
+    exc3 = [r for r in v030 if r["decision"] == "excluded"]
+    _require("no reserve row may exist: %s" % [r["rsID"] for r in rows if r["decision"] == "reserve"],
+             not res3 and not [r for r in rows if r["decision"] == "reserve"])
+    _require("v0.3.0 rows changed: %d rows, %d included, %d excluded" % (len(v030), len(inc3), len(exc3)),
+             (len(v030), len(rows), len(inc3), len(exc3)) == V030_GROWTH)
+    growth030 = ("For v0.3.0 the pool grew by %s candidates to %d T1 rows, of which %s was included, "
+                 "none is a reserve and %s were excluded."
+                 % (w(len(v030)), len(rows), w(len(inc3)), w(len(exc3))))
+    _require("v0.3.0 pool growth must be stated exactly once, as the whole sentence, from T1",
+             [s for s in sentences if s.startswith("For v0.3.0 the pool grew by ")] == [growth030])
     _require("the paragraph names an rsID other than the added T1 candidates",
              set(re.findall(r"\brs\d+\b", para)) == {r["rsID"] for r in new})
     for r in new:
@@ -1909,8 +2111,80 @@ def _s3b_curation_release_paragraph_matches_tables():
         else:
             _require("%s: sentence lacks reason code `%s`" % (r["rsID"], r["reason code"]),
                      s.startswith("Excluded with reason code `%s`" % r["reason code"]))
-    _require("T1 has a reserve row", not any(r["decision"] == "reserve" for r in rows))
-    _require("no-reserves statement for v0.2.0 missing", "No reserves exist for v0.2.0" in para)
+    _require("v0.2.0 no-reserves statement is missing or inconsistent",
+             [s for s in sentences if s.startswith("No reserves exist for v0.2.0")]
+             == ["No reserves exist for v0.2.0 either: none of its rows is a `reserve`."])
+    # Full sentence inventory (R151-F5): every sentence is a method statement, a v0.1.0
+    # statement, one of the three exact growth/no-reserves sentences, or a decision sentence
+    # naming T1 rsIDs; anything else (a paraphrase of growth or reserves) fails.
+    exact = set(CURATION_METHOD_SENTENCES) | {
+        growth020, growth030, "No reserves exist for v0.2.0 either: none of its rows is a `reserve`."}
+    for s in sentences:
+        known = (s in exact
+                 or (s.startswith(("For the v0.1.0 curation ", "In the v0.1.0 curation "))
+                     and "reserve" not in s.lower())
+                 or (s.startswith(("Included as `", "Excluded with reason code `"))
+                     and re.search(r"\brs\d+\b", s) and "reserve" not in s.lower()))
+        _require("the release paragraph has an unaccounted sentence: %r" % s, known)
+    return True
+
+
+def _s3b_release_paragraph_gate_rejects_contradictions():
+    """R141-F3: the release paragraph gate must reject a false extra growth
+    sentence and a contradictory claim after the no-reserves prefix, for v0.2.0
+    and for v0.3.0, and must compare the whole v0.3.0 sentence, not a substring."""
+    para = _curation_release_paragraph()
+    growth = "For v0.2.0 the pool grew by eleven"
+    claim = "No reserves exist for v0.2.0 either: none of its rows is a `reserve`."
+    growth3 = ("For v0.3.0 the pool grew by ten candidates to 44 T1 rows, of which one was "
+               "included, none is a reserve and nine were excluded.")
+    _require("the paragraph lacks the v0.2.0 or v0.3.0 growth or no-reserves statement",
+             para.count(growth) == 1 and para.count(claim) == 1 and para.count(growth3) == 1)
+    variants = {
+        "extra false growth sentence": para.replace(
+            growth, "For v0.2.0 the pool grew by twelve candidates to 35 T1 rows, "
+            "of which six were included and six excluded. " + growth, 1),
+        "reserve claim after the no-reserves prefix": para.replace(
+            claim, "No reserves exist for v0.2.0 either: one of its rows is a `reserve`.", 1),
+        "extra false v0.3.0 growth sentence": para.replace(
+            growth3, "For v0.3.0 the pool grew by eleven candidates to 45 T1 rows, of which "
+            "two were included, none is a reserve and nine were excluded. " + growth3, 1),
+        "contradictory suffix on the v0.3.0 growth sentence": para.replace(
+            growth3, growth3[:-1] + ", and one is a reserve.", 1),
+        "false growth paraphrase without the canonical prefix": para.replace(
+            CURATION_METHOD_SENTENCES[-1], "In v0.3.0 the pool added eleven candidates, and one "
+            "is a reserve. " + CURATION_METHOD_SENTENCES[-1], 1),
+        "extra unaccounted sentence": para.replace(
+            CURATION_METHOD_SENTENCES[-1], "The pool is complete. " + CURATION_METHOD_SENTENCES[-1], 1),
+    }
+    accepted = []
+    original = globals()["_curation_release_paragraph"]
+    try:
+        for name, changed in variants.items():
+            globals()["_curation_release_paragraph"] = lambda changed=changed: changed
+            try:
+                _s3b_curation_release_paragraph_matches_tables()
+            except AssertionError:
+                continue
+            accepted.append(name)
+    finally:
+        globals()["_curation_release_paragraph"] = original
+    # The strict no-reserve rule covers every T1 row, also one outside the v0.3.0 pool, which
+    # no growth count sees.
+    rows = _t1_dicts()
+    _require("the first T1 row is not a decided row", rows[0]["decision"] in ("included", "excluded"))
+    reserve_rows = [dict(rows[0], decision="reserve")] + rows[1:]
+    original_rows = globals()["_t1_dicts"]
+    try:
+        globals()["_t1_dicts"] = lambda: reserve_rows
+        try:
+            _s3b_curation_release_paragraph_matches_tables()
+            accepted.append("a reserve row outside the v0.3.0 pool")
+        except AssertionError:
+            pass
+    finally:
+        globals()["_t1_dicts"] = original_rows
+    _require("the release paragraph gate accepts: %s" % accepted, not accepted)
     return True
 
 
@@ -1922,6 +2196,110 @@ def _runner_copies_guard_selftest_files():
                      if path not in COPY_FILES
                      and not any(path.startswith(directory + "/") for directory in COPY_DIRS))
     _require(f"runner copy inventory omits guard self-test files: {missing}", not missing)
+    return True
+
+
+# ------------------------------------- V030S3: v0.3.0 release-run wording
+
+RELEASE_CLAIM_PATTERNS = (
+    r"\b(?:has|have) been (?:released|published|tagged)\b",
+    r"\b(?:is|was|are|were) (?:released|published|tagged)\b",
+    r"\bRelease candidate\b",
+    r"\bnow available\b",
+)
+
+
+def _v030s3_release_wording():
+    readme = _flat(_read(README))
+    getting = _flat(_read(GETTING_STARTED))
+    checkpoint = _flat(_read(CHECKPOINT))
+    status = _flat(_section(_read(README), "Status"))
+    state = _flat(_section(_read(AGENTS), "Current state (v0.3.0 release run)"))
+    facts = _flat(_section(_read(CHECKPOINT), "Current release facts"))
+    _require("README release section names panel version 0.3.0",
+             "panel version 0.3.0" in _flat(_release_section()))
+    _require("getting-started names panel version 0.3.0", "panel version 0.3.0" in getting)
+    _require("owner checkpoint names panel version 0.3.0", "panel version 0.3.0" in facts)
+    _require("README states the package version stays 0.2.0",
+             "package version stays 0.2.0 until the owner decides on a tag" in status)
+    _require("AGENTS states the package version stays 0.2.0",
+             "package version stays 0.2.0 until the owner decides on a tag" in state)
+    _require("the old v0.2.0 panel statement is gone from the owner checkpoint",
+             "The v0.2.0 release panel" not in checkpoint)
+    _require("the old v0.2.0 panel statement is gone from getting-started",
+             "The v0.2.0 panel has" not in getting and "v0.2.0 release set" not in getting)
+    _require("the old v0.2.0 panel statement is gone from the README",
+             "v0.2.0 ships a small public panel" not in readme)
+    for label, text in (("README Status", status), ("AGENTS current state", state),
+                        ("owner checkpoint release facts", facts)):
+        for pattern in RELEASE_CLAIM_PATTERNS:
+            _require("%s claims a release, tag or publication (%s)" % (label, pattern),
+                     re.search(pattern, text, re.I) is None)
+        _require("%s does not leave release steps to the owner" % label,
+                 "owner" in text.lower())
+    return True
+
+
+def _v030s3g_no_release_claim_in_release_docs():
+    """Sol mutant r151-12: no release, tag or publication claim anywhere in the release
+    docs, not only in their Status sections."""
+    for path in (README, GETTING_STARTED, CHECKPOINT, AGENTS):
+        text = _flat(_read(path))
+        for pattern in RELEASE_CLAIM_PATTERNS:
+            hit = re.search(pattern, text, re.I)
+            _require("%s claims a release, tag or publication: %r" % (
+                os.path.basename(path), hit.group(0) if hit else ""), hit is None)
+    bad = _flat(_read(GETTING_STARTED)) + " The v0.3.0 package has been released."
+    _require("the control claim is not detected",
+             any(re.search(p, bad, re.I) for p in RELEASE_CLAIM_PATTERNS))
+    return True
+
+
+def _v030s3_accepted_limits_rows():
+    text = _read(LIMITS)
+    rows = _rows(text, {"AL-033", "AL-050"})
+    _require("AL-033 still names the first trait label", "rs11591147" in rows["AL-033"])
+    _require("AL-033 no longer calls the nine-entry panel the v0.2.0 panel",
+             "The v0.2.0 release panel has" not in rows["AL-033"])
+    _require("AL-033 says the second trait entry is new in 0.3.0",
+             "new in panel version 0.3.0" in rows["AL-033"])
+    _require("AL-050 names its pin", "V030S3.same_label_pair_pins_behavior" in rows["AL-050"])
+    # AL-051 (R150-F1, document only): the row matches the schema it describes.
+    rows51 = _rows(text, {"AL-051"})
+    _require("AL-051 is missing", "AL-051" in rows51)
+    import json
+    with open(os.path.join(ROOT, "schema", "findings.schema.json"), encoding="utf-8") as fh:
+        schema = json.load(fh)
+    finding = schema["$defs"]["finding"]
+    version = schema["properties"]["schema_version"]
+    _require("AL-051 names schema_version 1.2.0, the schema does not",
+             "schema_version 1.2.0" in rows51["AL-051"] and "1.2.0" in json.dumps(version))
+    _require("AL-051 describes an optional property the schema does not have",
+             "effect_allele_is_reference" in finding["properties"]
+             and "effect_allele_is_reference" not in finding["required"]
+             and finding.get("additionalProperties") is False)
+    with open(os.path.join(ROOT, "tests", "test_release_panel.py"), encoding="utf-8") as fh:
+        _require("the AL-050 pin does not exist in the release-panel tests",
+                 'attempt("V030S3.same_label_pair_pins_behavior"' in fh.read())
+    # AL-052 (R153-F1, accepted): the row names the finding and the guard file.
+    rows52 = _rows(text, {"AL-052"})
+    _require("AL-052 is missing", "AL-052" in rows52)
+    _require("AL-052 does not name R153-F1", "R153-F1" in rows52["AL-052"])
+    _require("AL-052 does not name stage3/run.py", "stage3/run.py" in rows52["AL-052"])
+    return True
+
+
+def _v030s3f_excerpt_reflects_equal_reference_sentence():
+    flat = _flat(_read(GETTING_STARTED))
+    old = ("Factor V Leiden thrombophilia (F5): both copies match the reference at this "
+           "position; the effect allele was not found in the genotype.")
+    new = ("Factor V Leiden thrombophilia (F5): no copy of the effect allele was found in "
+           "the genotype at this position.")
+    _require("getting-started still shows the false rs6025 sentence", old not in flat)
+    _require("getting-started lacks the rs6025 sentence for effect allele = reference", new in flat)
+    _require("the excerpt line does not cite effect_allele_is_reference",
+             "effect_allele_is_reference]" in flat.split(new, 1)[1].split("\n")[0][:400]
+             or "effect_allele_is_reference]" in flat.split(new, 1)[1][:400])
     return True
 
 
@@ -2002,10 +2380,20 @@ def run(check):
     attempt("S3B.loop_spec_records_d8", _s3b_loop_spec_records_d8)
     attempt("S3B.curation_release_paragraph_matches_tables",
             _s3b_curation_release_paragraph_matches_tables)
+    attempt("S3B.release_paragraph_gate_rejects_contradictions",
+            _s3b_release_paragraph_gate_rejects_contradictions)
     attempt("L.runner_copies_guard_selftest_files", _runner_copies_guard_selftest_files)
+    attempt("V030S3.release_wording", _v030s3_release_wording)
+    attempt("V030S3.accepted_limits_rows", _v030s3_accepted_limits_rows)
+    attempt("V030S3F.docs_excerpt_reflects_equal_reference_sentence",
+            _v030s3f_excerpt_reflects_equal_reference_sentence)
+    attempt("V030S3G.no_release_claim_in_release_docs", _v030s3g_no_release_claim_in_release_docs)
 
 
 def main():
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import runtmp
+    runtmp.activate(tool="test_docs_release")
     passed, failed = [], []
 
     def check(name, cond):

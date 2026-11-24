@@ -133,6 +133,12 @@ def _hf(finding_id, rsid, gene, condition, state, zygosity, result_type, effect=
         finding["result_type"] = result_type
     if effect is not None:
         finding["effect_allele"] = effect
+    if state == "covered_reference" and effect is not None and ref != effect:
+        # r152 (G-1): like an annotated finding, carry the locus and its code-built gnomAD
+        # link, which records the reference allele the two called alleles equal.
+        finding.update(chromosome="1", position=1000, references=[{
+            "source": "gnomAD",
+            "url": "https://gnomad.broadinstitute.org/variant/1-1000-%s-%s?dataset=gnomad_r2_1" % (ref, effect)}])
     return finding
 
 
@@ -399,7 +405,8 @@ def _run_behavior(attempt):
         _require(f"unexpected validation errors: {errors}", not errors)
         texts = _texts(ir)
         _require("no-call wording", "returned no call" in texts.get("cl_000000000001", ""))
-        _require("uninterpretable wording", "did not match the known alleles" in texts.get("cl_000000000002", ""))
+        _require("uninterpretable wording", "the call could not be interpreted, so no genotype is given"
+                 in texts.get("cl_000000000002", ""))
         return True
     attempt("R4A.nocall_and_uninterpretable_wording", nocall_and_uninterpretable_wording)
 
@@ -721,6 +728,8 @@ def _prose_for(doc, only=None):
     by_id = {f["finding_id"]: f for f in doc["findings"]}
     prose = {}
     for cl in stage3_run._state_claims(base):
+        if cl["text"]:
+            continue  # code-owned claim, not sent to the model (r152, G-3)
         if only is not None and cl["claim_id"] not in only:
             continue
         prose[cl["claim_id"]] = STATE_PROSE[by_id[cl["citations"][0]["finding_id"]]["state"]]
@@ -1347,7 +1356,7 @@ def _s3a_trait_sentence(label):
 
 
 def _s3a_release_trait(doc):
-    traits = [f for f in doc["findings"] if f.get("result_type") == "trait"]
+    traits = [f for f in doc["findings"] if f.get("result_type") == "trait" and f.get("rsid") == "rs11591147"]
     _require(f"want one trait finding in the release fixture, got {len(traits)}", len(traits) == 1)
     return traits[0]
 
@@ -1605,6 +1614,9 @@ def run(check):
 
 
 def main():
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import runtmp
+    runtmp.activate(tool="test_report_readability")
     passed, failed = [], []
 
     def check(name, cond):
