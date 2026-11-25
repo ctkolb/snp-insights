@@ -22,6 +22,7 @@ import shlex
 import sys
 import tempfile
 import tomllib
+import unicodedata
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for _d in ("", "scripts"):
@@ -87,14 +88,17 @@ NEW_ROW_SHA256 = {
     "AL-027": "febfaee03490fa6dcdcf28a9771bf4805110a29b287af7a40cd51bac3305e20f",
 }
 
-AGENTS_CURRENT_STATE = """## Current state (v0.3.0 release run)
+AGENTS_CURRENT_STATE = """## Current state (v0.4.0 release run)
 
-v0.3.0 is merged to main and tagged. It carries a curated nine-entry panel
-(seven health entries, two trait entries), panel_version 0.3.0, the template
-report, the owner-checkpoint procedure (docs/owner-checkpoint.md) and the
-accepted-limits register (docs/accepted-limits.md). The package version is
-0.3.0. The remaining steps are owner-only: the private real-data checkpoint
-and repository branch protection.
+v0.4.0 is prepared for the owner's release decision. It adds the
+disease-association contract (docs/disease-associations.md) and its checkers.
+No disease association met the contract: all four candidates were excluded, with
+the reasons recorded in docs/panel-curation.md. It carries a curated nine-entry
+panel (seven health entries, two trait entries), unchanged from v0.3.0,
+panel_version 0.4.0, the template report (unchanged, with no disease section),
+the owner-checkpoint procedure (docs/owner-checkpoint.md) and the accepted-limits
+register (docs/accepted-limits.md). The package version is 0.4.0. The remaining steps are owner-only: the private real-data checkpoint,
+the merge, tag and publication decisions, and repository branch protection.
 
 The real-data checkpoint is owner-only, in a separate local environment. Keep
 real DNA, findings, reports, private logs, and hashes outside all agent-accessible
@@ -172,17 +176,22 @@ CURATION_RESERVES_PARAGRAPH = (
 )
 
 # The package, console script and pipeline version of this release (ticket B).
-EXPECTED_VERSION = "0.3.0"
+EXPECTED_VERSION = "0.4.0"
 
 README_STATUS = (
-    "Released as v0.3.0: panel version 0.3.0 and package version 0.3.0. "
-    "The pipeline runs end to end on "
-    "synthetic fixtures: parse, annotate, a curated nine-entry release "
-    "panel, and a deterministic template report. The first real-file run is "
-    "the owner's local checkpoint (docs/owner-checkpoint.md). Model "
-    "narration (skeleton and full modes) and the online path exist but are "
-    "not part of the verified scope. Known gaps and accepted limits are "
-    "listed in docs/accepted-limits.md and DESIGN.md."
+    "Version 0.4.0 is prepared for the owner's release decision: panel "
+    "version 0.4.0 and package version 0.4.0. v0.4.0 added the "
+    "disease-association contract (docs/disease-associations.md) and its "
+    "checkers. No disease association met the contract, so the release panel "
+    "is the unchanged nine-entry panel (seven health entries, two trait "
+    "entries), and the report template is unchanged and renders no disease "
+    "section. The pipeline runs end to end on synthetic fixtures: parse, "
+    "annotate, a curated nine-entry release panel, and a deterministic "
+    "template report. The first real-file run is the owner's local checkpoint "
+    "(docs/owner-checkpoint.md); the merge, tag, publication and branch "
+    "protection are owner-only. Model narration (skeleton and full modes) and "
+    "the online path exist but are not part of the verified scope. Known gaps "
+    "and accepted limits are listed in docs/accepted-limits.md and DESIGN.md."
 )
 
 REQUIREMENTS_PHRASE = ("Python 3.12 or 3.14 (the CI matrix); other 3.12+ "
@@ -378,13 +387,13 @@ def _readme_template_only_command():
 
 
 def _readme_limitations_list():
-    sec = _flat(_section(_read(README), "Known limitations (v0.3.0)")).lower()
+    sec = _flat(_section(_read(README), "Known limitations (v0.4.0)")).lower()
     for phrase, doc, doc_phrase in LIMITATION_KEYS:
         _require("README limitation lacks " + phrase, phrase in sec)
         if doc is not None:
             _require("%s lacks %r" % (os.path.basename(doc), doc_phrase),
                      doc_phrase in _flat(_read(doc)))
-    items = [l for l in _section(_read(README), "Known limitations (v0.3.0)")
+    items = [l for l in _section(_read(README), "Known limitations (v0.4.0)")
              .split("\n") if l.startswith("- ")]
     _require("one list item per limitation", len(items) >= len(LIMITATION_KEYS))
     return True
@@ -445,7 +454,7 @@ def _version_consistent():
     _require("getting-started version output",
              "snp-insights %s" % EXPECTED_VERSION in _flat(_read(GETTING_STARTED)))
     _require("README package-version status",
-             "panel version 0.3.0 and package version %s" % EXPECTED_VERSION
+             "panel version 0.4.0 and package version %s" % EXPECTED_VERSION
              in flat)
     _require("README no longer calls itself a release candidate",
              "Release candidate" not in flat)
@@ -492,7 +501,7 @@ def _agents_md_current_state():
              "Complete independent review of the initial CI/support stage"
              not in text)
     _require("Current state heading present",
-             re.search(r"^## Current state \(v0\.3\.0 release run\)$", text, re.M))
+             re.search(r"^## Current state \(v0\.4\.0 release run\)$", text, re.M))
     _require("current state block is exact", AGENTS_CURRENT_STATE in text)
     _require("current state precedes the roadmap",
              text.index("## Current state") < text.index("## Roadmap to beta"))
@@ -643,7 +652,7 @@ RD_HEADINGS = (
     "SNPedia (manual)",
 )
 README_KEEP_HEADINGS = (
-    "How it works", "Why", "Requirements", "Known limitations (v0.3.0)",
+    "How it works", "Why", "Requirements", "Known limitations (v0.4.0)",
     "Privacy & safety", "Status", "Contributing", "License", "Testing",
 )
 DOC_MAP_TARGETS = (
@@ -2013,6 +2022,12 @@ V020_GROWTH = (11, 34, 5, 6)  # candidates, T1 rows after v0.2.0, included, excl
 V030_POOL = ("rs10455872", "rs3798220", "rs6544713", "rs2282679", "rs10741657",
              "rs601338", "rs6795970", "rs174537", "rs1801133", "rs11887534")
 V030_GROWTH = (10, 44, 1, 9)  # candidates, T1 rows after v0.3.0, included, excluded
+# v0.4.0 S2 (r165, all-excluded outcome S2-V6): four disease candidates, 48 T1 rows, none included.
+V040_POOL = ("rs10757278", "rs2200733", "rs11209026", "rs4245791")
+V040_GROWTH = (4, 48, 0, 4)  # candidates, T1 rows after v0.4.0, included, excluded
+# C-52: the Limitations paragraph says that no disease association met the contract.
+C52_SENTENCE = ("No disease association met the disease-association contract, "
+                "so the release panel has no disease entry.")
 
 
 def _t1_dicts():
@@ -2070,9 +2085,12 @@ def _s3b_curation_release_paragraph_matches_tables():
     # its numbers and the v0.3.0 rows have their own sentence. The strict
     # no-reserve rule holds for every T1 row now that rs10741657 is `included`
     # (R141-F3, S2).
+    v040 = [r for r in new if r["rsID"] in V040_POOL]
     v030 = [r for r in new if r["rsID"] in V030_POOL]
-    v020 = [r for r in new if r["rsID"] not in V030_POOL]
+    v020 = [r for r in new if r["rsID"] not in V030_POOL and r["rsID"] not in V040_POOL]
+    rows_v030 = len(rows) - len(v040)  # the T1 row count after v0.3.0, before the v0.4.0 rows
     _require("T1 lacks a v0.3.0 pool row", sorted(r["rsID"] for r in v030) == sorted(V030_POOL))
+    _require("T1 lacks a v0.4.0 pool row", sorted(r["rsID"] for r in v040) == sorted(V040_POOL))
     inc2 = [r for r in v020 if r["decision"] == "included"]
     exc2 = [r for r in v020 if r["decision"] == "excluded"]
     _require("v0.2.0 rows changed: %d rows, %d included, %d excluded" % (len(v020), len(inc2), len(exc2)),
@@ -2088,12 +2106,22 @@ def _s3b_curation_release_paragraph_matches_tables():
     _require("no reserve row may exist: %s" % [r["rsID"] for r in rows if r["decision"] == "reserve"],
              not res3 and not [r for r in rows if r["decision"] == "reserve"])
     _require("v0.3.0 rows changed: %d rows, %d included, %d excluded" % (len(v030), len(inc3), len(exc3)),
-             (len(v030), len(rows), len(inc3), len(exc3)) == V030_GROWTH)
+             (len(v030), rows_v030, len(inc3), len(exc3)) == V030_GROWTH)
+    inc4 = [r for r in v040 if r["decision"] == "included"]
+    exc4 = [r for r in v040 if r["decision"] == "excluded"]
+    _require("v0.4.0 rows changed: %d rows, %d included, %d excluded" % (len(v040), len(inc4), len(exc4)),
+             (len(v040), len(rows), len(inc4), len(exc4)) == V040_GROWTH)
     growth030 = ("For v0.3.0 the pool grew by %s candidates to %d T1 rows, of which %s was included, "
                  "none is a reserve and %s were excluded."
-                 % (w(len(v030)), len(rows), w(len(inc3)), w(len(exc3))))
+                 % (w(len(v030)), rows_v030, w(len(inc3)), w(len(exc3))))
     _require("v0.3.0 pool growth must be stated exactly once, as the whole sentence, from T1",
              [s for s in sentences if s.startswith("For v0.3.0 the pool grew by ")] == [growth030])
+    growth040 = ("For v0.4.0 the pool grew by %s candidates to %d T1 rows, of which none was included, "
+                 "none is a reserve and %s were excluded." % (w(len(v040)), len(rows), w(len(exc4))))
+    _require("v0.4.0 pool growth must be stated exactly once, as the whole sentence, from T1",
+             [s for s in sentences if s.startswith("For v0.4.0 the pool grew by ")] == [growth040])
+    _require("the C-52 sentence must be stated exactly once, and only while no disease row is kept",
+             sentences.count(C52_SENTENCE) == 1 and not inc4)
     _require("the paragraph names an rsID other than the added T1 candidates",
              set(re.findall(r"\brs\d+\b", para)) == {r["rsID"] for r in new})
     for r in new:
@@ -2118,7 +2146,8 @@ def _s3b_curation_release_paragraph_matches_tables():
     # statement, one of the three exact growth/no-reserves sentences, or a decision sentence
     # naming T1 rsIDs; anything else (a paraphrase of growth or reserves) fails.
     exact = set(CURATION_METHOD_SENTENCES) | {
-        growth020, growth030, "No reserves exist for v0.2.0 either: none of its rows is a `reserve`."}
+        growth020, growth030, growth040, C52_SENTENCE,
+        "No reserves exist for v0.2.0 either: none of its rows is a `reserve`."}
     for s in sentences:
         known = (s in exact
                  or (s.startswith(("For the v0.1.0 curation ", "In the v0.1.0 curation "))
@@ -2214,16 +2243,16 @@ def _v030s3_release_wording():
     getting = _flat(_read(GETTING_STARTED))
     checkpoint = _flat(_read(CHECKPOINT))
     status = _flat(_section(_read(README), "Status"))
-    state = _flat(_section(_read(AGENTS), "Current state (v0.3.0 release run)"))
+    state = _flat(_section(_read(AGENTS), "Current state (v0.4.0 release run)"))
     facts = _flat(_section(_read(CHECKPOINT), "Current release facts"))
-    _require("README release section names panel version 0.3.0",
-             "panel version 0.3.0" in _flat(_release_section()))
-    _require("getting-started names panel version 0.3.0", "panel version 0.3.0" in getting)
-    _require("owner checkpoint names panel version 0.3.0", "panel version 0.3.0" in facts)
-    _require("README states package version 0.3.0",
-             "panel version 0.3.0 and package version 0.3.0" in status)
-    _require("AGENTS states package version 0.3.0",
-             "The package version is 0.3.0." in state)
+    _require("README release section names panel version 0.4.0",
+             "panel version 0.4.0" in _flat(_release_section()))
+    _require("getting-started names panel version 0.4.0", "panel version 0.4.0" in getting)
+    _require("owner checkpoint names panel version 0.4.0", "panel version 0.4.0" in facts)
+    _require("README states package version 0.4.0",
+             "panel version 0.4.0 and package version 0.4.0" in status)
+    _require("AGENTS states package version 0.4.0",
+             "The package version is 0.4.0." in state)
     _require("the old v0.2.0 panel statement is gone from the owner checkpoint",
              "The v0.2.0 release panel" not in checkpoint)
     _require("the old v0.2.0 panel statement is gone from getting-started",
@@ -2252,6 +2281,83 @@ def _v030s3g_no_release_claim_in_release_docs():
     bad = _flat(_read(GETTING_STARTED)) + " The v0.3.0 package has been released."
     _require("the control claim is not detected",
              any(re.search(p, bad, re.I) for p in RELEASE_CLAIM_PATTERNS))
+    return True
+
+
+ROADMAP = os.path.join(DOCS, "roadmap.md")
+ROADMAP_V040_STATUS = (
+    "**Status: prepared for the owner's release decision.** The "
+    "disease-association contract and its checkers were added. No disease "
+    "association met the contract (all four candidates were excluded, with the "
+    "reasons recorded in docs/panel-curation.md), so the release panel is the "
+    "unchanged nine-entry panel (seven health entries, two trait entries) at "
+    "panel version 0.4.0, package version 0.4.0. The report template is "
+    "unchanged and renders no disease section. The real-data checkpoint, "
+    "merge, tag, publication and branch protection are owner-only."
+)
+V040_VERSION = "0.4.0"
+V040_DATA_FILES = ("data/targets.release.json", "data/targets.release-evidence.json",
+                   "data/targets.release-panel.json")
+# Words that claim the v0.4.0 release happened (owner decision O-8: the owner decides whether to release).
+V040_CLAIM_PATTERNS = (r"\bReleased as v0\.4\.0\b", r"\bv0\.4\.0 (?:is|was|has been) "
+                       r"(?:released|published|tagged|merged)\b", r"\bmerged to main\b")
+
+
+def _v040_s4_version_literals_agree():
+    """O-8: every version literal of the release is 0.4.0 (S4 release-close, r173)."""
+    import json
+    import snp_insights
+    import snp_insights.cli as cli
+    with open(os.path.join(ROOT, "pyproject.toml"), "rb") as fh:
+        _require("pyproject version is not 0.4.0", tomllib.load(fh)["project"]["version"] == V040_VERSION)
+    _require("__version__ is not 0.4.0", snp_insights.__version__ == V040_VERSION)
+    _require("PIPELINE_VERSION is not 0.4.0 (it tracks the package version)",
+             cli._tool_module("annotate").PIPELINE_VERSION == V040_VERSION)
+    for rel in V040_DATA_FILES:
+        got = json.loads(_read(os.path.join(ROOT, *rel.split("/")))).get("panel_version")
+        _require("%s panel_version is %r, not 0.4.0" % (rel, got), got == V040_VERSION)
+    code, out, _ = _cli(["--version"])
+    _require("--version does not print snp-insights 0.4.0: %r" % out,
+             code == 0 and out.strip() == "snp-insights " + V040_VERSION)
+    _require("README Status must name panel and package version 0.4.0",
+             "panel version 0.4.0 and package version 0.4.0" in _flat(_section(_read(README), "Status")))
+    _require("a data file kept a different panel_version than the others",
+             len({json.loads(_read(os.path.join(ROOT, *rel.split("/")))).get("panel_version")
+                  for rel in V040_DATA_FILES}) == 1)
+    return True
+
+
+def _v040_s4_roadmap_status_exact():
+    """The v0.4.0 roadmap section carries exactly one status line, equal to the pinned text."""
+    sec = _section(_read(ROADMAP), "v0.4.0")
+    lines = [ln for ln in sec.split("\n") if ln.startswith("**Status")]
+    _require("v0.4.0 roadmap section must hold exactly one status line: %r" % lines, len(lines) == 1)
+    _require("v0.4.0 roadmap status line changed: %r" % lines[0], lines[0] == ROADMAP_V040_STATUS)
+    return True
+
+
+def _v040_s4_no_release_claim():
+    """No v0.4.0 sentence claims a release, a merge, a tag or a publication. The word "shipped" is checked
+    where status is stated (README Status, roadmap v0.4.0 section); README Path B uses it for the file in the
+    repository."""
+    texts = {"README": _flat(_read(README)), "AGENTS": _flat(_read(AGENTS)),
+             "getting-started": _flat(_read(GETTING_STARTED)), "owner checkpoint": _flat(_read(CHECKPOINT)),
+             "roadmap v0.4.0 section": _flat(_section(_read(ROADMAP), "v0.4.0"))}
+    status = {"README Status": _flat(_section(_read(README), "Status")),
+              "AGENTS current state": texts["AGENTS"][texts["AGENTS"].index("## Current state"):
+                                                      texts["AGENTS"].index("## Roadmap to beta")],
+              "roadmap v0.4.0 section": texts["roadmap v0.4.0 section"]}
+    for label, text in texts.items():
+        for pattern in V040_CLAIM_PATTERNS:
+            hit = re.search(pattern, text)
+            _require("%s claims the v0.4.0 release: %r" % (label, hit.group(0) if hit else ""), hit is None)
+    for label, text in status.items():
+        hit = re.search(r"\bshipped\b", text, re.I)
+        _require("%s says shipped: %r" % (label, hit.group(0) if hit else ""), hit is None)
+    bad = {k: v + " Released as v0.4.0." for k, v in texts.items()}
+    _require("the control claim is not detected",
+             all(any(re.search(p, v) for p in V040_CLAIM_PATTERNS) for v in bad.values()))
+    _require("the shipped control is not detected", re.search(r"\bshipped\b", "Status: shipped.", re.I))
     return True
 
 
@@ -2300,6 +2406,604 @@ def _v030s3f_excerpt_reflects_equal_reference_sentence():
     _require("the excerpt line does not cite effect_allele_is_reference",
              "effect_allele_is_reference]" in flat.split(new, 1)[1].split("\n")[0][:400]
              or "effect_allele_is_reference]" in flat.split(new, 1)[1][:400])
+    return True
+
+
+
+# ------------------------------------- v0.4.0 S1: disease-association contract (r159)
+
+DISEASE_DOC = os.path.join(DOCS, "disease-associations.md")
+_DA_TOOLS = os.path.join(ROOT, "tools")
+if _DA_TOOLS not in sys.path:
+    sys.path.append(_DA_TOOLS)  # caveats and validate_report: the production strings the pins compare
+DA_CLAUSE_COUNT = 54
+# clause -> the r158 specification-review findings that amended it (owner: fold F1..F8 into S1).
+DA_MARKERS = {
+    "C-5": ("F8",), "C-6": ("F1",), "C-7": ("F7",), "C-12": ("F7",), "C-15": ("F3",),
+    "C-22": ("F5",), "C-23": ("F5",), "C-27": ("F4",), "C-29": ("F2", "F4"), "C-34": ("F6",),
+    "C-40": ("F4",), "C-43": ("F2",), "C-46": ("F1",), "C-49": ("F7",), "C-53": ("F1",),
+}
+# r162: re-pinned for FP-06, FP-09 widened and FP-32, FP-33 added; was b6c120912d83b65582cccd1d34fbad931a0359c500784aadb3f9d0cfc444b51e.
+DA_PATTERN_BLOCK_SHA256 = "5ccfaf1c8bdc34ab8ae3d1b4649c0ba50011b7122ae5e4396f7a0f94089df45a"
+DA_PATTERN_COUNT = 33  # r162: was 31; FP-32 and FP-33 added (R160-F1, R161-09)
+DA_ANCESTRY_CODES = ("european", "east-asian", "south-asian", "african", "hispanic-latino",
+                     "middle-eastern", "oceanian", "mixed", "other")
+DA_TIER_WORDS = ("established", "replicated", "single study", "conflicting", "unknown")
+DA_STATES = ("detected", "covered_reference", "covered_nocall", "covered_uninterpretable",
+             "not_covered", "not_assayable")
+# The r158 review corpus (invented sentences): case, oracle, sentence. Cases 13, 14,
+# 17, 18 and 19 were false negatives and case 36 a false positive of the draft list.
+DA_CORPUS = (
+    (1, 'reject', "You have Crohn's disease."),
+    (2, 'reject', "You were diagnosed with Crohn's disease."),
+    (3, 'reject', 'You are affected by this disease.'),
+    (4, 'reject', "You may suffer from Crohn's disease."),
+    (5, 'reject', "You are a patient with Crohn's disease."),
+    (6, 'reject', "Your chance of Crohn's disease is elevated."),
+    (7, 'reject', "You are at high risk of developing Crohn's disease."),
+    (8, 'reject', "Your lifetime risk of Crohn's disease is 12 percent."),
+    (9, 'reject', 'Penetrance is high for this variant.'),
+    (10, 'reject', 'This result means you should start treatment.'),
+    (11, 'reject', 'You should schedule colorectal screening.'),
+    (12, 'reject', 'You should change your diet and lifestyle.'),
+    (13, 'reject', 'Your LDL cholesterol is high.'),
+    (14, 'reject', 'Your clinical result shows an abnormal marker.'),
+    (15, 'reject', "This allele protects you from Crohn's disease."),
+    (16, 'reject', "This variant causes Crohn's disease."),
+    (17, 'reject', 'No follow-up is needed for this result.'),
+    (18, 'reject', "You could develop Crohn's disease because of this result."),
+    (19, 'reject', "You might develop Crohn's disease."),
+    (20, 'reject', 'This is a disease-causing mutation.'),
+    (21, 'reject', 'You should speak with a clinician about this finding.'),
+    (22, 'reject', "This allele means you are resistant to Crohn's disease."),
+    (23, 'reject', "This allele increases your risk of Crohn's disease."),
+    (24, 'allow', "Crohn's disease (IL23R): one copy of the effect allele G was detected. Evidence tier: replicated, from the GWAS Catalog association count. In published studies of European ancestry, this allele was associated with higher odds of Crohn's disease. This is a statistical association at the population level; it is not a diagnosis of Crohn's disease and not an estimate of your own risk."),
+    (25, 'allow', "Crohn's disease (IL23R): two copies of the effect allele G were detected. Evidence tier: replicated, from the GWAS Catalog association count. In published studies of European ancestry, this allele was associated with higher odds of Crohn's disease. This is a statistical association at the population level; it is not a diagnosis of Crohn's disease and not an estimate of your own risk."),
+    (26, 'allow', "Crohn's disease (IL23R): one copy of the effect allele A was detected. Evidence tier: replicated, from the GWAS Catalog association count. In published studies of European ancestry, this allele was associated with lower odds of Crohn's disease. This is a statistical association at the population level; it is not a diagnosis of Crohn's disease and not an estimate of your own risk."),
+    (27, 'allow', "Crohn's disease (IL23R): two copies of the effect allele A were detected. Evidence tier: replicated, from the GWAS Catalog association count. In published studies of European ancestry, this allele was associated with lower odds of Crohn's disease. This is a statistical association at the population level; it is not a diagnosis of Crohn's disease and not an estimate of your own risk."),
+    (28, 'allow', "Crohn's disease (IL23R): this position is on the array, but the array returned no call, so no genotype is available."),
+    (29, 'allow', "Crohn's disease (IL23R): this position was measured, but the call could not be interpreted, so no genotype is given."),
+    (30, 'allow', "Crohn's disease (IL23R): this marker was not measured by this array. That gives no information about whether the effect allele is present."),
+    (31, 'allow', "Crohn's disease (IL23R): this locus cannot be assessed from array data."),
+    (32, 'allow', "Crohn's disease (IL23R): no copy of the effect allele was found in the genotype at this position."),
+    (33, 'allow', 'Atrial fibrillation (PITX2): one copy of the effect allele T was detected. Evidence tier: replicated, from the GWAS Catalog association count. In published studies of European and East Asian ancestry, this allele was associated with higher odds of atrial fibrillation. This is a statistical association at the population level; it is not a diagnosis of atrial fibrillation and not an estimate of your own risk.'),
+    (34, 'allow', 'Coronary artery disease (CDKN2B-AS1): one copy of the effect allele C was detected. Evidence tier: replicated, from the GWAS Catalog association count. In published studies of European ancestry, this allele was associated with lower odds of coronary artery disease. This is a statistical association at the population level; it is not a diagnosis of coronary artery disease and not an estimate of your own risk.'),
+    (35, 'allow', 'This report was generated by fixed templates on this machine from structured findings; no language model was used to write it. It is a research and curiosity tool, not medical advice or a diagnostic test.'),
+    (36, 'allow', 'Array-based genotyping covers a small fraction of the genome (~0.02%), is chip-dependent, and is not diagnostic grade.'),
+    (37, 'allow', 'This report is not medical advice, and no result is a diagnosis.'),
+    (38, 'allow', 'Atrial fibrillation (PITX2): one copy of the effect allele C was detected. Evidence tier: replicated, from the GWAS Catalog association count. In published studies of East Asian and South Asian ancestry, this allele was associated with higher odds of atrial fibrillation. This is a statistical association at the population level; it is not a diagnosis of atrial fibrillation and not an estimate of your own risk.'),
+)
+DA_CORPUS_CONDITIONS = ("Crohn's disease", "atrial fibrillation", "coronary artery disease")
+# r162 (R161-10): each archived claim is bound to the one frame of its state and zygosity.
+DA_FRAME_EXPECT = {24: "FR-01", 25: "FR-03", 26: "FR-02", 27: "FR-04", 28: "FR-07", 29: "FR-08",
+                   30: "FR-09", 31: "FR-10", 32: "FR-06", 33: "FR-01", 34: "FR-02", 38: "FR-01"}
+
+
+def _da_text():
+    try:
+        with open(DISEASE_DOC, encoding="utf-8") as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return ""
+
+
+def _da_block(text, name):
+    m = re.search(r"<!-- r11-%s:begin -->\n(.*?)<!-- r11-%s:end -->" % (name, name), text, re.S)
+    return m.group(1) if m else ""
+
+
+def _da_patterns(text):
+    return [re.fullmatch(r"(FP-\d{2}) ([a-z-]+) (\S.*)", ln).groups()
+            for ln in _da_block(text, "forbidden-patterns").splitlines() if ln.startswith("FP-")]
+
+
+def _da_exemptions(text):
+    return [re.fullmatch(r"(EX-\d{2}) (\S+) (\S.*)", ln).groups()
+            for ln in _da_block(text, "exemptions").splitlines() if ln.startswith("EX-")]
+
+
+def _da_quoted(text, name):
+    m = re.search(r"`%s` = `([^`]+)`" % name, text)
+    return m.group(1) if m else None
+
+
+def _da_canon(text):
+    """C-43 step 0 (R160-F1): NFKC, then one space for every whitespace run."""
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text)).strip()
+
+
+def _da_scan(text, doc, conditions=()):
+    """C-43 procedure: canonical text (a non-ASCII letter is the error NONASCII), remove
+    exemptions only as whole sentences, then rsIDs, gene symbols and build names, then
+    every pattern (case-insensitive). Returns the ids of the errors found."""
+    text = _da_canon(text)
+    hits = ["NONASCII"] if any(ch.isalpha() and not ch.isascii() for ch in text) else []
+    for _, _, ex in _da_exemptions(doc):
+        for s in ([ex.replace("<condition>", c) for c in conditions] if "<condition>" in ex else [ex]):
+            text = re.sub(r"(?:\A|(?<=[.!?] ))" + re.escape(s) + r"(?= |\Z)", " ", text)  # R161-04
+    id_re, gene_re = _da_quoted(doc, "ID_RE"), _da_quoted(doc, "GENE_RE")
+    _require("C-43 quotes ID_RE and GENE_RE", id_re and gene_re)
+    t = re.sub(gene_re, " ", re.sub(id_re, " ", text, flags=re.I))
+    t = t.replace("GRCh37", " ").replace("GRCh38", " ")
+    return hits + [pid for pid, _, rx in _da_patterns(doc) if re.search(rx, t, re.I)]
+
+
+def _da_registry(text):
+    """[(id, role, registry id, text)] from the C-43 disease registry block."""
+    return [re.fullmatch(r"(RG-\d{2}) (caveat|notice|limitation) (\S+) (\S.*)", ln).groups()
+            for ln in _da_block(text, "disease-registry").splitlines() if ln.startswith("RG-")]
+
+
+def _da_report_errors(items, doc, conditions=()):
+    """C-43 (R161-01, R161-09): items are (role, text). Only disease roles are checked:
+    a disease claim must equal a C-29 frame (or the frame named by its role suffix), a
+    disease caveat, notice or limitation must equal a registry text of that role, and
+    all disease text passes the scan. Other result-type claims keep their own validation."""
+    errors = []
+    registry = {(role, s) for _, role, _, s in _da_registry(doc)}
+    _require("disease registry parsed", registry)
+    frames = {r["frame"]: _da_frame_re(r["text"], doc) for r in _da_frames(doc)}
+    for role, text in items:
+        if not role.startswith("disease-"):
+            continue  # R161-01: existing carrier, ClinVar association and trait claims
+        canon = _da_canon(text)
+        kind, _, frame = role[len("disease-"):].partition(":")
+        if kind == "claim":
+            pool = [frames[frame]] if frame else list(frames.values())
+            if not any(rx.fullmatch(canon) for rx in pool):
+                errors.append("claim-not-a-frame: %r" % text[:60])
+        elif (kind, canon) not in registry:
+            errors.append("unregistered-%s: %r" % (kind, text[:60]))
+        hits = _da_scan(text, doc, conditions)
+        if hits:
+            errors.append("forbidden %s: %r" % (hits, text[:60]))
+    return errors
+
+
+def _da_clauses(text):
+    """{clause id: paragraph} for every bold clause line `**C-<n> ...`."""
+    out, order = {}, []
+    hits = list(re.finditer(r"^\*\*(C-\d+) ", text, re.M))
+    for i, m in enumerate(hits):
+        end = hits[i + 1].start() if i + 1 < len(hits) else len(text)
+        head = text.find("\n## ", m.start())
+        end = min(end, head) if head != -1 else end
+        order.append(m.group(1))
+        out[m.group(1)] = text[m.start():end]
+    return order, out
+
+
+def _da_frames(text):
+    rows = []
+    for ln in text.splitlines():
+        if ln.startswith("| FR-"):
+            cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+            rows.append(dict(zip(("frame", "state", "zygosity", "direction", "text", "caveats"), cells)))
+    return rows
+
+
+def _da_scope_words(text):
+    words = {}
+    for ln in text.splitlines():
+        m = re.fullmatch(r"\| ([a-z-]+) \| ([A-Za-z ]+) \|", ln)
+        if m and m.group(1) in DA_ANCESTRY_CODES:
+            words[m.group(1)] = m.group(2)
+    return words
+
+
+def _da_frame_re(frame, text):
+    w = "(?:%s)" % "|".join(re.escape(v) for v in _da_scope_words(text).values())
+    rx = re.escape(frame)
+    rx = rx.replace("<label>", r"[^():;.]+?").replace("<gene>", r"[A-Za-z0-9-]+").replace("<X>", "[ACGT]")
+    rx = rx.replace("<tier>", "(?:%s)" % "|".join(DA_TIER_WORDS))
+    rx = rx.replace("<scope>", r"%s(?:, %s)*(?: and %s)? ancestry" % (w, w, w))
+    rx = rx.replace("<condition>", r"(?P<cond>[^.;]+?)", 1).replace("<condition>", r"(?P=cond)")
+    return re.compile(rx)
+
+
+def _da_doc_exists_and_clause_ids():
+    text = _da_text()
+    _require("docs/disease-associations.md exists and is not empty", text.strip())
+    order, _ = _da_clauses(text)
+    want = ["C-%d" % n for n in range(1, DA_CLAUSE_COUNT + 1)]
+    _require("clause ids %s != C-1..C-%d in order, each once" % (order, DA_CLAUSE_COUNT), order == want)
+    return True
+
+
+def _da_r158_markers():
+    text = _da_text()
+    _, clauses = _da_clauses(text)
+    _require("clauses parsed", clauses)
+    for cid, body in clauses.items():
+        got = tuple(sorted(set(re.findall(r"\(amended: R158-(F\d)\)", body)), key=lambda f: int(f[1:])))
+        _require("%s markers %s != %s" % (cid, got, DA_MARKERS.get(cid, ())), got == DA_MARKERS.get(cid, ()))
+    for n in range(1, 9):
+        _require("marker R158-F%d present" % n, "(amended: R158-F%d)" % n in text)
+    total = sum(len(v) for v in DA_MARKERS.values())
+    _require("marker count", len(re.findall(r"\(amended: R158-F\d\)", text)) == total)
+    return True
+
+
+def _da_owner_decisions_recorded():
+    text = _da_text()
+    for n in range(1, 16):
+        _require("O-%d row" % n, re.search(r"^\| O-%d \| .+ \| .+ \|$" % n, text, re.M))
+    for word in ("Recommended", "recommended", "[DECISION", "Alternative", "DRAFT"):
+        _require("draft phrasing %r removed" % word, word not in text)
+    return True
+
+
+def _da_pattern_block_exact():
+    text = _da_text()
+    block = _da_block(text, "forbidden-patterns")
+    _require("pattern block present", block)
+    digest = hashlib.sha256(block.encode("utf-8")).hexdigest()
+    _require("pattern block sha256 %s != pin" % digest, digest == DA_PATTERN_BLOCK_SHA256)
+    pats = _da_patterns(text)
+    _require("pattern ids FP-01..FP-%02d" % DA_PATTERN_COUNT,
+             [p[0] for p in pats] == ["FP-%02d" % n for n in range(1, DA_PATTERN_COUNT + 1)])
+    for pid, _, rx in pats:
+        re.compile(rx)
+    return True
+
+
+def _da_corpus_classified():
+    text = _da_text()
+    _require("38 corpus cases", len(DA_CORPUS) == 38)
+    wrong = []
+    for n, oracle, sentence in DA_CORPUS:
+        hits = _da_scan(sentence, text, DA_CORPUS_CONDITIONS)
+        if bool(hits) != (oracle == "reject"):
+            wrong.append((n, oracle, hits))
+    _require("corpus misclassified: %s" % wrong, not wrong)
+    _require("23 reject, 15 allow", [o for _, o, _ in DA_CORPUS].count("reject") == 23)
+    return True
+
+
+def _da_examples_classified():
+    text = _da_text()
+    pats = dict((p[0], p[2]) for p in _da_patterns(text))
+    rows = [[c.strip() for c in ln.strip().strip("|").split("|")]
+            for ln in text.splitlines() if re.match(r"\| FP-\d{2} \|", ln)]
+    _require("one example row per pattern", sorted(r[0] for r in rows) == sorted(pats))
+    for pid, bad, near in rows:
+        _require("%s matches its rejected example" % pid, re.search(pats[pid], bad, re.I))
+        _require("%s near-miss passes every pattern: %s" % (pid, _da_scan(near, text)), not _da_scan(near, text))
+    return True
+
+
+def _da_exemptions_exact():
+    import caveats
+    text = _da_text()
+    _, clauses = _da_clauses(text)
+    assoc = re.search(r"`(This is a statistical association[^`]+)`", clauses.get("C-37", ""))
+    c42 = re.search(r"`(Disease associations come from[^`]+)`", clauses.get("C-42", ""))
+    _require("C-37 and C-42 quote their sentences", assoc and c42)
+    want = ([("association-sentence", assoc.group(1)), ("TEMPLATE_NOTICE", caveats.TEMPLATE_NOTICE)]
+            + [("LIMITATIONS", s) for s in caveats.LIMITATIONS]
+            + [("C-42-line", c42.group(1)), ("array_limits", caveats.CAVEAT_REGISTRY["array_limits"])])
+    got = [(k, s) for _, k, s in _da_exemptions(text)]
+    _require("exemption block %s != production strings" % got, got == want)
+    _require("ids EX-01..", [e[0] for e in _da_exemptions(text)] == ["EX-%02d" % n for n in range(1, len(want) + 1)])
+    return True
+
+
+def _da_exemption_adjacency():
+    text = _da_text()
+    exs = _da_exemptions(text)
+    _require("exemptions parsed", exs)
+    for eid, _, ex in exs:
+        s = ex.replace("<condition>", "Crohn's disease")
+        _require("%s alone passes" % eid, not _da_scan(s, text, ("Crohn's disease",)))
+        for extra, pid in ((" You have Crohn's disease.", "FP-02"), (" Your odds are higher.", "FP-06")):
+            _require("%s next to forbidden text fails" % eid, pid in _da_scan(s + extra, text, ("Crohn's disease",)))
+            _require("%s after forbidden text fails" % eid, pid in _da_scan(extra.strip() + " " + s, text, ("Crohn's disease",)))
+    for partial in ("is not diagnostic grade.", "and no result is a diagnosis.",
+                    "This report is not medical advice, and no result is a diagnosis of you.",
+                    "it is not a diagnosis of Crohn's disease and not an estimate of your own risk."):
+        _require("partial exemption %r is scanned" % partial, _da_scan(partial, text, ("Crohn's disease",)))
+    _require("ID_RE quoted exactly", _da_quoted(text, "ID_RE") == __import__("validate_report").ID_RE.pattern)
+    _require("GENE_RE quoted exactly", _da_quoted(text, "GENE_RE") == __import__("validate_report").GENE_RE.pattern)
+    return True
+
+
+def _da_state_frames_and_caveats():
+    import caveats
+    text = _da_text()
+    rows = _da_frames(text)
+    _require("frames FR-01..FR-10", [r["frame"] for r in rows] == ["FR-%02d" % n for n in range(1, 11)])
+    _require("every state has a frame", sorted({r["state"] for r in rows}) == sorted(DA_STATES))
+    for r in rows:
+        cav = r["caveats"].split(";")
+        _require("%s carries array_limits and disease_ancestry" % r["frame"],
+                 cav[:2] == ["array_limits", "disease_ancestry"])
+        want = caveats.STATE_CAVEAT.get(r["state"])
+        _require("%s state caveat %s" % (r["frame"], cav[2:]), cav[2:] == ([want] if want else []))
+        _require("%s frame starts with label and gene" % r["frame"], r["text"].startswith("<label> (<gene>): "))
+        copies = {"het": "one copy of the effect allele <X> was detected",
+                  "hom_alt": "two copies of the effect allele <X> were detected"}
+        if r["zygosity"] in copies:  # R161-10: the frame text is bound to its zygosity column
+            other = copies["hom_alt" if r["zygosity"] == "het" else "het"]
+            _require("%s says %s" % (r["frame"], r["zygosity"]),
+                     copies[r["zygosity"]] in r["text"] and other not in r["text"])
+        detected = r["state"] == "detected"
+        word = {"susceptibility": "higher odds of", "protective": "lower odds of"}.get(r["direction"])
+        _require("%s direction words" % r["frame"],
+                 (r["text"].count("higher odds of") + r["text"].count("lower odds of")) == (1 if detected else 0)
+                 and (not detected or word in r["text"]))
+        sample = (r["text"].replace("<label>", "Example disease").replace("<gene>", "GENE1")
+                  .replace("<X>", "A").replace("<tier>", "replicated").replace("<scope>", "European ancestry")
+                  .replace("<condition>", "example disease"))
+        _require("%s passes the scan: %s" % (r["frame"], _da_scan(sample, text, ("example disease",))),
+                 not _da_scan(sample, text, ("example disease",)))
+        _require("%s matches its own regex" % r["frame"], _da_frame_re(r["text"], text).fullmatch(sample))
+    regs = [_da_frame_re(r["text"], text) for r in rows]
+    for n, oracle, sentence in DA_CORPUS:
+        hits = [rows[i]["frame"] for i, rx in enumerate(regs) if rx.fullmatch(sentence)]
+        if 24 <= n <= 34 or n == 38:
+            _require("corpus claim %d matches exactly one frame: %s" % (n, hits), len(hits) == 1)
+            _require("corpus claim %d matches its own frame %s, got %s" % (n, DA_FRAME_EXPECT[n], hits),
+                     hits == [DA_FRAME_EXPECT[n]])  # R161-10
+        elif oracle == "reject":
+            _require("corpus case %d matches no frame" % n, not hits)
+    return True
+
+
+def _da_scope_vocabulary():
+    words = _da_scope_words(_da_text())
+    _require("scope words %s" % words, tuple(words) == DA_ANCESTRY_CODES)
+    return True
+
+
+def _da_panel_curation_records_contract():
+    text = open(CURATION, encoding="utf-8").read()
+    flat = _flat(text)
+    for phrase in ("| `disease_association` | `disease` |", "## Disease associations",
+                   "(disease-associations.md)", "`SUSC` with `disease_association` and no supporting group",
+                   "`gnomad:<chrom>-<pos>-<ref>-<alt>`", "- `proxy-only` (disease rows:",
+                   "- `ancestry-unrecorded` (disease rows:", "never used when any row exists under the candidate rsID",
+                   "`independence:<cohort-a>|<cohort-b>=<typed id>[,<typed id>...] (<basis>)`",
+                   "`or:<row id>=<value> (<low>-<high>)`", "`af-spread:<number> over <group>[,<group>...]`",
+                   "`alias-review:<alias>=<sameness reason>`", "`ancestry-scope:<code>[,<code>...]`",
+                   "`<stage>:<code>[+<code>...]`", "`functional-not-counted`",
+                   "The targets file and the build still reject it"):
+        _require("panel-curation lacks %r" % phrase, _flat(phrase) in flat)
+    return True
+
+
+def _da_loop_spec_s1_record():
+    text = open(LOOP_SPEC, encoding="utf-8").read()
+    head = "## v0.4.0 run: S1 disease-association contract (decisions log)"
+    _require("one S1 decisions heading", text.count(head) == 1)
+    tail = _flat(text[text.index(head):])
+    for phrase in ["feat/v0.4.0-disease-associations", "debf910", "2026-11-24", "R158", "S3"] + \
+            ["**O-%d" % n for n in range(1, 16)] + ["F%d" % n for n in range(1, 9)]:
+        _require("S1 record lacks %r" % phrase, phrase in tail)
+    return True
+
+
+
+# ------------------------------------- v0.4.0 S1 FIX r162: r160/r161 review regressions
+
+DA_FIX_MARKERS = {  # clause -> the r160/r161 findings that amended it (owner dispositions, 2026-11-24)
+    "C-10": ("R161-02",), "C-12": ("R160-F2", "R161-05"), "C-13": ("R161-06",), "C-20": ("R161-08",),
+    "C-25": ("R161-03", "R161-06"), "C-26": ("R161-03",), "C-29": ("R161-10",),
+    "C-43": ("R160-F1", "R161-01", "R161-04", "R161-09"), "C-49": ("R160-F2", "R161-05"),
+    "C-50": ("R161-02",), "C-52": ("R161-07",),
+}
+DA_C43_SCOPE = ("Apply FP-01 through FP-33 to each disease-association claim and to the caveats, notices "
+                "and limitations used for disease-association reporting. Existing result-type claims and "
+                "legacy Summary claims retain their existing validation and exact template wording. A report "
+                "that mixes result types must pass with the existing carrier-status, ClinVar association and "
+                "trait wording intact, and must fail if prohibited wording is introduced in the disease claim "
+                "or its associated text.")
+DA_C52_ALL_EXCLUDED = ("In the all-excluded outcome no production code, schema or template change ships; only "
+                       "the contract document and the S1 checkers ship, with the documented exclusions, the "
+                       "unchanged nine-entry panel and the O-8 version policy. S3 is not run.")
+DA_REASSURANCE_CASES = (
+    "Nothing to worry about.", "There is nothing to worry about.", "No need to worry about this result.",
+    "You do not need to worry.", "Don't worry about this result.", "This result is reassuring.",
+    "No follow-up is needed for this result.", "No further testing is required.",
+    "No follow up needed.", "You are fine.", "Your chances could be higher.",
+    "You could end up with Crohn's disease.",
+)
+DA_CONFUSABLE_CASES = ("You hаve Crohn's disease.", "You were diаgnosed.", "Your rіsk is higher.",
+                       "You have Crohn's disease.", "Ｙou have Crohn's disease.")
+
+
+def _da_fix_r160_r161_markers():
+    text = _da_text()
+    _, clauses = _da_clauses(text)
+    _require("clauses parsed", clauses)
+    for cid, body in clauses.items():
+        got = tuple(sorted(set(re.findall(r"\(amended: (R16[01]-(?:F\d|\d\d))\)", body))))
+        _require("%s markers %s != %s" % (cid, got, DA_FIX_MARKERS.get(cid, ())),
+                 got == tuple(sorted(DA_FIX_MARKERS.get(cid, ()))))
+    return True
+
+
+def _da_fix_s01_scope_sentence():
+    _, clauses = _da_clauses(_da_text())
+    _require("C-43 states the R161-01 scope", _flat(DA_C43_SCOPE) in _flat(clauses.get("C-43", "")))
+    return True
+
+
+def _da_fix_lf1_reassurance_and_confusables():
+    text = _da_text()
+    for case in DA_REASSURANCE_CASES + DA_CONFUSABLE_CASES:
+        _require("rejected: %r" % case, _da_scan(case, text, ("Crohn's disease",)))
+    return True
+
+
+def _da_fix_s04_glued_exemptions_scanned():
+    text = _da_text()
+    exs = {eid: s for eid, _, s in _da_exemptions(text)}
+    _require("exemptions parsed", exs)
+    assoc = exs["EX-01"].replace("<condition>", "Example disease")
+    for s in (exs["EX-12"], assoc, exs["EX-06"], exs["EX-02"]):
+        _require("standalone exemption passes", not _da_scan(s, text, ("Example disease",)))
+        for variant in ("X" + s, s + "X", "Note:" + s, s[:-1] + " today."):
+            _require("glued exemption is scanned: %r" % variant[:50], _da_scan(variant, text, ("Example disease",)))
+    return True
+
+
+def _da_fix_s10_frame_swap_rejected():
+    global _da_text
+    real = _da_text
+    doc = real()
+    swapped = doc.replace("one copy of the effect allele <X> was detected", "\x00ONE\x00") \
+        .replace("two copies of the effect allele <X> were detected", "one copy of the effect allele <X> was detected") \
+        .replace("\x00ONE\x00", "two copies of the effect allele <X> were detected")
+    _require("swap changed the frames", swapped != doc)
+    _da_text = lambda: swapped
+    try:
+        try:
+            _da_state_frames_and_caveats()
+        except _Gate:
+            return True
+        _require("a one-copy/two-copy frame swap is rejected by the frame gate", False)
+    finally:
+        _da_text = real
+    return True
+
+
+def _da_fix_s07_c52_sentence():
+    _, clauses = _da_clauses(_da_text())
+    body = _flat(clauses.get("C-52", ""))
+    _require("C-52 states the amended all-excluded outcome", _flat(DA_C52_ALL_EXCLUDED) in body)
+    _require("C-52 no longer ships template changes in the all-excluded outcome",
+             "the template changes (tested with invented fixtures) still ship" not in body)
+    return True
+
+
+def _da_fix_loop_spec_dispositions():
+    text = open(LOOP_SPEC, encoding="utf-8").read()
+    head = "## v0.4.0 run: S1 disease-association contract (decisions log)"
+    _require("S1 heading", head in text)
+    tail = _flat(text[text.index(head):])
+    for d in ["**S-%02d" % n for n in range(1, 11)] + ["**L-F1", "**L-F2", "**C-52 amendment"]:
+        _require("S1 record lacks %r" % d, d in tail)
+    return True
+
+
+
+DA_MIXED_OTHER = (
+    ("carrier-claim", "Example carrier condition (GENE2): one copy of the effect allele T was detected (carrier "
+                      "status for example carrier condition; one copy is not the condition itself)."),
+    ("association-claim", "Example thrombophilia (GENE4): one copy of the effect allele A was detected. This is an "
+                          "association with example thrombophilia; this report does not diagnose the condition."),
+    ("trait-claim", "Example trait (GENE3): one copy of the effect allele C was detected. Evidence tier: "
+                    "replicated, from the GWAS Catalog association count. This is a statistical association with "
+                    "example trait in published studies; it is not a measurement of example trait and not a "
+                    "diagnosis."),
+)
+
+
+def _da_mixed_items(doc):
+    import caveats
+    claim = next(s for n, _, s in DA_CORPUS if n == 24)
+    reg = {rid: s for _, _, rid, s in _da_registry(doc)}
+    return list(DA_MIXED_OTHER) + [
+        ("disease-claim:FR-01", claim), ("disease-caveat", reg["array_limits"]),
+        ("disease-caveat", reg["disease_ancestry"]), ("disease-notice", caveats.TEMPLATE_NOTICE),
+        ("disease-limitation", reg["C-42-line"])]
+
+
+def _da_fix_registry_pinned():
+    import caveats
+    text = _da_text()
+    _, clauses = _da_clauses(text)
+    c27 = re.search(r'"(The studies behind this association[^"]+)"', clauses.get("C-27", ""))
+    c42 = re.search(r"`(Disease associations come from[^`]+)`", clauses.get("C-42", ""))
+    _require("C-27 and C-42 quote their texts", c27 and c42)
+    want = ([("caveat", "array_limits", caveats.CAVEAT_REGISTRY["array_limits"]),
+             ("caveat", "disease_ancestry", " ".join(c27.group(1).split()))]
+            + [("caveat", k, caveats.CAVEAT_REGISTRY[k])
+               for k in ("no_call", "uninterpretable", "not_covered", "not_assayable", "rare_ppv")]
+            + [("notice", "TEMPLATE_NOTICE", caveats.TEMPLATE_NOTICE)]
+            + [("limitation", "LIMITATIONS", s) for s in caveats.LIMITATIONS]
+            + [("limitation", "C-42-line", c42.group(1))])
+    got = [(role, rid, s) for _, role, rid, s in _da_registry(text)]
+    _require("registry block %s != production strings" % got, got == want)
+    _require("ids RG-01..", [r[0] for r in _da_registry(text)] == ["RG-%02d" % n for n in range(1, len(want) + 1)])
+    for role, rid, s in want:
+        _require("registered %s passes the report check" % rid,
+                 not _da_report_errors([("disease-" + role, s)], text))
+    return True
+
+
+def _da_fix_mixed_report():
+    text = _da_text()
+    items = _da_mixed_items(text)
+    errs = _da_report_errors(items, text, ("Crohn's disease",))
+    _require("mixed report passes with legacy wording intact: %s" % errs, not errs)
+    _require("the legacy carrier claim alone would trip FP-29", "FP-29" in _da_scan(DA_MIXED_OTHER[0][1], text))
+    bad = [list(items) for _ in range(4)]
+    bad[0][3] = ("disease-claim:FR-01", items[3][1] + " You have Crohn's disease.")
+    bad[1][5] = ("disease-caveat", items[5][1] + " Nothing to worry about.")
+    bad[2][4] = ("disease-caveat", "This result is limited to the cited studies.")
+    bad[3][3] = ("disease-claim:FR-01", items[3][1].replace("one copy", "two copies").replace("was detected",
+                                                                                         "were detected"))
+    for i, b in enumerate(bad):
+        _require("mixed report variant %d fails" % i, _da_report_errors(b, text, ("Crohn's disease",)))
+    return True
+
+
+def _da_fix_r160_cases_rejected_as_report_text():
+    text = _da_text()
+    _require("notice 'Nothing to worry about.' rejected",
+             _da_report_errors([("disease-notice", "Nothing to worry about.")], text))
+    _require("claim with a Cyrillic letter rejected",
+             _da_report_errors([("disease-claim", "You hаve Crohn's disease.")], text))
+    _require("Cyrillic letter reported as NONASCII", "NONASCII" in _da_scan("You hаve Crohn's disease.", text))
+    return True
+
+
+def _da_fix_lf1_compatibility_forms():
+    """C-43 step 0: NFKC maps compatibility forms to the characters the patterns read."""
+    text = _da_text()
+    _require("full-width percent read as %", "FP-11" in _da_scan("The odds rose by ten \uff05.", text))
+    _require("full-width letters read as Latin", "FP-02" in _da_scan("\uff39\uff4fu have the condition.", text))
+    _require("no-break space collapsed", "FP-02" in _da_scan("You\u00a0have the condition.", text))
+    _require("a registered caveat passes after canonicalization",
+             not _da_scan("Rare array calls can be inaccurate;  a rare result should be confirmed by a "
+                          "clinical-grade test.", text))
+    return True
+
+
+def _da_with_doc(doc, fn):
+    global _da_text
+    real = _da_text
+    _da_text = lambda: doc
+    try:
+        fn()
+    except _Gate:
+        return False
+    finally:
+        _da_text = real
+    return True
+
+
+def _da_fix_frame_bindings_independent():
+    doc = _da_text()
+    rows = {r["frame"]: r for r in _da_frames(doc)}
+    # (a) zygosity column changed, text unchanged: only the zygosity binding sees it.
+    a = doc.replace("| FR-01 | detected | het |", "| FR-01 | detected | hom_alt |", 1)
+    _require("column edit applied", a != doc)
+    _require("zygosity column bound to the frame text", not _da_with_doc(a, _da_state_frames_and_caveats))
+    # (b) FR-01 and FR-03 rows trade ids: each row stays self-consistent, the claim binding fails.
+    l1 = next(ln for ln in doc.splitlines() if ln.startswith("| FR-01 |"))
+    l3 = next(ln for ln in doc.splitlines() if ln.startswith("| FR-03 |"))
+    b = doc.replace(l1, "\x00").replace(l3, l1.replace("| FR-01 |", "| FR-03 |")).replace(
+        "\x00", l3.replace("| FR-03 |", "| FR-01 |"))
+    _require("row trade applied", b != doc and rows)
+    _require("archived claims bound to their frame ids", not _da_with_doc(b, _da_state_frames_and_caveats))
+    for sentence, frame in (("Example disease (GENE1): both copies match the reference at this position; the "
+                             "effect allele was not found in the genotype.", "FR-05"),
+                            ("Example disease (GENE1): no copy of the effect allele was found in the genotype at "
+                             "this position.", "FR-06")):
+        hits = [f for f, r in rows.items() if _da_frame_re(r["text"], doc).fullmatch(sentence)]
+        _require("reference claim matches %s only: %s" % (frame, hits), hits == [frame])
     return True
 
 
@@ -2384,10 +3088,37 @@ def run(check):
             _s3b_release_paragraph_gate_rejects_contradictions)
     attempt("L.runner_copies_guard_selftest_files", _runner_copies_guard_selftest_files)
     attempt("V030S3.release_wording", _v030s3_release_wording)
+    attempt("V040S4.version_literals_agree", _v040_s4_version_literals_agree)
+    attempt("V040S4.roadmap_status_exact", _v040_s4_roadmap_status_exact)
+    attempt("V040S4.no_release_claim", _v040_s4_no_release_claim)
     attempt("V030S3.accepted_limits_rows", _v030s3_accepted_limits_rows)
     attempt("V030S3F.docs_excerpt_reflects_equal_reference_sentence",
             _v030s3f_excerpt_reflects_equal_reference_sentence)
     attempt("V030S3G.no_release_claim_in_release_docs", _v030s3g_no_release_claim_in_release_docs)
+    attempt("DA.doc_exists_and_clause_ids", _da_doc_exists_and_clause_ids)
+    attempt("DA.r158_markers_on_amended_clauses", _da_r158_markers)
+    attempt("DA.owner_decisions_recorded", _da_owner_decisions_recorded)
+    attempt("DA.forbidden_pattern_block_exact", _da_pattern_block_exact)
+    attempt("DA.r158_corpus_classified_by_oracle", _da_corpus_classified)
+    attempt("DA.pattern_examples_classified", _da_examples_classified)
+    attempt("DA.exemptions_equal_production_strings", _da_exemptions_exact)
+    attempt("DA.exemptions_exact_and_adjacency_scanned", _da_exemption_adjacency)
+    attempt("DA.state_frames_and_caveats", _da_state_frames_and_caveats)
+    attempt("DA.scope_words_equal_vocabulary", _da_scope_vocabulary)
+    attempt("DA.panel_curation_records_contract", _da_panel_curation_records_contract)
+    attempt("DA.loop_spec_records_s1_decisions", _da_loop_spec_s1_record)
+    attempt("DA.fix_r160_r161_markers_on_amended_clauses", _da_fix_r160_r161_markers)
+    attempt("DA.fix_s01_c43_scope_sentence", _da_fix_s01_scope_sentence)
+    attempt("DA.fix_lf1_reassurance_and_confusables_rejected", _da_fix_lf1_reassurance_and_confusables)
+    attempt("DA.fix_s04_glued_exemptions_scanned", _da_fix_s04_glued_exemptions_scanned)
+    attempt("DA.fix_s10_frame_swap_rejected", _da_fix_s10_frame_swap_rejected)
+    attempt("DA.fix_s07_c52_all_excluded_sentence", _da_fix_s07_c52_sentence)
+    attempt("DA.fix_loop_spec_records_dispositions", _da_fix_loop_spec_dispositions)
+    attempt("DA.fix_s09_registry_pinned_and_passes", _da_fix_registry_pinned)
+    attempt("DA.fix_s01_mixed_report_template_text", _da_fix_mixed_report)
+    attempt("DA.fix_lf1_r160_cases_rejected_as_report_text", _da_fix_r160_cases_rejected_as_report_text)
+    attempt("DA.fix_s10_frame_bindings_independent", _da_fix_frame_bindings_independent)
+    attempt("DA.fix_lf1_compatibility_forms_normalized", _da_fix_lf1_compatibility_forms)
 
 
 def main():

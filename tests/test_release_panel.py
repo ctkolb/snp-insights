@@ -57,6 +57,9 @@ NON_AUTOSOMAL_NAMES = ("X", "Y", "PAR", "MT")
 CATEGORIES = ("carrier", "trait")
 RESULT_TYPES = ("trait", "carrier_status", "risk_association")
 VALID_PAIRS = (("trait", "trait"), ("carrier", "carrier_status"), ("carrier", "risk_association"))
+# Doc side (table T1): the v0.4.0 contract (docs/disease-associations.md C-3) adds one pair.
+# The targets-entry checker (pair_ok / check_pairs) keeps VALID_PAIRS and rejects it until S3.
+DOC_VALID_PAIRS = VALID_PAIRS + (("disease", "disease_association"),)
 TARGETS_ALLOWED_KEYS = frozenset(("rsid", "gene", "condition", "category", "result_type",
                                   "effect_allele", "assayability", "strand"))
 DECISIONS = ("included", "excluded", "reserve")
@@ -66,6 +69,8 @@ REASON_CODES = (
     "allele-not-mappable", "no-allele-condition-match", "ineligible-significance",
     "insufficient-review-status", "inheritance-unresolved", "inheritance-out-of-scope",
     "no-independent-confirmation", "evidence-not-in-pack",
+    # v0.4.0 S1 (owner decision O-12; R158-F7): disease-association exclusions.
+    "proxy-only", "ancestry-unrecorded",
 )
 RETIRED_REASON_CODES = ("x-linked-out-of-scope",)
 ASSAY_STATUSES = ("verified-from-public-manifest", "unknown-provisional")
@@ -74,7 +79,12 @@ MODEL_RESULT_TYPES = {"AR": "carrier_status", "AD-IP": "risk_association",
                       "SUSC": "risk_association", "n/a": "trait"}
 INHERITANCE_OK = {("AR", "carrier_status", "P"), ("AD-IP", "risk_association", "P"),
                   ("AD-IP", "risk_association", "RF"), ("SUSC", "risk_association", "P"),
-                  ("SUSC", "risk_association", "RF"), ("n/a", "trait", "-")}
+                  ("SUSC", "risk_association", "RF"), ("n/a", "trait", "-"),
+                  # v0.4.0 S1 (contract C-31): SUSC with disease_association, no supporting group.
+                  ("SUSC", "disease_association", "-")}
+# The result types each model may carry on a kept T1 row (doc side; C-31 adds the disease type).
+DOC_MODEL_RESULT_TYPES = {"AR": ("carrier_status",), "AD-IP": ("risk_association",),
+                          "SUSC": ("risk_association", "disease_association"), "n/a": ("trait",)}
 HEALTH_SOURCE_TYPES = ("genereviews", "medgen", "clingen", "pmid")
 GROUPS = ("P", "B", "U", "RF", "AP", "CF")
 DISPOSITIONS = ("match", "other-allele", "other-condition", "unmapped")
@@ -107,6 +117,8 @@ DOC_REQUIRED_HEADINGS = (
     "Allele mapping", "Qualifying record", "No carry-over", "Resolution", "Supporting group",
     "Inheritance gate", "Assayability", "Replication", "Typed ids", "Reason codes", "Tables",
     "Limitations", "Provenance block",
+    # v0.4.0 S1: the disease-association curation rules (contract C-1..C-54).
+    "Disease associations",
 )
 OUTCOME_STRINGS = (
     "excluded:allele-not-mappable", "excluded:no-allele-condition-match",
@@ -330,7 +342,7 @@ def check_pairs(entries):
 def check_t1_pairs(t1_rows):
     errors = []
     for r in t1_rows:
-        if not pair_ok(r.get("category"), r.get("result type")):
+        if (r.get("category"), r.get("result type")) not in DOC_VALID_PAIRS:
             errors.append(f"pair-invalid: {r.get('rsID')} ({r.get('category')!r}, {r.get('result type')!r})")
     return _result(errors, len(t1_rows))
 
@@ -340,6 +352,8 @@ _TYPED_RES = {
     "dbsnp": r"rs\d+", "clinvar": r"(?:vcv:\d+|rcv:RCV\d+)", "gwas": r"GCST\d+", "pmid": r"\d+",
     "genereviews": r"NBK\d+", "medgen": r"[A-Za-z0-9]+", "clingen": r"[A-Za-z0-9_.-]+",
     "manifest": r"[A-Za-z0-9._-]+",
+    # v0.4.0 S1 (owner decision O-9; contract C-50).
+    "gnomad": r"[0-9XY]+-\d+-[ACGT]+-[ACGT]+",
 }
 
 
@@ -486,7 +500,7 @@ def check_targets_shape(obj):
         return _result(["shape: top level is not an object"], 0)
     if not isinstance(obj.get("_note"), str):
         errors.append("shape: _note missing")
-    if obj.get("panel_version") != "0.3.0":
+    if obj.get("panel_version") != "0.4.0":
         errors.append(f"shape: panel_version {obj.get('panel_version')!r}")
     variants = obj.get("variants")
     if not isinstance(variants, list):
@@ -735,7 +749,7 @@ def check_inheritance_table(t1_rows, t3_rows):
             elif base["reason code"] != want:
                 errors.append(f"model-reason: {rs} {model} needs code {want}, has {base['reason code']!r}")
             continue
-        if kept and MODEL_RESULT_TYPES[model] != base["result type"]:
+        if kept and base["result type"] not in DOC_MODEL_RESULT_TYPES[model]:
             errors.append(f"model-result-type: {rs} {model} cannot carry {base['result type']!r}")
         ids = split_ids(row["inheritance sources (typed ids)"])
         bad = [i for i in ids if not typed_id_ok(i)]
@@ -960,8 +974,8 @@ def check_trait_table(t1_rows, t4_rows, aliases, pack_ids):
     live = [r for r in _live(t1_rows, "included", "reserve") if r["result type"] == "trait"]
     for base in t1_rows:
         rows = by_rs.get(base["rsID"], [])
-        if not rows:
-            continue
+        if not rows or base["result type"] == "disease_association":
+            continue  # disease rows: check_disease_table recomputes `counted` with the stricter rules
         status, _, drops = evaluate_replication(rows, base["effect allele (fwd, GRCh37)"],
                                                 base["label used in report"], aliases, pack_ids)
         for r in rows:
@@ -1414,17 +1428,17 @@ def _run_invariants(attempt):
         ("allele_differs", _set_row("rs9000003", allele="I"), "row-field-differs"),
     ])
     _syn(attempt, "targets_shape", lambda w: check_targets_shape(
-        {"_note": "x", "panel_version": "0.3.0", "genome_build": "GRCh37", "strand": "forward",
+        {"_note": "x", "panel_version": "0.4.0", "genome_build": "GRCh37", "strand": "forward",
          "variants": w["entries"]}), [
         ("entry_missing_field", lambda w: w["entries"][0].pop("effect_allele"), "shape"),
         ("entry_bad_rsid", _set_entry("rs9000001", rsid="9000001"), "shape"),
     ])
 
     def targets_shape_top_level():
-        base = {"_note": "x", "panel_version": "0.3.0", "variants": []}
+        base = {"_note": "x", "panel_version": "0.4.0", "variants": []}
         _clean(check_targets_shape(base), "shape/empty")
         for defect, obj in (("not an object", []), ("wrong version", dict(base, panel_version="0.1.0")),
-                            ("variants not a list", dict(base, variants={})), ("no note", {"panel_version": "0.3.0", "variants": []})):
+                            ("variants not a list", dict(base, variants={})), ("no note", {"panel_version": "0.4.0", "variants": []})):
             _has(check_targets_shape(obj), "shape", f"shape/{defect}")
         return True
     attempt("R1B.syn_targets_shape_top_level", targets_shape_top_level)
@@ -2777,7 +2791,7 @@ def _target_entry(**kw):
 
 
 def _targets_obj(*entries):
-    return {"_note": "invented", "panel_version": "0.3.0", "genome_build": "GRCh37",
+    return {"_note": "invented", "panel_version": "0.4.0", "genome_build": "GRCh37",
             "strand": "forward", "variants": list(entries)}
 
 
@@ -2842,7 +2856,8 @@ def _run_r50(attempt):
 # edited. The pool is the 23 DRAFT rsIDs of data/targets.carrier.json and
 # data/targets.traits.json (read-only), in ticket order, followed by the 11 v0.2.0
 # candidates (added by the v0.2.0 curation ticket), followed by the 10 v0.3.0
-# rows (nine candidates and the rs11887534 identity record; ticket S1 r139).
+# rows (nine candidates and the rs11887534 identity record; ticket S1 r139), followed by
+# the four v0.4.0 disease candidates (ticket S2 r165, all excluded, decisions S2-T1 to S2-T4).
 # =============================================================================
 POOL_RSIDS = (
     "rs334", "rs33930165", "rs113993960", "rs1800562", "rs1799945", "rs6025",
@@ -2853,13 +2868,20 @@ POOL_RSIDS = (
     "rs1799807", "rs121908529", "rs185803104", "rs180177314", "rs11591147",
     "rs10455872", "rs3798220", "rs6544713", "rs2282679", "rs10741657",
     "rs601338", "rs6795970", "rs174537", "rs1801133", "rs11887534",
+    "rs10757278", "rs2200733", "rs11209026", "rs4245791",
 )
 NON_AUTOSOMAL_POOL = ("rs1050828", "rs6152")
 GOAL_BOUND = 7
 RESERVE_BOUND = 3
 # Moved by ticket S3-B (A-4): only the two intro sentences about data rows changed;
 # the 1B-A value was 5d975e62ab8e4888594651735196b3d06208d2e57671289f902b621abdb4e1df.
-METHOD_HASH_1BA = "a7254091734a0828d3700415d6ef6439fd25bb9cbeafa234b549822d0aa521f1"
+# Re-pinned by v0.4.0 S1 (r159): the method sections gain the disease pair table, the
+# SUSC/disease_association combination, the gnomad typed id, two reason codes and the
+# section "Disease associations"; was a7254091734a0828d3700415d6ef6439fd25bb9cbeafa234b549822d0aa521f1.
+# Re-pinned by v0.4.0 S1 FIX (r162): the "Disease associations" section gains the own-record
+# binding, the counted-only conflict rule, per-row or: tokens, the inclusive frequency flag and
+# the evidence-state reason rule; was 4a4b7d3825a67a60ea069a99e9d2f3ed010b8a1c12805f0f679f7cf535d58910.
+METHOD_HASH_1BA = "e503d8f03099fcd4023c930fb07e5ab39d7e103cbe74f0493b12e5761dcd853e"
 PACK_IDS = ("N0a", "N0b", "N0c", "N0d")
 
 
@@ -3363,7 +3385,7 @@ def check_evidence_file(evidence, targets, t1, t2, t5):
         errors.append(f"top_level_unknown_key: {key}")
     if not isinstance(evidence.get("_note"), str):
         errors.append("shape: _note missing")
-    if evidence.get("panel_version") != "0.3.0":
+    if evidence.get("panel_version") != "0.4.0":
         errors.append(f"shape: panel_version {evidence.get('panel_version')!r}")
     entries = evidence.get("entries")
     if not isinstance(entries, list):
@@ -3428,7 +3450,7 @@ def _evidence_world():
     target = {"rsid": "rs9000002", "gene": "GENEB", "condition": "Example condition one",
               "category": "carrier", "result_type": "carrier_status",
               "effect_allele": "G", "assayability": "snp", "strand": "forward"}
-    targets = {"_note": "invented", "panel_version": "0.3.0", "genome_build": "GRCh37",
+    targets = {"_note": "invented", "panel_version": "0.4.0", "genome_build": "GRCh37",
                "strand": "forward", "variants": [target]}
     t1 = {"rs9000002": {"rsID": "rs9000002", "label used in report": "Example condition one",
                         "sources (typed ids)":
@@ -3437,7 +3459,7 @@ def _evidence_world():
                         "matched review status": "criteria provided, multiple submitters, no conflicts"}}
     t5 = {"rs9000002": {"pack file index id":
                         "dbsnp:rs9000002;clinvar:vcv:9001001;clinvar:rcv:RCV900000001"}}
-    evidence = {"_note": "invented", "panel_version": "0.3.0", "entries": [
+    evidence = {"_note": "invented", "panel_version": "0.4.0", "entries": [
         {"rsid": "rs9000002", "condition": "Example condition one",
          "clinvar_record": "clinvar:rcv:RCV900000001", "significance": "Pathogenic",
          "review_status": "criteria provided, multiple submitters, no conflicts", "review_stars": 2}]}
@@ -4232,7 +4254,7 @@ def _run_r65(attempt):
 # compared against literal values from the reviewed N1 dbSNP capture, and the
 # curated ClinVar blocks and source labels are literals from the committed panel.
 # =============================================================================
-REVIEWED_PANEL_SHA256 = "379f050163dc37430b6e493b20749958a058c8df48124606951f6b10a0bcaa0e"
+REVIEWED_PANEL_SHA256 = "40231a7b568ac35acd3290c1e2545bf5fad3f48e5e04e9cb3dc5dd8efad05366"
 N1_DBSNP_ORACLE = {
     "rs1800562": {"chromosome": "6", "position": 26093141,
                   "reference_allele": "G", "alternate_alleles": ["A", "T"]},
@@ -4717,14 +4739,14 @@ def _run_v030_s2(attempt):
     def version_literals():
         for rel in V030_S2_DATA_FILES:
             got = _v030_read_json(rel).get("panel_version")
-            _require(f"{rel}: panel_version {got!r}, expected '0.3.0'", got == "0.3.0")
-        # The package version is the owner's tag decision and does not move with the panel.
+            _require(f"{rel}: panel_version {got!r}, expected '0.4.0'", got == "0.4.0")
+        # v0.4.0 (owner decision O-8): the package version moves with the panel version.
         with open(os.path.join(ROOT, "pyproject.toml"), encoding="utf-8") as fh:
             pyproject = re.search(r'^version\s*=\s*"([^"]+)"', fh.read(), re.M).group(1)
         with open(os.path.join(ROOT, "snp_insights", "__init__.py"), encoding="utf-8") as fh:
             package = re.search(r'^__version__\s*=\s*"([^"]+)"', fh.read(), re.M).group(1)
-        _require(f"package versions {pyproject!r} and {package!r} are not both '0.3.0'",
-                 pyproject == package == "0.3.0")
+        _require(f"package versions {pyproject!r} and {package!r} are not both '0.4.0'",
+                 pyproject == package == "0.4.0")
         return True
     attempt("V030S2.version_literals", version_literals)
 
@@ -5615,6 +5637,1454 @@ def _run_v030_s3_fix2(attempt):
     attempt("V030S3G.not_assayable_sentence_is_exact", not_assayable_sentence_is_exact)
 
 
+# =============================================================================
+# v0.4.0 S1: disease-association curation rules (docs/disease-associations.md).
+# Pure checkers on T1/T3/T4 rows; every fixture below is invented.
+# =============================================================================
+CONTRACT_REL = "docs/disease-associations.md"
+CONTRACT_PATH = os.path.join(ROOT, *CONTRACT_REL.split("/"))
+DISEASE_RT = "disease_association"
+ANCESTRY_CODES = ("european", "east-asian", "south-asian", "african", "hispanic-latino",
+                  "middle-eastern", "oceanian", "mixed", "other")
+AF_GROUPS = ("afr", "amr", "asj", "eas", "fin", "nfe", "sas")
+DISEASE_STAGES = ("discovery", "replication", "combined")
+COHORT_KINDS = ("meta", "consortium", "biobank", "study")
+META_DEFAULT_KINDS = ("meta", "consortium", "biobank")
+DISEASE_DERIVED_CODES = ("single-study", "no-independent-confirmation", "conflicting-evidence",
+                         "evidence-not-in-pack", "ancestry-unrecorded")
+AF_FLAG = 0.20  # O-5 / D-3: a spread at or above this needs an owner decision (R161-03)
+OWNER_DECISION_RE = re.compile(r"owner-decision:([A-Z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)")
+# Reason codes that describe the evidence state of a disease row (R160-F2, R161-05).
+DISEASE_STATE_CODES = ("proxy-only", "label-mismatch") + DISEASE_DERIVED_CODES
+DISEASE_SCOPE_CANDIDATES = ("rs10757278", "rs2200733", "rs11209026", "rs4245791")
+DISEASE_SCOPE_CONTEXT = ("rs11887534",)
+DISEASE_DIRECTION_FRAMES = {
+    "susceptibility": ("susceptibility: each copy of the {X} allele is associated with higher odds of "
+                       "{label} in studies; association wording only"),
+    "protective": ("protective: each copy of the {X} allele is associated with lower odds of "
+                   "{label} in studies; association wording only"),
+}
+DISEASE_T3_MEANINGS = {
+    "susceptibility": ("one copy: higher association with {label}",
+                       "two copies: further higher association with {label}"),
+    "protective": ("one copy: lower association with {label}",
+                   "two copies: further lower association with {label}"),
+}
+_SCAN_ID_RE = re.compile(r"\b(?:rs\d+|f_[0-9a-f]+|c_[0-9a-f]+|cl_[0-9a-f]+|s_[0-9a-z_]+)\b", re.I)
+_SCAN_GENE_RE = re.compile(r"\b[A-Z][A-Za-z]*\d[A-Za-z0-9]*\b(?!\.\d)")
+
+
+def read_contract():
+    """The contract text, or "" when the file is missing (every pin then fails by assertion)."""
+    try:
+        with open(CONTRACT_PATH, encoding="utf-8") as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return ""
+
+
+def contract_patterns(text):
+    """[(id, group, regex)] from the r11 forbidden-pattern block of the contract."""
+    m = re.search(r"<!-- r11-forbidden-patterns:begin -->(.*?)<!-- r11-forbidden-patterns:end -->", text, re.S)
+    if not m:
+        return []
+    out = []
+    for line in m.group(1).splitlines():
+        hit = re.fullmatch(r"(FP-\d{2}) ([a-z-]+) (\S.*)", line)
+        if hit:
+            out.append(hit.groups())
+    return out
+
+
+def label_violations(label, patterns):
+    """C-44: a disease label may contain a forbidden word only through the word "disease"."""
+    t = re.sub(r"\bdisease\b", " ", label, flags=re.I)
+    t = _SCAN_GENE_RE.sub(" ", _SCAN_ID_RE.sub(" ", t))
+    return [pid for pid, _, rx in patterns if re.search(rx, t, re.I)]
+
+
+def check_disease_labels(t1_rows, patterns):
+    errors = []
+    if not patterns:
+        errors.append("disease-label-patterns-missing: the contract pattern block is absent")
+    rows = [r for r in t1_rows if r["result type"] == DISEASE_RT]
+    for r in rows:
+        hits = label_violations(r["label used in report"], patterns)
+        if hits:
+            errors.append(f"disease-label-forbidden: {r['rsID']} {r['label used in report']!r} {hits}")
+    return _result(errors, len(rows))
+
+
+def disease_phenotype_matches(reported, label, aliases):
+    """C-7: equality of the normalized strings with the label or an alias; never containment."""
+    import evidence
+    return evidence.norm_cond(reported) in evidence._condition_variants(label, aliases)
+
+
+def disease_stage(row):
+    """C-22 (R158-F5): (stage, codes, None) or (None, None, reason); reason is
+    missing, grammar or stage-mismatch."""
+    anc, size = row["sample ancestry"], row["sample size"]
+    if anc in ("-", "") or size in ("-", ""):
+        return None, None, "missing"
+    ma = re.fullmatch(r"([a-z]+):([a-z-]+(?:\+[a-z-]+)*)", anc)
+    ms = re.fullmatch(r"([a-z]+):(?:\d+/\d+|n=\d+)", size)
+    if not ma or not ms or ma.group(1) not in DISEASE_STAGES or ms.group(1) not in DISEASE_STAGES:
+        return None, None, "grammar"
+    codes = ma.group(2).split("+")
+    if any(c not in ANCESTRY_CODES for c in codes) or len(set(codes)) != len(codes):
+        return None, None, "grammar"
+    if ma.group(1) != ms.group(1):
+        return None, None, "stage-mismatch"
+    return ma.group(1), codes, None
+
+
+def _cohort_kind(cohort):
+    head = cohort.split("-", 1)[0]
+    return head if "-" in cohort and head in COHORT_KINDS else None
+
+
+def _items(cell):
+    return [i.strip() for i in (cell or "").split("; ")]
+
+
+_INDEP_RE = re.compile(r"independence:([a-z0-9-]+)\|([a-z0-9-]+)=([^ ;]+) \(([^;()]+)\)")
+_OR_RE = re.compile(r"or:([A-Za-z0-9_-]+)=(\d+(?:\.\d+)?) \((\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)\)")
+_AF_RE = re.compile(r"af-spread:(\d+(?:\.\d+)?) over ([a-z]+(?:,[a-z]+)+)")
+
+
+def independence_tokens(cell, pack_ids):
+    """(valid {frozenset(cohort-a, cohort-b)}, malformed items). A token separates a pair
+    only when every typed id it cites is well formed and in the evidence pack (R158-F3)."""
+    valid, bad = set(), []
+    for item in _items(cell):
+        if not item.startswith("independence:"):
+            continue
+        m = _INDEP_RE.fullmatch(item)
+        ids = m.group(3).split(",") if m else []
+        if not m or m.group(1) == m.group(2) or not ids or \
+                any(not typed_id_ok(i) or i not in pack_ids for i in ids):
+            bad.append(item)
+            continue
+        valid.add(frozenset((m.group(1), m.group(2))))
+    return valid, bad
+
+
+def evaluate_disease(rows, effect_allele, label, aliases, pack_ids, separated=frozenset()):
+    """Returns (status, groups, drops). Equality phenotype match (C-7), the Replication
+    row rules, functional rows never count, stage ancestry and size (C-22), the
+    meta-analysis default clustering (C-15 item 3) and two significant groups (C-15)."""
+    drops, matched = {}, []
+    for r in rows:
+        if disease_phenotype_matches(r["trait (reported)"], label, aliases):
+            matched.append(dict(r, **{"trait (reported)": label}))
+        else:
+            drops[r["row id"]] = "trait-mismatch"
+    base_status, _, base = evaluate_replication(matched, effect_allele, label, aliases, pack_ids) \
+        if matched else ("no-counted-evidence", [], {})
+    info = {}
+    for r in matched:
+        rid, code = r["row id"], base[r["row id"]]
+        if code is None and row_kind(r) != "gwas":
+            code = "functional-not-counted"
+        # R161-02: a counted row is bound to its own pack records.
+        if code is None and r["orientation source"] != f"dbsnp:{r['rsID']}":
+            code = "evidence-not-in-pack"
+        if code is None and (f"gwas:{r['study accession']}" not in pack_ids or f"pmid:{r['PMID']}" not in pack_ids):
+            code = "evidence-not-in-pack"
+        if code is None and disease_stage(r)[0] is None:
+            code = "ancestry-unrecorded"
+        drops[rid] = code
+        info[rid] = r
+    eligible = sorted(rid for rid in info if drops[rid] is None)
+    parent = {rid: rid for rid in eligible}
+
+    def find(x):
+        while parent[x] != x:
+            x = parent[x]
+        return x
+
+    for a, b in itertools.combinations(eligible, 2):
+        ra, rb = info[a], info[b]
+        ca, cb = ra["cohort id"], rb["cohort id"]
+        ka, kb = _cohort_kind(ca), _cohort_kind(cb)
+        linked = (ra["PMID"] != "-" and ra["PMID"] == rb["PMID"]) or ca == cb \
+            or b in split_ids(ra["overlap with"]) or a in split_ids(rb["overlap with"])
+        meta_default = ("meta" in (ka, kb) and ka in META_DEFAULT_KINDS and kb in META_DEFAULT_KINDS
+                        and frozenset((ca, cb)) not in separated)
+        if linked or meta_default:
+            parent[find(a)] = find(b)
+    clusters = {}
+    for rid in eligible:
+        clusters.setdefault(find(rid), []).append(rid)
+    groups = sorted(sorted(c) for c in clusters.values())
+    significant = [g for g in groups
+                   if any(_parse_p(info[r]["p-value"])[0] is not None
+                          and _parse_p(info[r]["p-value"])[0] <= P_THRESHOLD for r in g)]
+    counted_dirs = {info[rid]["direction"] for rid in eligible}  # R161-06: counted rows only
+    if {"up", "down"} <= counted_dirs:
+        status = "conflicting-evidence"
+    elif not groups:
+        status = "no-counted-evidence"
+    elif len(groups) < MIN_GROUPS:
+        status = "single-study"
+    elif len(significant) < MIN_GROUPS:
+        status = "not-significant"
+    else:
+        status = "replicated"
+    return status, groups, drops
+
+
+def disease_exclusion_code(status, drops):
+    if status == "replicated":
+        return None
+    if status == "conflicting-evidence":
+        return status
+    if "ancestry-unrecorded" in drops.values():
+        return "ancestry-unrecorded"
+    if status == "single-study":
+        return status
+    if status == "not-significant":
+        return "no-independent-confirmation"
+    soft = ("orientation-unverified", "cohort-unknown", "evidence-not-in-pack")
+    return "evidence-not-in-pack" if any(c in soft for c in drops.values()) else "no-independent-confirmation"
+
+
+def _derived_word(rows, drops):
+    dirs = {r["direction"] for r in rows if drops.get(r["row id"]) is None}
+    return {frozenset(("up",)): "susceptibility", frozenset(("down",)): "protective"}.get(frozenset(dirs))
+
+
+def _check_disease_tokens(base, rows, groups, drops, word, aliases, pack_ids, af_exceptions):
+    errors, rs = [], base["rsID"]
+    rationale, limits = base["rationale"], base["limitations"]
+    by_id = {r["row id"]: r for r in rows}
+    valid, bad = independence_tokens(rationale, pack_ids)
+    errors += [f"disease-token-malformed: {rs} {b!r}" for b in bad]
+    for ga, gb in itertools.combinations(groups, 2):
+        pairs = {frozenset((by_id[a]["cohort id"], by_id[b]["cohort id"])) for a in ga for b in gb}
+        if not pairs & valid:
+            errors.append(f"disease-independence-missing: {rs} groups {ga} and {gb}")
+    ors = {}
+    for item in _items(rationale):
+        if item.startswith("or:"):
+            m = _OR_RE.fullmatch(item)
+            if not m:
+                errors.append(f"disease-token-malformed: {rs} {item!r}")
+            else:
+                ors[m.group(1)] = tuple(float(x) for x in m.group(2, 3, 4))
+    # R161-08: every counted row has its published per-copy ratio and interval; the token of the
+    # strongest counted row of each group is that group's summary.
+    recorded = sorted(rid for g in groups for rid in g)
+    for strongest in recorded:
+        if strongest not in ors:
+            errors.append(f"disease-or-missing: {rs} {strongest}")
+            continue
+        value, low, high = ors[strongest]
+        if (by_id[strongest]["direction"] == "up") != (value > 1) or value == 1:
+            errors.append(f"disease-or-side: {rs} {strongest} {value} for {by_id[strongest]['direction']}")
+        if not (0 < low <= value <= high):
+            errors.append(f"disease-or-interval: {rs} {strongest} {value} ({low}-{high})")
+    afs = [i for i in _items(rationale) if i.startswith("af-spread:")]
+    m = _AF_RE.fullmatch(afs[0]) if len(afs) == 1 else None
+    if not m or not 0 <= float(m.group(1)) <= 1 or any(g not in AF_GROUPS for g in m.group(2).split(",")) \
+            or len(set(m.group(2).split(","))) != len(m.group(2).split(",")):
+        errors.append(f"disease-af-spread: {rs} needs one parseable af-spread token")
+    elif float(m.group(1)) >= AF_FLAG:  # R161-03: inclusive threshold (O-5)
+        cited = [d.group(1) for d in map(OWNER_DECISION_RE.fullmatch, _items(limits)) if d]
+        approved = af_exceptions.get(rs)
+        if base["decision"] != "included" or not approved or cited != [approved]:
+            errors.append(f"disease-af-flagged: {rs} spread {m.group(1)} needs an approved owner decision "
+                          f"cited as owner-decision:<id> on an included row")
+    import evidence
+    reviewed = {evidence.norm_cond(i[len("alias-review:"):].split("=", 1)[0])
+                for i in _items(rationale) if i.startswith("alias-review:") and "=" in i[len("alias-review:"):]}
+    label_norm = evidence.norm_cond(base["label used in report"])
+    for rid, r in by_id.items():
+        alias = evidence.norm_cond(r["trait (reported)"])
+        if drops.get(rid) is None and alias != label_norm and alias not in reviewed:
+            errors.append(f"disease-alias-review-missing: {rs} {rid} uses {r['trait (reported)']!r}")
+    derived = set()
+    for rid, r in by_id.items():
+        p = _parse_p(r["p-value"])[0]
+        if drops.get(rid) is None and p is not None and p <= P_THRESHOLD:
+            derived.update(disease_stage(r)[1] or ())
+    want = "ancestry-scope:" + ",".join(c for c in ANCESTRY_CODES if c in derived)
+    scopes = [i for i in _items(limits) if i.startswith("ancestry-scope:")]
+    if scopes != [want]:
+        errors.append(f"disease-ancestry-scope: {rs} has {scopes}, derived {want!r}")
+    return errors
+
+
+def _check_disease_t3(base, t3_row, word):
+    rs, label, errors = base["rsID"], base["label used in report"], []
+    if t3_row is None:
+        return [f"disease-t3-missing: {rs}"]
+    if not inheritance_ok(t3_row["model"], DISEASE_RT, "-"):
+        errors.append(f"disease-t3-model: {rs} {t3_row['model']!r} is not an allowed combination")
+    if word in DISEASE_T3_MEANINGS:
+        one, two = (m.format(label=label) for m in DISEASE_T3_MEANINGS[word])
+        if (t3_row["one-copy meaning"], t3_row["two-copy meaning"]) != (one, two):
+            errors.append(f"disease-t3-meaning: {rs}")
+    ids = split_ids(t3_row["inheritance sources (typed ids)"])
+    if not any(typed_id_ok(i) and i.split(":")[0] in HEALTH_SOURCE_TYPES for i in ids):
+        errors.append(f"disease-t3-source: {rs}")
+    return errors
+
+
+def disease_evidence_state(base, rows, by_rs, aliases, pack_ids):
+    """R160-F2 / R161-05: the one reason code an evidence state allows, or None when own
+    matching rows exist (the replication status then decides)."""
+    label, rs = base["label used in report"], base["rsID"]
+    if rows:
+        if all(not disease_phenotype_matches(r["trait (reported)"], label, aliases) for r in rows):
+            return "label-mismatch"
+        return None
+    proxies = [i[len("proxy:"):] for i in _items(base["rationale"]) if re.fullmatch(r"proxy:rs\d+", i)]
+    for p in proxies:
+        if p != rs and f"dbsnp:{p}" in pack_ids and any(
+                disease_phenotype_matches(r["trait (reported)"], label, aliases) for r in by_rs.get(p, [])):
+            return "proxy-only"
+    return "no-independent-confirmation"
+
+
+def check_disease_table(t1_rows, t2_rows, t3_rows, t4_rows, aliases, pack_ids, af_exceptions=None):
+    """af_exceptions: {rsID: owner decision id} approving a flagged frequency spread (O-5)."""
+    af_exceptions = {} if af_exceptions is None else af_exceptions
+    errors = []
+    disease = [r for r in t1_rows if r["result type"] == DISEASE_RT]
+    t2 = {r["rsID"] for r in t2_rows}
+    t3 = {r["rsID"]: r for r in t3_rows}
+    by_rs = {}
+    for r in t4_rows:
+        by_rs.setdefault(r["rsID"], []).append(r)
+    for base in disease:
+        rs, dec, code = base["rsID"], base["decision"], base["reason code"]
+        rows = by_rs.get(rs, [])
+        if rs in t2:
+            errors.append(f"disease-has-t2: {rs}")
+        separated = independence_tokens(base["rationale"], pack_ids)[0]
+        status, groups, drops = evaluate_disease(rows, base["effect allele (fwd, GRCh37)"],
+                                                 base["label used in report"], aliases, pack_ids, separated)
+        cited = set(split_ids(base["sources (typed ids)"]))
+        for r in rows:  # R161-02 / C-50: every GWAS study and publication of the row is cited
+            if row_kind(r) == "gwas":
+                for need in (f"gwas:{r['study accession']}", f"pmid:{r['PMID']}"):
+                    if need not in cited:
+                        errors.append(f"disease-t1-source-missing: {rs} {need}")
+        for r in rows:
+            rid = r["row id"]
+            want = "yes" if drops[rid] is None else f"no:{drops[rid]}"
+            if r["counted"] != want:
+                errors.append(f"disease-t4-counted-claim: {rid} claims {r['counted']!r}, computed {want!r}")
+            if drops[rid] is None and _cohort_kind(r["cohort id"]) is None:
+                errors.append(f"disease-cohort-kind: {rid} {r['cohort id']!r}")
+            if (r["sample ancestry"], r["sample size"]) != ("-", "-"):
+                reason = disease_stage(r)[2]
+                if reason in ("grammar", "stage-mismatch"):
+                    errors.append(f"disease-t4-stage-{reason}: {rid}")
+        word = _derived_word(rows, drops)
+        if dec in ("included", "reserve"):
+            if status != "replicated":
+                errors.append(f"disease-not-replicated: {rs} is {status}")
+            allele, label = base["effect allele (fwd, GRCh37)"], base["label used in report"]
+            frames = {w: f.format(X=allele, label=label) for w, f in DISEASE_DIRECTION_FRAMES.items()}
+            cell = base["direction/meaning"]
+            if cell not in frames.values():
+                errors.append(f"disease-direction-grammar: {rs} {cell!r}")
+            elif word is None or cell != frames[word]:
+                errors.append(f"disease-direction-word: {rs} cell does not match derived {word!r}")
+            errors += _check_disease_tokens(base, rows, groups, drops, word, aliases, pack_ids, af_exceptions)
+            errors += _check_disease_t3(base, t3.get(rs), word)
+        elif dec == "excluded":
+            if base["direction/meaning"] != "not applicable":
+                errors.append(f"disease-direction-excluded: {rs} {base['direction/meaning']!r}")
+            if code == "proxy-only" and rows:
+                errors.append(f"disease-proxy-only-has-own-rows: {rs} has {len(rows)} T4 rows; "
+                              f"use label-mismatch or a derived code")
+            if code == "label-mismatch" and (not rows or any(drops[r["row id"]] != "trait-mismatch" for r in rows)):
+                errors.append(f"disease-label-mismatch-invalid: {rs} needs own-rsID rows, all trait-mismatch")
+            if code in DISEASE_DERIVED_CODES:
+                derived = disease_exclusion_code(status, drops)
+                if derived != code:
+                    errors.append(f"disease-reason-derived: {rs} carries {code!r}, derived {derived!r}")
+            state = disease_evidence_state(base, rows, by_rs, aliases, pack_ids)
+            if code == "proxy-only" and not rows and state != "proxy-only":
+                errors.append(f"disease-proxy-only-unsubstantiated: {rs} needs a proxy:rs<digits> token naming a "
+                              f"linked rsID with an exact-label T4 row and its dbSNP record in the pack")
+            if code in DISEASE_STATE_CODES and state is not None and code != state:
+                errors.append(f"disease-reason-state: {rs} carries {code!r}, the evidence state allows only {state!r}")
+    return _result(errors, len(disease) + sum(len(by_rs.get(b["rsID"], [])) for b in disease))
+
+
+def check_disease_scope(t1_rows, entries):
+    """C-52: the four candidates and the rs11887534 record each have a T1 row with a
+    decision; included disease rows and disease target entries are the same set."""
+    errors = []
+    for rs in DISEASE_SCOPE_CANDIDATES:
+        rows = [r for r in t1_rows if r["rsID"] == rs]
+        if len(rows) != 1 or (rows[0]["category"], rows[0]["result type"]) != ("disease", DISEASE_RT) \
+                or rows[0]["decision"] not in DECISIONS:
+            errors.append(f"disease-scope-missing: {rs}")
+            continue
+        r = rows[0]
+        if r["decision"] == "excluded":
+            ids = split_ids(r["sources (typed ids)"])
+            if r["reason code"] in ("-", "") or not ids or not all(typed_id_ok(i) for i in ids):
+                errors.append(f"disease-scope-excluded-incomplete: {rs}")
+    for rs in DISEASE_SCOPE_CONTEXT:
+        if not any(r["rsID"] == rs and r["decision"] in DECISIONS for r in t1_rows):
+            errors.append(f"disease-scope-context-missing: {rs}")
+    kept = {r["rsID"] for r in t1_rows if r["result type"] == DISEASE_RT and r["decision"] == "included"}
+    targets = {e.get("rsid") for e in entries if e.get("result_type") == DISEASE_RT}
+    for rs in sorted(kept ^ targets):
+        errors.append(f"disease-scope-bijection: {rs}")
+    return _result(errors, len(DISEASE_SCOPE_CANDIDATES) + len(DISEASE_SCOPE_CONTEXT))
+
+
+# --- disease fixtures ------------------------------------------------------------------
+_D_LABEL = "Example disease"
+_D_SUSC = DISEASE_DIRECTION_FRAMES["susceptibility"].format(X="A", label=_D_LABEL)
+_D_PROT = DISEASE_DIRECTION_FRAMES["protective"].format(X="A", label=_D_LABEL)
+
+
+def _d4(rid, n, cohort, p, direction="up", stage="discovery", anc="european", size="1200/3400",
+        trait=_D_LABEL, rs="rs9100001", allele="A", counted="yes", overlap="-", pmid=None, size_stage=None):
+    pmid = pmid or str(n)
+    return {"rsID": rs, "row id": rid, "study accession": f"GCST{n}", "PMID": pmid,
+            "trait (reported)": trait, "effect allele (fwd, GRCh37)": allele, "orientation": "verified",
+            "orientation source": f"dbsnp:{rs}", "direction": direction, "p-value": p,
+            "sample ancestry": "-" if anc == "-" else f"{stage}:{anc}",
+            "sample size": "-" if size == "-" else f"{size_stage or stage}:{size}",
+            "cohort id": cohort, "cohort source": f"pmid:{pmid}", "overlap with": overlap, "counted": counted}
+
+
+def _d1(rs="rs9100001", **kw):
+    row = _t1(rsid=rs, label=_D_LABEL, rt=DISEASE_RT, cat="disease", allele="A", meaning=_D_SUSC,
+              src=f"dbsnp:{rs};gwas:GCST9100001;gwas:GCST9100002;pmid:9100001;pmid:9100002;gnomad:1-1000-G-A",
+              why=("replication: replicated; strand: non-palindromic G/A; report-safety: association wording; "
+                         "independence:study-alpha|biobank-beta=pmid:9100001,pmid:9100002 "
+                         "(separate recruitment named in both papers); or:d1=1.20 (1.10-1.31); "
+                         "or:d2=1.15 (1.08-1.23); af-spread:0.05 over afr,eas,nfe"),
+              lim="array presence not verified; ancestry-scope:european,east-asian")
+    row.update({SHORT[k]: v for k, v in kw.items()})
+    return row
+
+
+def disease_world():
+    rows = [_d4("d1", 9100001, "study-alpha", "2e-9"),
+            _d4("d2", 9100002, "biobank-beta", "4e-8", anc="east-asian", size="n=5000")]
+    t3 = [_t3("rs9100001", "SUSC", f"one copy: higher association with {_D_LABEL}",
+              f"two copies: further higher association with {_D_LABEL}", "pmid:9100003")]
+    return {"t1": [_d1()], "t2": [], "t3": t3, "t4": rows, "aliases": {}, "entries": []}
+
+
+def _dpack(w):
+    """The fixture evidence pack: T4 provenance plus the typed sources of the disease T1
+    rows (standing in for the candidate's T5 inventory)."""
+    ids = set(_pack_ids(w["t4"]))
+    for r in w["t1"]:
+        if r["result type"] == DISEASE_RT:
+            ids.update(i for i in split_ids(r["sources (typed ids)"]) if typed_id_ok(i))
+    return ids
+
+
+def _dcheck(w, pack=None):
+    pack = _dpack(w) if pack is None else pack
+    return check_disease_table(w["t1"], w["t2"], w["t3"], w["t4"], w["aliases"], pack)
+
+
+def _dstatus(w, separated=frozenset()):
+    b = w["t1"][0]
+    return evaluate_disease(w["t4"], b["effect allele (fwd, GRCh37)"], b["label used in report"],
+                            w["aliases"], _dpack(w), separated)
+
+
+def _scope_t1(decision="excluded"):
+    rows = [_t1(rsid=rs, label=f"Example disease {w}", rt=DISEASE_RT, cat="disease", allele="-",
+                meaning="not applicable", src=f"dbsnp:{rs}", dec=decision,
+                code="no-independent-confirmation" if decision == "excluded" else "-")
+            for rs, w in zip(DISEASE_SCOPE_CANDIDATES, ("one", "two", "three", "four"))]
+    rows.append(_t1(rsid="rs11887534", dec="excluded", code="palindromic"))
+    return rows
+
+
+def _run_disease(attempt):
+    def no_errors(res, label):
+        _clean(res, label)
+        return True
+
+    # --- pairs: the T1 checker accepts the new pair; the targets-entry checker still rejects it.
+    def t1_accepts_disease_pair():
+        for dec in DECISIONS:
+            code = "-" if dec != "excluded" else "label-mismatch"
+            _clean(check_t1_pairs([_t1(rsid="rs9100041", cat="disease", rt=DISEASE_RT, dec=dec, code=code)]),
+                   f"T1 disease pair {dec}")
+        return True
+    attempt("DA.syn_t1_pairs_accept_disease_pair", t1_accepts_disease_pair)
+
+    def entries_still_reject_disease_pair():
+        _has(check_pairs([{"rsid": "rs9100041", "category": "disease", "result_type": DISEASE_RT}]),
+             "pair-invalid: rs9100041", "targets entry with the disease pair before S3")
+        return True
+    attempt("DA.syn_target_entries_reject_disease_pair_until_s3", entries_still_reject_disease_pair)
+
+    def t1_rejects_wrong_disease_pairs():
+        for cat, rt in (("disease", "risk_association"), ("disease", "trait"), ("carrier", DISEASE_RT),
+                        ("trait", DISEASE_RT), ("Disease", DISEASE_RT), ("disease", "Disease_association"),
+                        ("disease", "disease_associations"), ("disease", "carrier_status")):
+            _has(check_t1_pairs([_t1(rsid="rs9100042", cat=cat, rt=rt)]), "pair-invalid: rs9100042", f"{cat}/{rt}")
+        return True
+    attempt("DA.syn_t1_pairs_reject_other_disease_pairs", t1_rejects_wrong_disease_pairs)
+
+    # --- reason codes (O-12, R158-F7) and the doc list.
+    def new_reason_codes_accepted():
+        for code in ("proxy-only", "ancestry-unrecorded"):
+            _clean(check_decisions([_t1(rsid="rs9100043", dec="excluded", code=code)]), code)
+            good = "## Reason codes\n\n" + "\n".join(f"- `{c}`" for c in REASON_CODES) + "\n"
+            _has(check_reason_code_list(good.replace(f"- `{code}`\n", "")), code, f"doc list lacks {code}")
+        _has(check_decisions([_t1(rsid="rs9100043", dec="excluded", code="proxy-onlyy")]), "reason-unknown", "typo")
+        return True
+    attempt("DA.syn_reason_codes_proxy_only_and_ancestry_unrecorded", new_reason_codes_accepted)
+
+    # --- gnomad typed id (O-9).
+    def gnomad_typed_id():
+        for good in ("gnomad:1-1000-G-A", "gnomad:22-123456-AT-A", "gnomad:X-5-C-T"):
+            _require(f"{good} accepted", typed_id_ok(good))
+        for bad in ("gnomad:1-1000-G", "gnomad:chr1-1000-G-A", "gnomad:1-1000-g-a", "gnomad:1-x-G-A", "gnomad:"):
+            _require(f"{bad} rejected", not typed_id_ok(bad))
+        _clean(check_provenance([_d1()]), "disease row with a gnomad source")
+        return True
+    attempt("DA.syn_gnomad_typed_id", gnomad_typed_id)
+
+    # --- the accepting world.
+    def world_accepts():
+        res = _dcheck(disease_world())
+        _clean(res, "disease world")
+        _require("rows checked", res.rows_checked >= 3)
+        _require("status replicated", _dstatus(disease_world())[0] == "replicated")
+        return True
+    attempt("DA.syn_disease_world_accepts", world_accepts)
+
+    def rejects(name, mutate, code, pack=None):
+        def fn():
+            w = disease_world()
+            mutate(w)
+            _has(_dcheck(w, pack), code, name)
+            return True
+        attempt(f"DA.syn_disease_rejects_{name}", fn)
+
+    # C-7 / C-8: equality, never containment.
+    def composite(w):
+        w["t4"][1]["trait (reported)"] = "Example disease or other disease"
+        w["t4"][1]["counted"] = "no:trait-mismatch"
+    rejects("composite_trait_not_counted", composite, "disease-not-replicated: rs9100001 is single-study")
+
+    def composite_status():
+        w = disease_world()
+        composite(w)
+        status, _, drops = _dstatus(w)
+        _require(f"composite drop {drops}", drops["d2"] == "trait-mismatch" and status == "single-study")
+        w = disease_world()
+        w["t4"][1]["trait (reported)"] = "Example disease (early onset)"
+        _require("subtype dropped", _dstatus(w)[2]["d2"] == "trait-mismatch")
+        w = disease_world()
+        w["t4"][1]["trait (reported)"] = "example  DISEASE"
+        _require("normalized equality counts", _dstatus(w)[2]["d2"] is None)
+        return True
+    attempt("DA.syn_disease_equality_not_containment", composite_status)
+
+    def alias_counts_with_review():
+        w = disease_world()
+        w["aliases"] = {"example group": [_D_LABEL, "Example sickness"]}
+        w["t4"][1]["trait (reported)"] = "Example sickness"
+        _has(_dcheck(w), "disease-alias-review-missing", "alias used without review token")
+        w["t1"][0]["rationale"] += "; alias-review:Example sickness=registry synonym of the same disease"
+        _clean(_dcheck(w), "alias with review token")
+        return True
+    attempt("DA.syn_disease_alias_review_token", alias_counts_with_review)
+
+    # C-15 / O-6: two groups each with a significant row.
+    def second_group_not_significant(w):
+        w["t4"][1]["p-value"] = "1e-6"
+        w["t1"][0]["limitations"] = "array presence not verified; ancestry-scope:european"
+    rejects("second_group_not_significant", second_group_not_significant,
+            "disease-not-replicated: rs9100001 is not-significant")
+
+    def second_group_rule_maps_code():
+        w = disease_world()
+        second_group_not_significant(w)
+        status, _, drops = _dstatus(w)
+        _require(f"status {status}", status == "not-significant")
+        _require("code", disease_exclusion_code(status, drops) == "no-independent-confirmation")
+        w["t1"][0].update({SHORT["dec"]: "excluded", SHORT["code"]: "no-independent-confirmation",
+                           SHORT["meaning"]: "not applicable"})
+        _clean(_dcheck(w), "excluded with the derived code")
+        w["t1"][0][SHORT["code"]] = "single-study"
+        _has(_dcheck(w), "disease-reason-derived", "wrong derived code")
+        return True
+    attempt("DA.syn_disease_second_significant_group_code", second_group_rule_maps_code)
+
+    def same_pmid_one_group(w):
+        w["t4"][1]["PMID"] = "9100001"
+        w["t4"][1]["cohort source"] = "pmid:9100001"
+    rejects("same_publication_one_group", same_pmid_one_group, "disease-not-replicated: rs9100001 is single-study")
+
+    def functional_never_counts():
+        w = disease_world()
+        fn = _d4("f1", 9100009, "study-gamma", "-")
+        fn.update({"study accession": "-", "counted": "no:functional-not-counted"})
+        w["t4"] = [w["t4"][0], fn]
+        status, _, drops = _dstatus(w)
+        _require(f"functional {drops} {status}", drops["f1"] == "functional-not-counted" and status == "single-study")
+        return True
+    attempt("DA.syn_disease_functional_never_counts", functional_never_counts)
+
+    # C-15 item 3 (R158-F3): unlisted meta-analyses cluster by default.
+    def two_metas(w):
+        w["t4"][0]["cohort id"] = "meta-one"
+        w["t4"][1]["cohort id"] = "meta-two"
+        w["t1"][0]["rationale"] = w["t1"][0]["rationale"].replace(
+            "independence:study-alpha|biobank-beta=pmid:9100001,pmid:9100002 (separate recruitment named in both papers); ", "")
+    rejects("two_meta_analyses_cluster_by_default", two_metas, "disease-not-replicated: rs9100001 is single-study")
+
+    def meta_defaults():
+        w = disease_world()
+        two_metas(w)
+        _require("two metas one group", _dstatus(w)[0] == "single-study")
+        w = disease_world()
+        w["t4"][0]["cohort id"] = "meta-one"
+        _require("meta with biobank one group", _dstatus(w)[0] == "single-study")
+        w = disease_world()
+        w["t4"][0]["cohort id"] = "meta-one"
+        w["t4"][1]["cohort id"] = "study-beta"
+        _require("meta with a study cohort stays separate", _dstatus(w)[0] == "replicated")
+        w = disease_world()
+        two_metas(w)
+        token = "independence:meta-one|meta-two=pmid:9100001,pmid:9100002 (component lists are disjoint)"
+        w["t1"][0]["rationale"] += "; " + token
+        _clean(_dcheck(w), "metas separated by a token citing pack evidence")
+        w["t1"][0]["rationale"] = w["t1"][0]["rationale"].replace("pmid:9100001,pmid:9100002 (component",
+                                                                  "pmid:9199999 (component")
+        _has(_dcheck(w), "disease-token-malformed", "token citing evidence outside the pack")
+        _has(_dcheck(w), "disease-not-replicated", "token outside the pack does not separate")
+        return True
+    attempt("DA.syn_disease_meta_analysis_default_overlap", meta_defaults)
+
+    def independence_missing(w):
+        w["t1"][0]["rationale"] = w["t1"][0]["rationale"].replace(
+            "independence:study-alpha|biobank-beta=pmid:9100001,pmid:9100002 (separate recruitment named in both papers); ", "")
+    rejects("independence_token_missing", independence_missing, "disease-independence-missing")
+
+    def independence_without_evidence(w):
+        w["t1"][0]["rationale"] = w["t1"][0]["rationale"].replace(
+            "=pmid:9100001,pmid:9100002 (separate", "=study-alpha (separate")
+    rejects("independence_token_without_typed_source", independence_without_evidence, "disease-token-malformed")
+
+    def cohort_kind(w):
+        w["t4"][0]["cohort id"] = "alpha"
+    rejects("cohort_without_kind_prefix", cohort_kind, "disease-cohort-kind")
+
+    # C-22 / C-23 (R158-F5): stage ancestry and size per row; scope parity.
+    def stage_mismatch(w):
+        w["t4"][1] = _d4("d2", 9100002, "biobank-beta", "4e-8", anc="east-asian", size="n=5000",
+                         size_stage="replication")
+    rejects("stage_mismatch_between_cells", stage_mismatch, "disease-t4-stage-stage-mismatch")
+
+    def stage_grammar(w):
+        w["t4"][1]["sample ancestry"] = "discovery:East Asian"
+    rejects("ancestry_cell_outside_vocabulary", stage_grammar, "disease-t4-stage-grammar")
+
+    def ancestry_missing(w):
+        w["t4"][1]["sample ancestry"] = "-"
+        w["t4"][1]["counted"] = "no:ancestry-unrecorded"
+    rejects("ancestry_unrecorded_row_not_counted", ancestry_missing, "disease-not-replicated: rs9100001 is single-study")
+
+    def ancestry_code():
+        w = disease_world()
+        ancestry_missing(w)
+        w["t1"][0].update({SHORT["dec"]: "excluded", SHORT["code"]: "ancestry-unrecorded",
+                           SHORT["meaning"]: "not applicable"})
+        _clean(_dcheck(w), "excluded ancestry-unrecorded")
+        w["t1"][0][SHORT["code"]] = "single-study"
+        _has(_dcheck(w), "disease-reason-derived", "single-study where ancestry-unrecorded is derived")
+        return True
+    attempt("DA.syn_disease_ancestry_unrecorded_code", ancestry_code)
+
+    def scope_wrong(w):
+        w["t1"][0]["limitations"] = "array presence not verified; ancestry-scope:european"
+    rejects("ancestry_scope_narrower_than_rows", scope_wrong, "disease-ancestry-scope")
+
+    def scope_wide(w):
+        w["t1"][0]["limitations"] = "array presence not verified; ancestry-scope:european,east-asian,african"
+    rejects("ancestry_scope_wider_than_rows", scope_wide, "disease-ancestry-scope")
+
+    def scope_order(w):
+        w["t1"][0]["limitations"] = "array presence not verified; ancestry-scope:east-asian,european"
+    rejects("ancestry_scope_out_of_order", scope_order, "disease-ancestry-scope")
+
+    def scope_uses_replication_stage_only_when_row_is():
+        w = disease_world()
+        w["t4"][1] = _d4("d2", 9100002, "biobank-beta", "4e-8", stage="replication", anc="african",
+                         size="n=5000")
+        w["t1"][0]["limitations"] = "array presence not verified; ancestry-scope:european,african"
+        _clean(_dcheck(w), "replication-stage row brings its own ancestry")
+        return True
+    attempt("DA.syn_disease_scope_from_row_stage", scope_uses_replication_stage_only_when_row_is)
+
+    # C-20: or: token side and interval.
+    def or_wrong_side(w):
+        w["t1"][0]["rationale"] = w["t1"][0]["rationale"].replace("or:d2=1.15 (1.08-1.23)", "or:d2=0.87 (0.81-0.93)")
+    rejects("or_on_wrong_side_of_one", or_wrong_side, "disease-or-side")
+
+    def or_interval(w):
+        w["t1"][0]["rationale"] = w["t1"][0]["rationale"].replace("or:d2=1.15 (1.08-1.23)", "or:d2=1.15 (1.18-1.23)")
+    rejects("or_outside_interval", or_interval, "disease-or-interval")
+
+    def or_missing(w):
+        w["t1"][0]["rationale"] = w["t1"][0]["rationale"].replace("; or:d2=1.15 (1.08-1.23)", "")
+    rejects("or_token_missing", or_missing, "disease-or-missing")
+
+    def protective_world():
+        w = disease_world()
+        for r in w["t4"]:
+            r["direction"] = "down"
+        b = w["t1"][0]
+        b[SHORT["meaning"]] = _D_PROT
+        b["rationale"] = b["rationale"].replace("or:d1=1.20 (1.10-1.31)", "or:d1=0.80 (0.74-0.87)") \
+            .replace("or:d2=1.15 (1.08-1.23)", "or:d2=0.85 (0.79-0.92)")
+        w["t3"][0]["one-copy meaning"] = f"one copy: lower association with {_D_LABEL}"
+        w["t3"][0]["two-copy meaning"] = f"two copies: further lower association with {_D_LABEL}"
+        _clean(_dcheck(w), "protective world")
+        b["rationale"] = b["rationale"].replace("or:d2=0.85 (0.79-0.92)", "or:d2=1.15 (1.08-1.23)")
+        _has(_dcheck(w), "disease-or-side", "protective row with a ratio above one")
+        return True
+    attempt("DA.syn_disease_protective_world", protective_world)
+
+    # C-13 / C-14: direction grammar and word.
+    for name, cell in (("trailing_space", _D_SUSC + " "), ("wrong_label_case", _D_SUSC.replace(_D_LABEL, "example disease")),
+                       ("other_allele", _D_SUSC.replace("the A allele", "the G allele")),
+                       ("trait_grammar", "each copy of the A allele is associated with higher Example disease in studies; "
+                                         "no more than association wording"),
+                       ("no_prefix", _D_SUSC.split(": ", 1)[1])):
+        rejects(f"direction_grammar_{name}", lambda w, cell=cell: w["t1"][0].update({SHORT["meaning"]: cell}),
+                "disease-direction-grammar")
+    rejects("direction_word_disagrees_with_rows", lambda w: w["t1"][0].update({SHORT["meaning"]: _D_PROT}),
+            "disease-direction-word")
+
+    def mixed_directions(w):
+        w["t4"][1]["direction"] = "down"
+    rejects("mixed_directions", mixed_directions, "disease-not-replicated: rs9100001 is conflicting-evidence")
+
+    def af_missing(w):
+        w["t1"][0]["rationale"] = w["t1"][0]["rationale"].replace("; af-spread:0.05 over afr,eas,nfe", "")
+    rejects("af_spread_missing", af_missing, "disease-af-spread")
+    rejects("af_spread_bad_group", lambda w: w["t1"][0].update(
+        {"rationale": w["t1"][0]["rationale"].replace("afr,eas,nfe", "afr,xyz")}), "disease-af-spread")
+    rejects("af_spread_out_of_range", lambda w: w["t1"][0].update(
+        {"rationale": w["t1"][0]["rationale"].replace("af-spread:0.05", "af-spread:1.5")}), "disease-af-spread")
+
+    # C-31: T3 SUSC combination; no T2 row.
+    rejects("t3_missing", lambda w: w.update({"t3": []}), "disease-t3-missing")
+    rejects("t3_model_not_susc", lambda w: w["t3"][0].update({"model": "AD-IP"}), "disease-t3-model")
+    rejects("t3_carrier_meaning", lambda w: w["t3"][0].update({"one-copy meaning": "one copy: carrier"}),
+            "disease-t3-meaning")
+    rejects("t3_clinvar_only_source", lambda w: w["t3"][0].update(
+        {"inheritance sources (typed ids)": "clinvar:vcv:9100001"}), "disease-t3-source")
+    rejects("t2_row_present", lambda w: w["t2"].append(_t2("rs9100001", "A", "-", "-", "-", "-", "-")),
+            "disease-has-t2")
+
+    def susc_combination():
+        _require("SUSC with disease_association and no group", inheritance_ok("SUSC", DISEASE_RT, "-"))
+        for m, g in (("SUSC", "P"), ("AD-IP", "-"), ("AR", "-"), ("n/a", "-")):
+            _require(f"{m}/{g} not allowed for disease", not inheritance_ok(m, DISEASE_RT, g))
+        w = disease_world()
+        _clean(check_inheritance_table(w["t1"], w["t3"]), "inheritance table accepts SUSC on a disease row")
+        w["t3"][0]["model"] = "AR"
+        _has(check_inheritance_table(w["t1"], w["t3"]), "model-result-type", "AR on a disease row")
+        return True
+    attempt("DA.syn_disease_t3_susc_combination", susc_combination)
+
+    # C-12 / C-49 (R158-F7): proxy-only and label-mismatch are exclusive.
+    def excluded(w, code):
+        w["t1"][0].update({SHORT["dec"]: "excluded", SHORT["code"]: code, SHORT["meaning"]: "not applicable"})
+
+    def proxy_with_own_rows(w):
+        excluded(w, "proxy-only")
+    rejects("proxy_only_with_own_rsid_rows", proxy_with_own_rows, "disease-proxy-only-has-own-rows")
+
+    def label_mismatch_with_counted(w):
+        excluded(w, "label-mismatch")
+    rejects("label_mismatch_with_matching_rows", label_mismatch_with_counted, "disease-label-mismatch-invalid")
+
+    def f7_positive():
+        w = disease_world()
+        w["t4"] = []
+        excluded(w, "proxy-only")
+        # r162 (R160-F2, R161-05): replaces `_clean(..., "proxy-only without own rows")`; an empty T4
+        # with no linked evidence is no-independent-confirmation, never proxy-only.
+        _has(_dcheck(w), "disease-proxy-only-unsubstantiated", "proxy-only without own rows or linked evidence")
+        excluded(w, "label-mismatch")
+        _has(_dcheck(w), "disease-label-mismatch-invalid", "label-mismatch without own rows")
+        excluded(w, "no-independent-confirmation")
+        _clean(_dcheck(w), "no own rows and no proxies")
+        w = disease_world()
+        for r in w["t4"]:
+            r["trait (reported)"] = "LDL cholesterol levels"
+            r["counted"] = "no:trait-mismatch"
+        excluded(w, "label-mismatch")
+        _clean(_dcheck(w), "label-mismatch with own rows, all mismatched")
+        excluded(w, "proxy-only")
+        _has(_dcheck(w), "disease-proxy-only-has-own-rows", "proxy-only with mismatched own rows")
+        return True
+    attempt("DA.syn_disease_proxy_only_label_mismatch_exclusive", f7_positive)
+
+    rejects("excluded_row_with_direction", lambda w: excluded(w, "owner-declined") or w["t1"][0].update(
+        {SHORT["meaning"]: _D_SUSC}), "disease-direction-excluded")
+    rejects("counted_claim_wrong", lambda w: w["t4"][1].update({"counted": "no:trait-mismatch"}),
+            "disease-t4-counted-claim")
+
+    # C-44: labels cannot carry forbidden words.
+    def labels():
+        pats = contract_patterns(read_contract())
+        # r162: 31 -> 33 (FP-32 reassurance, FP-33 absent follow-up; R160-F1, R161-09)
+        _require(f"contract pattern block parsed ({len(pats)} patterns)", len(pats) == 33)
+        _clean(check_disease_labels([_d1()], pats), "plain disease label")
+        for label in ("Coronary artery disease", "Crohn's disease", "Atrial fibrillation", "Gallstone disease"):
+            _require(f"{label} allowed", not label_violations(label, pats))
+        for label in ("Hereditary example disease", "Example disease risk gene", "Example 2 disease",
+                      "Protection from example disease"):
+            _has(check_disease_labels([_d1(label=label)], pats), "disease-label-forbidden", label)
+        return True
+    attempt("DA.syn_disease_label_scanned_against_contract_patterns", labels)
+
+    # C-52: scope pin and the all-excluded outcome.
+    def scope_all_excluded():
+        _clean(check_disease_scope(_scope_t1(), []), "all-excluded outcome")
+        t1 = _scope_t1()
+        _has(check_disease_scope(t1[1:], []), "disease-scope-missing: rs10757278", "candidate row missing")
+        _has(check_disease_scope(t1[:4], []), "disease-scope-context-missing: rs11887534", "context row missing")
+        t1 = _scope_t1()
+        t1[2][SHORT["code"]] = "-"
+        _has(check_disease_scope(t1, []), "disease-scope-excluded-incomplete: rs11209026", "no reason code")
+        t1 = _scope_t1()
+        t1[3][SHORT["src"]] = "rs4245791"
+        _has(check_disease_scope(t1, []), "disease-scope-excluded-incomplete: rs4245791", "untyped source")
+        t1 = _scope_t1()
+        t1[0].update({SHORT["dec"]: "included", SHORT["code"]: "-"})
+        _has(check_disease_scope(t1, []), "disease-scope-bijection: rs10757278", "included without entry")
+        _clean(check_disease_scope(t1, [{"rsid": "rs10757278", "result_type": DISEASE_RT}]), "included with entry")
+        _has(check_disease_scope(_scope_t1(), [{"rsid": "rs2200733", "result_type": DISEASE_RT}]),
+             "disease-scope-bijection: rs2200733", "entry for an excluded row")
+        t1 = _scope_t1()
+        t1[1][SHORT["rt"]] = "risk_association"
+        _has(check_disease_scope(t1, []), "disease-scope-missing: rs2200733", "candidate with a non-disease pair")
+        return True
+    attempt("DA.syn_disease_scope_pin_and_all_excluded", scope_all_excluded)
+
+    def scope_constants():
+        _require("four candidates", DISEASE_SCOPE_CANDIDATES == ("rs10757278", "rs2200733", "rs11209026", "rs4245791"))
+        _require("context record", DISEASE_SCOPE_CONTEXT == ("rs11887534",))
+        text = read_doc()
+        body = section_body(text, "Disease associations") or ""
+        for rs in DISEASE_SCOPE_CANDIDATES + DISEASE_SCOPE_CONTEXT:
+            _require(f"doc scope names {rs}", rs in body)
+        return True
+    attempt("DA.disease_scope_constants_match_doc", scope_constants)
+
+    def real_doc_disease_rules():
+        tables = doc_tables(read_doc())
+        res = check_disease_table(tables["T1"], tables["T2"], tables["T3"], tables["T4"],
+                                  __import__("evidence").load_aliases(ALIASES_PATH),
+                                  pack_ids_from_inventory(tables["T5"]))
+        _require("; ".join(res), not res)
+        pats = contract_patterns(read_contract())
+        lab = check_disease_labels(tables["T1"], pats)
+        _require("; ".join(lab), not lab)
+        print(f"  detail DA.real_doc_disease_rules: rows_checked={res.rows_checked}")
+        return True
+    attempt("DA.real_doc_disease_rules", real_doc_disease_rules)
+
+
+# =============================================================================
+# v0.4.0 S1 FIX r162: regressions for the r160/r161 code-review findings.
+# =============================================================================
+def _run_disease_fix(attempt):
+    # S-02 / R161-02: a counted row is bound to its own rsID's dbSNP record and its own GCST.
+    def wrong_rsid_dbsnp():
+        w = disease_world()
+        w["t4"][1]["orientation source"] = "dbsnp:rs9100099"
+        drops = _dstatus(w)[2]
+        _require(f"row oriented by another marker's dbSNP record is dropped, got {drops}",
+                 drops["d2"] == "evidence-not-in-pack")
+        _has(_dcheck(w), "disease-not-replicated: rs9100001 is single-study", "wrong-rsID dbSNP record")
+        return True
+    attempt("DA.fix_s02_wrong_rsid_dbsnp_drops_row", wrong_rsid_dbsnp)
+
+    def missing_gcst():
+        w = disease_world()
+        b = w["t1"][0]
+        b[SHORT["src"]] = b[SHORT["src"]].replace("gwas:GCST9100002;", "")
+        drops = _dstatus(w)[2]
+        _require(f"row whose GCST is not in the pack is dropped, got {drops}", drops["d2"] == "evidence-not-in-pack")
+        res = _dcheck(w)
+        _has(res, "disease-not-replicated: rs9100001 is single-study", "GCST missing from T1 and the pack")
+        _has(res, "disease-t1-source-missing: rs9100001 gwas:GCST9100002", "GCST missing from T1 sources")
+        return True
+    attempt("DA.fix_s02_missing_gcst_drops_row", missing_gcst)
+
+    # S-03 / R161-03: a spread at or above 0.20 needs an owner decision (O-5).
+    def af_flag():
+        for spread in ("0.20", "0.200", "0.45"):
+            w = disease_world()
+            w["t1"][0]["rationale"] = w["t1"][0]["rationale"].replace("af-spread:0.05", f"af-spread:{spread}")
+            _has(_dcheck(w), "disease-af-flagged: rs9100001", f"spread {spread} without an owner decision")
+        w = disease_world()
+        w["t1"][0]["rationale"] = w["t1"][0]["rationale"].replace("af-spread:0.05", "af-spread:0.199")
+        _clean(_dcheck(w), "spread 0.199 needs no decision")
+        return True
+    attempt("DA.fix_s03_af_flag_inclusive_needs_owner_decision", af_flag)
+
+    # L-F2 = S-05 / R160-F2, R161-05: one reason code per evidence state.
+    def reason_state():
+        w = disease_world()
+        w["t4"] = []
+        w["t1"][0].update({SHORT["dec"]: "excluded", SHORT["code"]: "proxy-only", SHORT["meaning"]: "not applicable"})
+        _has(_dcheck(w), "disease-proxy-only-unsubstantiated: rs9100001", "proxy-only with no linked evidence")
+        w = disease_world()
+        for r in w["t4"]:
+            r["trait (reported)"] = "LDL cholesterol levels"
+            r["counted"] = "no:trait-mismatch"
+        w["t1"][0].update({SHORT["dec"]: "excluded", SHORT["code"]: "no-independent-confirmation",
+                           SHORT["meaning"]: "not applicable"})
+        _has(_dcheck(w), "disease-reason-state: rs9100001", "own rows all mismatched need label-mismatch")
+        return True
+    attempt("DA.fix_s05_one_reason_code_per_evidence_state", reason_state)
+
+    # S-06 / R161-06: only counted rows decide conflicting-evidence.
+    def dropped_rows_do_not_conflict():
+        w = disease_world()
+        fn = _d4("f1", 9100009, "study-gamma", "-", direction="down", counted="no:functional-not-counted")
+        fn["study accession"] = "-"
+        w["t4"].append(fn)
+        status = _dstatus(w)[0]
+        _require(f"a contrary functional row does not veto two groups, got {status}", status == "replicated")
+        w = disease_world()
+        w["t4"].append(_d4("d9", 9100002, "biobank-beta", "1e-9", direction="down", anc="-",
+                           counted="no:ancestry-unrecorded"))
+        status = _dstatus(w)[0]
+        _require(f"a contrary ancestry-unrecorded row does not veto two groups, got {status}", status == "replicated")
+        w = disease_world()
+        w["t4"][1]["direction"] = "down"
+        _require("a counted contrary row still conflicts", _dstatus(w)[0] == "conflicting-evidence")
+        return True
+    attempt("DA.fix_s06_dropped_rows_do_not_decide_conflict", dropped_rows_do_not_conflict)
+
+    # S-08 / R161-08: the odds ratio and interval are recorded for every counted row.
+    def or_every_counted_row():
+        w = disease_world()
+        w["t4"].append(_d4("d3", 9100003, "study-alpha", "3e-8"))
+        b = w["t1"][0]
+        b[SHORT["src"]] += ";gwas:GCST9100003;pmid:9100003"
+        _has(_dcheck(w), "disease-or-missing: rs9100001 d3", "second counted row of a group without or:")
+        return True
+    attempt("DA.fix_s08_or_token_for_every_counted_row", or_every_counted_row)
+
+    def or_every_counted_row_positive():
+        w = disease_world()
+        w["t4"].append(_d4("d3", 9100003, "study-alpha", "3e-8"))
+        b = w["t1"][0]
+        b[SHORT["src"]] += ";gwas:GCST9100003;pmid:9100003"
+        b["rationale"] += "; or:d3=1.18 (1.06-1.31)"
+        _clean(_dcheck(w), "every counted row recorded")
+        b["rationale"] = b["rationale"].replace("or:d3=1.18 (1.06-1.31)", "or:d3=0.90 (0.85-0.95)")
+        _has(_dcheck(w), "disease-or-side: rs9100001 d3", "non-strongest row on the wrong side")
+        return True
+    attempt("DA.fix_s08_or_tokens_checked_per_row", or_every_counted_row_positive)
+
+    def af_exception_paths():
+        def flagged(dec="included", lim_extra="", exceptions=None):
+            w = disease_world()
+            b = w["t1"][0]
+            b["rationale"] = b["rationale"].replace("af-spread:0.05", "af-spread:0.31")
+            b[SHORT["dec"]] = dec
+            b["limitations"] += lim_extra
+            return check_disease_table(w["t1"], w["t2"], w["t3"], w["t4"], w["aliases"], _dpack(w),
+                                       af_exceptions=exceptions)
+        _clean(flagged(lim_extra="; owner-decision:D-91", exceptions={"rs9100001": "D-91"}), "approved inclusion")
+        _has(flagged(lim_extra="; owner-decision:D-92", exceptions={"rs9100001": "D-91"}), "disease-af-flagged",
+             "a decision id that approves another exception")
+        _has(flagged(lim_extra="; owner-decision:D-91", exceptions={"rs9100002": "D-91"}), "disease-af-flagged",
+             "a decision for another marker")
+        _has(flagged(exceptions={"rs9100001": "D-91"}), "disease-af-flagged", "approved but not cited")
+        _has(flagged(dec="reserve", lim_extra="; owner-decision:D-91", exceptions={"rs9100001": "D-91"}),
+             "disease-af-flagged", "a flagged reserve row")
+        return True
+    attempt("DA.fix_s03_af_exception_paths", af_exception_paths)
+
+    def reason_state_positive():
+        w = disease_world()
+        w["t4"] = [_d4("p1", 9100102, "study-proxy", "4e-8", rs="rs9100102")]
+        b = w["t1"][0]
+        b.update({SHORT["dec"]: "excluded", SHORT["code"]: "proxy-only", SHORT["meaning"]: "not applicable"})
+        b["rationale"] += "; proxy:rs9100102"
+        _clean(_dcheck(w), "proxy-only with a linked exact-label row")
+        b[SHORT["code"]] = "no-independent-confirmation"
+        _has(_dcheck(w), "disease-reason-state", "linked evidence makes the state proxy-only")
+        b[SHORT["code"]] = "proxy-only"
+        b["rationale"] = b["rationale"].replace("proxy:rs9100102", "proxy:rs9100001")
+        _has(_dcheck(w), "disease-proxy-only-unsubstantiated", "a proxy token naming the candidate itself")
+        w["t4"][0]["trait (reported)"] = "LDL cholesterol levels"
+        b["rationale"] = b["rationale"].replace("proxy:rs9100001", "proxy:rs9100102")
+        _has(_dcheck(w), "disease-proxy-only-unsubstantiated", "linked rows of another phenotype")
+        w = disease_world()
+        w["t4"] = []
+        w["t1"][0].update({SHORT["dec"]: "excluded", SHORT["code"]: "label-mismatch", SHORT["meaning"]: "not applicable"})
+        _has(_dcheck(w), "disease-reason-state", "label-mismatch with no rows at all")
+        w["t1"][0][SHORT["code"]] = "no-independent-confirmation"
+        _clean(_dcheck(w), "no rows and no linked evidence")
+        return True
+    attempt("DA.fix_s05_reason_state_positive_paths", reason_state_positive)
+
+    def binding_positive():
+        w = disease_world()
+        _require("pack holds the GCST", "gwas:GCST9100002" in _dpack(w))
+        w["t4"][1]["PMID"] = "9100077"
+        w["t4"][1]["cohort source"] = "pmid:9100077"
+        _has(_dcheck(w), "disease-t1-source-missing: rs9100001 pmid:9100077", "uncited publication")
+        return True
+    attempt("DA.fix_s02_publication_bound", binding_positive)
+
+
+# =============================================================================
+# v0.4.0 S2 BUILD r165: the disease checkers applied to the real tables (S1 FIX r162
+# adjacent finding A1). Outcome S2-V6: all four candidates are excluded, so the real
+# tables hold excluded disease rows only and the targets file has no disease entry.
+# =============================================================================
+LOOP_SPEC_PATH = os.path.join(ROOT, "docs", "loop-spec.md")
+S2_LOG_TITLE = "v0.4.0 run: S2 evidence and curation (decisions log)"
+# The approved frequency-spread exceptions that C-25 item 5 reads, keyed by rsID, value = the
+# owner decision id recorded in the S2 decisions log of docs/loop-spec.md. Empty on purpose:
+# S2-V6 (all-excluded) leaves no included disease row, so no flagged spread needs approval.
+REAL_AF_EXCEPTIONS = {}
+S2_DISPOSITION = {  # rsID: (decision record id, reason code); owner triage S2-T1 to S2-T4
+    "rs10757278": ("S2-T1", "no-independent-confirmation"),
+    "rs2200733": ("S2-T2", "no-independent-confirmation"),
+    "rs11209026": ("S2-T3", "single-study"),
+    "rs4245791": ("S2-T4", "single-study"),
+}
+S2_LABELS = {"rs10757278": "Coronary artery disease", "rs2200733": "Atrial fibrillation",
+             "rs11209026": "Crohn's disease", "rs4245791": "Gallstone disease"}
+S2_Q6_GENES = {"rs10757278": "CDKN2B-AS1", "rs2200733": "PITX2"}  # S2-Q6: the request-list symbols, not the Catalog-mapped ones
+# The decided content of S2-Q1 and S2-V6, pinned word for word (S2-R167-F1): a record that reverses the
+# grouping, drops the owner attribution or lets S3 run must fail, not only a record that loses an id.
+S2_Q1_DECISION = ("for rs11209026, rows a23836 (`gwas:GCST000879`), a11989582 (`gwas:GCST001438`) and "
+                  "a24661 (`gwas:GCST001652`) are one evidence group (the conservative reading); the "
+                  "overlap is recorded as this owner decision in the T4 `overlap with` cells and the T1 "
+                  "rationale, not as pack text.")
+S2_Q1_ATTRIBUTION = ("overlap: declared on a23836, a11989582 and a24661 in both directions, "
+                     "recorded as an owner decision and not as pack text")
+S2_V6_DECISION = ("the outcome is all-excluded (V6, amended C-52); S3 is not run; "
+                  "whether to release is the owner's later decision under O-8.")
+S2_T4_ROWS = {"rs10757278": 4, "rs2200733": 6, "rs11209026": 26, "rs4245791": 114}  # own-rsID Catalog rows in the pack
+S2_DECISION_IDS = tuple([f"S2-T{i}" for i in range(1, 6)] + [f"S2-Q{i}" for i in range(1, 10)] + ["S2-V6"])
+S2_CONTEXT_ROW_SHA256 = "bd7d0e67cf64b66f27ed45c60096d374c9f1d85dd74adab6a0c04c8c323334ca"  # S2-T5 / S2-Q7: the v0.3.0 rs11887534 row, unchanged
+# S2 FIX r169 (S2-R168-F4): content digests of the S2 disease trace rows, so that any later edit to a
+# recorded value (coordinate, frequency spread, p-value, odds ratio or interval, sample size, source id,
+# note) fails here. Byte basis: for each table (T1, T4, T5) take the parsed rows whose rsID is one of the
+# four S2 candidates, in document order; each row is its cells in the table's header order, as stripped
+# by the table parser, joined by U+001F; the rows are joined by U+000A; the digest is the SHA-256 of that
+# text encoded as UTF-8 (the same cell basis as _row_digest). The digests pin the recorded content only:
+# whether a value is correct against the frozen evidence pack is a review duty, because the pack lives
+# outside the repository and is not available to this offline suite.
+S2_TRACE_SHA256 = {
+    "T1": "e1acc2f78ba252fb37b8b27234d53c6c64b68695e74ce77589cf53dfbcd00a68",
+    "T4": "0fc00a56580c7cc831443ba6e4681ca55b83414c9e9997c0bdcefa2262e371ae",
+    "T5": "0cb4984d937f1a1b7d4147573a992869613cc7151d9714538e07c865b0ae8f13",
+}
+S2_TRACE_HEADERS = (("T1", T1_HEADER), ("T4", T4_HEADER), ("T5", T5_HEADER))
+S2_AF_BASIS_SENTENCE = ("For the four v0.4.0 disease rows, the `af-spread` basis is gnomAD v2.1.1 genome and exome "
+                        "allele counts combined per group (afr, amr, asj, eas, fin, nfe, sas), with groups of "
+                        "fewer than 500 combined alleles omitted.")
+S2_DELIVERED_IDS = ("S2-A1", "S2-A2", "S2-A3", "S2-A4", "S2-A5", "S2-R167-F1", "S2-R167-F2", "S2-R167-F3",
+                    "S2-R168-F1", "S2-R168-F2", "S2-R168-F3", "S2-R168-F4", "S2-R172-F1")  # logged lines, not decision-record ids
+# SHA-256 of each delivered S2 log line in the decisions log of docs/loop-spec.md (S2-R170-F1): the
+# UTF-8 text of the whole line, from "- **ID** " to its last character, with no line ending. A line
+# that carries added, changed or contradictory text no longer matches.
+S2_DELIVERED_LINE_SHA256 = {
+    "S2-A1": "09d04388506c18f1b75a85e720f03da1f1b3b5eeca048dabae57e35bb19f4741",
+    "S2-A2": "9f99e6c581105763208f7bdcd21b54775a83bccbb7c16b13e0abd66bac12a84d",
+    "S2-A3": "14256904bff0b3015828aa3138a685a3a83e0598939b3addc05d1ea6e39c6ad4",
+    "S2-A4": "c06f176cd87ad25472e11e9f6f6d462f5575764de99f979ed38c54b72b4ec208",
+    "S2-A5": "956f57894f3c20a5028e40e8889f2389c49f9e19d5537873fff1d74b6d30de05",
+    "S2-R167-F1": "e7667bf5536efdb41da083017499e1fadc5f20229297495e5c2fbb87c093ba99",
+    "S2-R167-F2": "e79d55bcaf2e6024b7a2cbeb3363773f145f25fd967e69a641e3bf7ed9ed31d7",
+    "S2-R167-F3": "763e1d55a1887bb78ce056f971c0ff54128b8e4141d7ba02059ebd8839ff2576",
+    "S2-R168-F1": "76d5da689b4fe600b407c2a5674cc2c0c6cd8e7e0e5951d22d800e6343ee71e3",
+    "S2-R168-F2": "4ce62a819a0f5eea94c13d4b47a4463179ee5b02f40e0f076e89a5f4154a0087",
+    "S2-R168-F3": "966e6e275ae655e2f5de5763c4ab7523d168423ed6cfd8f7200916cfd1994b7f",
+    "S2-R168-F4": "4a11f07061797bb1731a19604527e670ba604fde989cf6d53b8a93c2add76e9b",
+    "S2-R172-F1": "1e4cd9c5ca986894482234533439688d6e24fe4a69b33462110505257992fb2b",
+}
+# v0.4.0 S4 release-close (ticket r173): the decisions log section and its three lines, pinned whole.
+S4_LOG_TITLE = "v0.4.0 run: S4 release-close (decisions log)"
+S4_LOG_LINES = (
+    "- **S4-O8** (owner, O-8): the version policy is applied: panel_version and package version are 0.4.0, and the nine panel entries are byte-identical to v0.3.0 apart from the panel_version field.",
+    "- **S4-C52** (owner, S-07): the C-52 all-excluded outcome is recorded: no disease association met the contract, no production code, schema or template change ships, and S3 is not run.",
+    "- **S4-R162-A2** (owner, r162 adjacent finding A2): the S3 production tests named in C-5, C-6, C-34 and DA.mixed_result_type_report_validates are not built in this outcome; they are deferred to the release that includes a disease row.",
+)
+S2_AF_BASIS_MARKER = "`af-spread` basis"  # any paragraph that names the basis must be the pinned sentence
+S2_AF_BASIS_NEXT_PARAGRAPH = ("The `decision` is `included`, `excluded` or `reserve`. The `build/strand` cell "
+                              "is `GRCh37/forward`, optionally followed by `;strand-ambiguous` on an excluded "
+                              "palindromic row; an excluded row may carry `-`.")
+S2_AGENTS_GRCH_GOTCHA = ("gnomAD, Open Targets and GWAS Catalog v2 use GRCh38 internally; "
+                         "dbSNP small-set uses GRCh37 coordinates for the panel.")
+S2_C52_SENTENCE = ("No disease association met the disease-association contract, "
+                   "so the release panel has no disease entry.")
+
+
+def s2_decision_record():
+    """{decision id: log line} from the S2 decisions log of docs/loop-spec.md; the section must
+    exist exactly once (this is the owner decision record that af_exceptions is wired to)."""
+    _require(f"{LOOP_SPEC_PATH} missing", os.path.exists(LOOP_SPEC_PATH))
+    with open(LOOP_SPEC_PATH, encoding="utf-8") as fh:
+        text = fh.read()
+    hits = [body for _, title, body in sections(text) if title == S2_LOG_TITLE]
+    _require(f"loop-spec holds {len(hits)} sections titled {S2_LOG_TITLE!r}, expected 1", len(hits) == 1)
+    record = {}
+    for line in hits[0].splitlines():
+        for m in re.finditer(r"\*\*(S2-[TQV]\d+)\*\*", line):
+            _require(f"decision {m.group(1)} recorded twice", m.group(1) not in record)
+            record[m.group(1)] = line
+    return record
+
+
+def s2_real():
+    t = doc_tables(read_doc())
+    return t, read_targets()
+
+
+def _s2_trace_digest(rows, header):
+    text = "\n".join("\x1f".join(r[h] for h in header) for r in rows)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _row_digest(row):
+    return hashlib.sha256("\x1f".join(row[h] for h in T1_HEADER).encode("utf-8")).hexdigest()
+
+
+def _run_disease_s2(attempt):
+    def real_tables_checked():
+        t, _ = s2_real()
+        res = check_disease_table(t["T1"], t["T2"], t["T3"], t["T4"],
+                                  __import__("evidence").load_aliases(ALIASES_PATH),
+                                  pack_ids_from_inventory(t["T5"]), af_exceptions=REAL_AF_EXCEPTIONS)
+        _require("; ".join(res), not res)
+        want = len(S2_DISPOSITION) + sum(S2_T4_ROWS.values())
+        _require(f"checked {res.rows_checked} disease rows and T4 rows, expected {want}", res.rows_checked == want)
+        print(f"  detail DA.s2_real_disease_table_checked: rows_checked={res.rows_checked}")
+        return True
+    attempt("DA.s2_real_disease_table_checked", real_tables_checked)
+
+    def real_scope_pin():
+        t, targets = s2_real()
+        res = check_disease_scope(t["T1"], _entries(targets))
+        _require("; ".join(res), not res)
+        _require("scope pin counted the five rows", res.rows_checked == 5)
+        _require("the release targets file has a disease entry",
+                 not [e for e in _entries(targets) if e.get("result_type") == DISEASE_RT or e.get("category") == "disease"])
+        kept = [r["rsID"] for r in t["T1"] if r["result type"] == DISEASE_RT and r["decision"] != "excluded"]
+        _require(f"disease rows kept in the all-excluded outcome: {kept}", not kept)
+        return True
+    attempt("DA.s2_real_scope_pin_and_bijection", real_scope_pin)
+
+    def real_dispositions():
+        t, _ = s2_real()
+        record = s2_decision_record()
+        by_rs = {r["rsID"]: r for r in t["T1"]}
+        for rs, (did, code) in S2_DISPOSITION.items():
+            _require(f"{rs} has no T1 row", rs in by_rs)
+            r = by_rs[rs]
+            got = (r["result type"], r["category"], r["label used in report"], r["decision"], r["reason code"],
+                   r["direction/meaning"], r["build/strand"], r["assayability_status"], r["assayability_source"],
+                   r["retrieved (UTC date)"])
+            want = (DISEASE_RT, "disease", S2_LABELS[rs], "excluded", code, "not applicable", "GRCh37/forward",
+                    "unknown-provisional", "-", "2026-11-25")
+            _require(f"{rs} row {got} != {want}", got == want)
+            items = _items(r["rationale"])
+            _require(f"{rs} rationale does not cite owner-decision:{did}", f"owner-decision:{did}" in items)
+            if rs in S2_Q6_GENES:
+                gene = S2_Q6_GENES[rs]
+                _require(f"{rs} S2-Q6 requires the request-list gene {gene}", r["gene"] == gene)
+                _require(f"{rs} rationale lacks S2-Q6 request-list provenance",
+                         "owner-decision:S2-Q6" in items
+                         and any(item.startswith(f"gene: {gene} from the request list, ") for item in items))
+            line = record.get(did, "")
+            _require(f"decision record {did} does not name {rs} and `{code}`", rs in line and f"`{code}`" in line)
+        return True
+    attempt("DA.s2_real_dispositions_match_decision_record", real_dispositions)
+
+    def decision_record_complete():
+        record = s2_decision_record()
+        _require(f"decision record ids {sorted(record)} != {sorted(S2_DECISION_IDS)}",
+                 sorted(record) == sorted(S2_DECISION_IDS))
+        _require("S2-V6 decision must preserve the all-excluded outcome and skip S3",
+                 record["S2-V6"].partition(": ")[2] == S2_V6_DECISION)
+        return True
+    attempt("DA.s2_decision_record_complete", decision_record_complete)
+
+    def overlap_backed_by_decision():
+        t, _ = s2_real()
+        record = s2_decision_record()
+        by_rs = {r["rsID"]: r for r in t["T1"]}
+        _require("S2-Q1 decision must authorize the one-group overlap for rs11209026",
+                 record.get("S2-Q1", "").partition(": ")[2] == S2_Q1_DECISION)
+        _require("S2-Q1 overlap must be attributed to the owner decision",
+                 S2_Q1_ATTRIBUTION in _items(by_rs["rs11209026"]["rationale"]))
+        declared = {(r["rsID"], r["row id"]): r["overlap with"] for r in t["T4"]
+                    if r["overlap with"] != "-" and r["rsID"] in S2_DISPOSITION}
+        _require(f"declared overlaps {declared}", declared == {
+            ("rs11209026", "a23836"): "a11989582;a24661",
+            ("rs11209026", "a11989582"): "a23836",
+            ("rs11209026", "a24661"): "a23836"})
+        for r in t["T4"]:
+            if r["overlap with"] != "-" and r["rsID"] in S2_DISPOSITION:
+                items = _items(by_rs[r["rsID"]]["rationale"])
+                ids = [d.group(1) for d in map(OWNER_DECISION_RE.fullmatch, items) if d]
+                _require(f"{r['row id']} overlap has no owner decision id in the {r['rsID']} rationale", "S2-Q1" in ids)
+                _require("S2-Q1 is not in the decision record", "S2-Q1" in record)
+        # without the declared overlap the same rows would form two groups and the entry would
+        # be replicated, so the declaration (and its decision) is what keeps the row excluded
+        rows = [dict(r, **{"overlap with": "-"}) for r in t["T4"] if r["rsID"] == "rs11209026"]
+        base = by_rs["rs11209026"]
+        status = evaluate_disease(rows, base["effect allele (fwd, GRCh37)"], base["label used in report"],
+                                  __import__("evidence").load_aliases(ALIASES_PATH),
+                                  pack_ids_from_inventory(t["T5"]), frozenset())[0]
+        _require(f"rs11209026 without the overlap declaration is {status}", status == "replicated")
+        return True
+    attempt("DA.s2_real_overlap_backed_by_owner_decision", overlap_backed_by_decision)
+
+    def owner_decision_rows():
+        t, _ = s2_real()
+        by = {r["row id"]: r for r in t["T4"]}
+        for need in ("a24661", "a11989582", "a23836", "a17524500"):
+            _require(f"T4 row {need} is missing", need in by)
+        got = (by["a24661"]["counted"], by["a24661"]["direction"])
+        _require(f"a24661 (S2-Q3) {got}", got == ("no:direction-missing", "-"))
+        _require("a11989582 ancestry (S2-Q4)", by["a11989582"]["sample ancestry"] == "discovery:other")
+        for rid in ("a23836", "a11989582", "a17524500"):
+            _require(f"{rid} counted", by[rid]["counted"] == "yes" and by[rid]["sample ancestry"].startswith("discovery:"))
+        counted = sorted(r["row id"] for r in t["T4"] if r["counted"] == "yes" and r["rsID"] in S2_DISPOSITION)
+        _require(f"counted rows {counted}", counted == ["a11989582", "a17524500", "a23836"])
+        text = {r["rsID"]: r["rationale"] for r in t["T1"]}["rs11209026"]
+        for token in ("owner-decision:S2-Q2", "owner-decision:S2-Q3", "owner-decision:S2-Q4", "owner-decision:S2-Q5",
+                      "owner-decision:S2-Q9"):
+            _require(f"rs11209026 rationale lacks {token}", token in _items(text))
+        return True
+    attempt("DA.s2_real_owner_decision_cells", owner_decision_rows)
+
+    def t5_matches_t1():
+        t, _ = s2_real()
+        t5 = {r["rsID"]: r for r in t["T5"]}
+        disease = [r for r in t["T1"] if r["result type"] == DISEASE_RT]
+        _require(f"{len(disease)} disease T1 rows, expected {len(S2_DISPOSITION)}", len(disease) == len(S2_DISPOSITION))
+        for base in disease:
+            rs = base["rsID"]
+            _require(f"{rs} has no T5 row", rs in t5)
+            inv = split_ids(t5[rs]["pack file index id"])
+            src = split_ids(base["sources (typed ids)"])
+            _require(f"{rs} T5 ids differ from T1 sources", sorted(inv) == sorted(src) and len(set(inv)) == len(inv))
+            _require(f"{rs} T5 lists ClinVar records", t5[rs]["ClinVar VariationIDs in pack (all assemblies)"] == "-")
+            own = [r for r in t["T4"] if r["rsID"] == rs]
+            _require(f"{rs} has {len(own)} T4 rows", len(own) == S2_T4_ROWS[rs])
+            for r in own:
+                for need in (f"gwas:{r['study accession']}", f"pmid:{r['PMID']}", r["orientation source"], r["cohort source"]):
+                    _require(f"{rs} T5 lacks {need} (row {r['row id']})", need in inv)
+            _require(f"{rs} T5 lacks its gnomAD id", any(i.startswith("gnomad:") for i in inv))
+        return True
+    attempt("DA.s2_real_t5_inventory_matches_t1_and_t4", t5_matches_t1)
+
+    def limitations_c52():
+        t, _ = s2_real()
+        text = read_doc()
+        body = section_body(text, "Limitations") or ""
+        _require("Limitations lacks the C-52 sentence", " ".join(body.split()).count(S2_C52_SENTENCE) == 1)
+        kept = [r for r in t["T1"] if r["result type"] == DISEASE_RT and r["decision"] != "excluded"]
+        _require("the C-52 sentence is false: a disease row is kept", not kept)
+        return True
+    attempt("DA.s2_real_limitations_state_no_disease_met_contract", limitations_c52)
+
+    def context_row_unchanged():
+        t, _ = s2_real()
+        row = [r for r in t["T1"] if r["rsID"] == "rs11887534"]
+        _require("rs11887534 rows: %d" % len(row), len(row) == 1)
+        got = _row_digest(row[0])
+        _require(f"rs11887534 T1 row changed (S2-Q7): digest {got}", got == S2_CONTEXT_ROW_SHA256)
+        return True
+    attempt("DA.s2_real_context_row_unchanged", context_row_unchanged)
+
+    def af_exceptions_wired():
+        t, _ = s2_real()
+        record = s2_decision_record()
+        kept = {r["rsID"] for r in t["T1"] if r["result type"] == DISEASE_RT and r["decision"] in ("included", "reserve")}
+        for rs, did in REAL_AF_EXCEPTIONS.items():
+            _require(f"af exception {rs} is not an included disease row", rs in kept)
+            _require(f"af exception {rs}: {did!r} is not an id of the decision record", did in record)
+            _require(f"af exception {rs}: {did!r} is not an owner-decision id form",
+                     OWNER_DECISION_RE.fullmatch(f"owner-decision:{did}") is not None)
+        _require("S2-V6 (all-excluded) leaves no flagged exception to approve", not kept and not REAL_AF_EXCEPTIONS)
+        return True
+    attempt("DA.s2_af_exceptions_wired_to_decision_record", af_exceptions_wired)
+
+    def provenance_names_v040_pack():
+        digest = "8895f896ccba13e1f9dfbd7bd1d23b38357cda1aa3386608003dffb0b8870802"
+        flat = " ".join((section_body(read_doc(), "Provenance block") or "").split())
+        _require("provenance block lacks the v0.4.0 pack record",
+                 "v0.4.0 evidence pack: evidence/v0.4.0 (outside the repository)" in flat
+                 and f"MANIFEST.sha256 sha256 {digest}" in flat and "captured 2026-11-25 (UTC)" in flat)
+        _require("Retrieval dates lack the v0.4.0 pack date", "; v0.4.0 pack 2026-11-25" in flat)
+        with open(LOOP_SPEC_PATH, encoding="utf-8") as fh:
+            log = [body for _, title, body in sections(fh.read()) if title == S2_LOG_TITLE]
+        _require("the decision record does not carry the pack digest", len(log) == 1 and digest in log[0])
+        return True
+    attempt("DA.s2_provenance_names_v040_pack", provenance_names_v040_pack)
+
+    def trace_rows_pinned():
+        t, _ = s2_real()
+        for name, header in S2_TRACE_HEADERS:
+            rows = [r for r in t[name] if r["rsID"] in S2_DISPOSITION]
+            want = len(S2_DISPOSITION) if name != "T4" else sum(S2_T4_ROWS.values())
+            _require(f"S2 {name} trace rows: {len(rows)}, expected {want}", len(rows) == want)
+            got = _s2_trace_digest(rows, header)
+            _require(f"S2 {name} trace rows changed (S2-R168-F4): digest {got}", got == S2_TRACE_SHA256[name])
+        return True
+    attempt("DA.s2_real_trace_rows_pinned", trace_rows_pinned)
+
+    def afspread_basis_sentence():
+        flat = " ".join(read_doc().split())
+        _require("panel-curation lacks the af-spread basis sentence (S2-R167-F2, S2-R168-F1)",
+                 flat.count(S2_AF_BASIS_SENTENCE) == 1)
+        # S2-R170-F1: the sentence must be the whole paragraph, so appended wording fails, and the
+        # paragraph that follows must be the one that is there now, so a new paragraph cannot slip in.
+        raw_paragraphs = read_doc().split("\n\n")  # kept before whitespace normalization (S2-R172-F1)
+        paragraphs = [" ".join(p.split()) for p in raw_paragraphs]
+        basis_at = [i for i, p in enumerate(paragraphs) if S2_AF_BASIS_MARKER in p]
+        _require("panel-curation must have exactly one paragraph that names the af-spread basis, and it "
+                 f"must be the pinned sentence alone (S2-R170-F1): {[paragraphs[i] for i in basis_at]}",
+                 [paragraphs[i] for i in basis_at] == [S2_AF_BASIS_SENTENCE])
+        at = basis_at[0]
+        _require("the paragraph after the af-spread basis sentence changed or a paragraph was inserted "
+                 f"(S2-R170-F1): {paragraphs[at + 1] if at + 1 < len(paragraphs) else None!r}",
+                 at + 1 < len(paragraphs) and paragraphs[at + 1] == S2_AF_BASIS_NEXT_PARAGRAPH)
+        _require("the af-spread basis sentence must follow the T1 table directly (S2-R170-F1)",
+                 at > 0 and paragraphs[at - 1].startswith("| rs"))
+        # S2-R172-F1: the whole previous paragraph is table lines. A prose line joined to the table by a
+        # single newline would keep the paragraph starting with "| rs" and pass the check above.
+        _require("every line of the paragraph before the af-spread basis sentence must start with a table "
+                 "pipe (S2-R172-F1): " + repr([ln for ln in raw_paragraphs[at - 1].splitlines()
+                                              if not ln.startswith("|")]),
+                 all(ln.startswith("|") for ln in raw_paragraphs[at - 1].splitlines()))
+        by_rs = {r["rsID"]: r for r in s2_real()[0]["T1"]}
+        for rs, allele, row in (("rs10757278", "G", "a6123"), ("rs2200733", "T", "a6065")):
+            _require(f"{rs} lacks the screened-allele note (S2-R168-F2): {allele} from {row}",
+                     f"screened allele: {allele}, taken from the uncounted" in by_rs[rs]["rationale"]
+                     and f"({row}, " in by_rs[rs]["rationale"]
+                     and "is not an effect-allele frequency under C-26" in by_rs[rs]["rationale"])
+        return True
+    attempt("DA.s2_real_afspread_basis_and_screened_allele", afspread_basis_sentence)
+
+    def log_lines_and_gotcha():
+        with open(LOOP_SPEC_PATH, encoding="utf-8") as fh:
+            log = [body for _, title, body in sections(fh.read()) if title == S2_LOG_TITLE]
+        _require("S2 decisions log section missing", len(log) == 1)
+        for did in S2_DELIVERED_IDS:
+            _require(f"S2 log lacks one line for {did}",
+                     sum(1 for ln in log[0].splitlines() if ln.startswith(f"- **{did}** ")) == 1)
+        # S2-R170-F1: each delivered line is pinned whole, and none may carry a continuation line.
+        log_lines = log[0].splitlines()
+        for did in S2_DELIVERED_IDS:
+            at = next(i for i, ln in enumerate(log_lines) if ln.startswith(f"- **{did}** "))
+            got = hashlib.sha256(log_lines[at].encode("utf-8")).hexdigest()
+            _require(f"S2 log line {did} changed (S2-R170-F1): digest {got}", got == S2_DELIVERED_LINE_SHA256[did])
+            nxt = log_lines[at + 1] if at + 1 < len(log_lines) else ""
+            _require(f"S2 log line {did} is followed by added text (S2-R170-F1): {nxt!r}",
+                     nxt == "" or nxt.startswith("- **"))
+        _require("the S2 log must end with the S2-R172-F1 line",
+                 [ln for ln in log_lines if ln.strip()][-1].startswith("- **S2-R172-F1** "))
+        with open(os.path.join(ROOT, "AGENTS.md"), encoding="utf-8") as fh:
+            agents_text = fh.read()
+        gotcha = " ".join(agents_text.split())
+        _require("AGENTS.md GRCh38 gotcha must name the GWAS Catalog v2 (S2-A4)",
+                 "gnomAD, Open Targets and GWAS Catalog v2 use GRCh38 internally" in gotcha)
+        # S2-R170-F1: the gotcha bullet equals the expected sentence, once, and no other text in the file
+        # names a genome build or a second GWAS Catalog v2 claim.
+        bullets, cur = [], None
+        for ln in agents_text.splitlines():
+            if ln.startswith("- "):
+                cur = [ln[2:]]
+                bullets.append(cur)
+            elif cur is not None and ln.startswith(" ") and ln.strip():
+                cur.append(ln)
+            else:
+                cur = None
+        bullets = [" ".join(" ".join(b).split()) for b in bullets]
+        _require("AGENTS.md must have exactly one bullet that names a genome build, equal to the pinned "
+                 f"GRCh38 gotcha (S2-R170-F1): {[b for b in bullets if 'GRCh' in b]}",
+                 [b for b in bullets if "GRCh" in b] == [S2_AGENTS_GRCH_GOTCHA])
+        _require("AGENTS.md names a genome build or GWAS Catalog v2 outside the pinned gotcha (S2-R170-F1)",
+                 gotcha.count("GRCh") == 2 and gotcha.count("GWAS Catalog v2") == 1
+                 and gotcha.count(S2_AGENTS_GRCH_GOTCHA) == 1)
+        return True
+    attempt("DA.s2_log_lines_and_agents_gotcha", log_lines_and_gotcha)
+
+    def s4_log_lines():
+        with open(LOOP_SPEC_PATH, encoding="utf-8") as fh:
+            hits = [body for _, title, body in sections(fh.read()) if title == S4_LOG_TITLE]
+        _require(f"loop-spec holds {len(hits)} sections titled {S4_LOG_TITLE!r}, expected 1", len(hits) == 1)
+        got = [ln for ln in hits[0].splitlines() if ln.strip()]
+        # Whole-line equality, in order: a missing line, an added line, a continuation line or a line with
+        # appended text all fail here (no-continuation rule).
+        _require(f"S4 decisions log lines differ from the pinned lines: {got!r}", tuple(got) == S4_LOG_LINES)
+        _require("S4 decisions log has text that is not one of the pinned lines",
+                 all(ln == "" or ln in S4_LOG_LINES for ln in hits[0].splitlines()))
+        return True
+    attempt("DA.s4_release_close_log_lines", s4_log_lines)
+
+    def owner_decision_justifications():
+        from unittest.mock import patch
+
+        def rejected(check, expected, **overrides):
+            with patch.multiple(sys.modules[__name__], **overrides):
+                try:
+                    check()
+                except AssertionError as exc:
+                    _require(f"expected {expected!r}, got {exc!r}", expected in str(exc))
+                else:
+                    raise AssertionError(f"accepted a contradiction of {expected}")
+
+        record = s2_decision_record()
+        reversed_overlap = dict(record, **{"S2-Q1": record["S2-Q1"].replace(
+            "are one evidence group (the conservative reading)", "are three independent groups")})
+        rejected(overlap_backed_by_decision, "S2-Q1", s2_decision_record=lambda: reversed_overlap)
+        reversed_s3 = dict(record, **{"S2-V6": record["S2-V6"].replace(
+            "S3 is not run", "S3 will run")})
+        rejected(decision_record_complete, "S2-V6", s2_decision_record=lambda: reversed_s3)
+
+        tables, targets = s2_real()
+        for rsid, cell, content, gate, decision in (
+                ("rs11209026", "rationale", "established by the captured studies",
+                 overlap_backed_by_decision, "S2-Q1"),
+                ("rs2200733", "gene", "LINC01438", real_dispositions, "S2-Q6")):
+            selected = next(row for row in tables["T1"] if row["rsID"] == rsid)
+            if cell == "rationale":
+                content = selected[cell].replace("recorded as an owner decision and not as pack text", content)
+            altered = [dict(row, **{cell: content}) if row is selected else row for row in tables["T1"]]
+            changed = dict(tables, T1=altered)
+            rejected(gate, decision, s2_real=lambda: (changed, targets))
+        return True
+    attempt("DA.s2_real_owner_decision_justifications", owner_decision_justifications)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -5655,6 +7125,9 @@ def run(check):
     _run_r65(attempt)
     _run_r67_identity(attempt)
     _run_r67_report_safety(attempt)
+    _run_disease(attempt)
+    _run_disease_fix(attempt)
+    _run_disease_s2(attempt)
 
 
 def main():

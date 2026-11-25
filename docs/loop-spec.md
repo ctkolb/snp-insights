@@ -806,3 +806,93 @@ identifiers only (rsIDs, gene names); no machine paths.
 - **D-P4 (owner, 2026-11-24).** The roadmap gains a shipped-status line under the v0.3.0 heading, and nothing else in the roadmap changes.
 - **D-P5 (owner, 2026-11-24).** `stage2/annotate.py` `PIPELINE_VERSION` is bumped to 0.3.0 as version metadata (it stamps `provenance.pipeline_version` and `tests/test_docs_release.py` pins it); no other findings content changes.
 - **D-P6 (owner, 2026-11-24).** `scripts/loop_mutations.py` changes only the two anchor strings that named 0.2.0 (the `S4 pyproject version mismatch` and `S4 __version__ changed` mutants); the owner accepts this tooling edit without independent review.
+
+## v0.4.0 run: S1 disease-association contract (decisions log)
+
+- **Branch (owner, 2026-11-24).** The v0.4.0 work is on
+  `feat/v0.4.0-disease-associations`, cut from debf910.
+- **Stage order and labels (owner decision O-3, 2026-11-24).** S1 contract and
+  checkers; S2 curation; owner triage; S3 production support, only if at least
+  one marker is included; S4 rebuild and verification. The all-excluded branch
+  skips S3.
+- **Owner decisions O-1 to O-15 (owner, "Accept all", 2026-11-24).** The
+  recommended answers are accepted as stated:
+  - **O-1** a new pair (`disease`, `disease_association`); `risk_association` is not reused.
+  - **O-2** schema version 1.3.0 for a document with a disease finding; others stay 1.2.0.
+  - **O-3** the stage order above.
+  - **O-4** odds ratios are recorded in curation only, never printed.
+  - **O-5** the D-3 frequency screen: record the spread, flag at 0.20, a flagged row is excluded unless the owner includes it with a decision id; the ancestry caveat is mandatory.
+  - **O-6** two independent groups, each with an association row at p at or below 5e-8.
+  - **O-7** a survey precedes the S2 build.
+  - **O-8** the release version policy applies to an all-excluded outcome; the owner decides whether to release.
+  - **O-9** the `gnomad:` typed id is added.
+  - **O-10** disease claims are code-owned; no model narration in this release.
+  - **O-11** the rare caveat applies at `rare` and `ultra_rare` only.
+  - **O-12** reason codes `proxy-only` and `ancestry-unrecorded` are added; `label-mismatch` is reused.
+  - **O-13** "protect" is banned in report text; the report says "lower odds".
+  - **O-14** GWAS rows for rs11887534 and the context rsIDs are captured after the owner confirms each; no ClinVar capture unless asked.
+  - **O-15** the study-record cap of 60 for coronary artery disease is a stop line, decided at capture.
+- **R158 findings F1 to F8 (owner, "Fold into S1 BUILD", 2026-11-24).** All
+  eight specification-review findings (F1, F2, F3, F4, F5, F6, F7 and F8) are accepted with the reviewer's
+  required corrections and folded into S1; there is no separate contract
+  revision or second specification round. The S1 build records the corrected
+  contract in `docs/disease-associations.md`, each corrected clause marked
+  "(amended: R158-F<n>)". Enforcement of F1 (full-mode and online routing keep
+  disease findings away from any model) and F6 (an unknown result type raises)
+  is production work deferred to S3; S1 states the clauses and their required
+  tests.
+- **S1 code-review dispositions (owner, "Approve as proposed", 2026-11-24).**
+  The findings of the two S1 code reviews (r160 as L, r161 as S) go to FIX
+  round 1 (r162):
+  - **S-01** the C-43 scope covers disease-association claims and the caveats, notices and limitations used for disease reporting; existing result-type claims keep their validation and wording; a mixed-report test is added and the S3 production test is named.
+  - **S-02** every counted disease row is bound to its own pack records: its own rsID's dbSNP record and its GCST in T1 and T5.
+  - **S-03** a frequency spread at or above 0.20 blocks inclusion unless an approved owner decision id is cited in limitations (O-5 enforced).
+  - **S-04** exemptions apply only to whole sentences at sentence boundaries; glued text is scanned.
+  - **S-05** exactly one reason code per evidence state (same finding as L-F2).
+  - **S-06** only counted rows decide conflicting-evidence.
+  - **S-07** C-52 amended (see the C-52 amendment below).
+  - **S-08** the published per-copy odds ratio and interval are captured for every counted row; the group token summarizes the strongest counted row; O-4 unchanged.
+  - **S-09** disease caveats, notices and limitations must equal exact registry strings (with L-F1).
+  - **S-10** each detected frame is bound to its zygosity; a one-copy/two-copy swap fails.
+  - **L-F1** disease text is NFKC-normalized, non-ASCII letters are rejected, and reassurance and absent-follow-up patterns are added.
+  - **L-F2** proxy-only only with linked-rsID evidence; label-mismatch only when own rows all mismatch; no-independent-confirmation when neither.
+  - **C-52 amendment** in the all-excluded outcome no production code, schema or template change ships; only the contract document and the S1 checkers ship, with the documented exclusions, the unchanged nine-entry panel and the O-8 version policy; S3 is not run.
+
+## v0.4.0 run: S2 evidence and curation (decisions log)
+
+Evidence pack: the v0.4.0 pack (outside the repository), frozen manifest `MANIFEST.sha256` sha256 `8895f896ccba13e1f9dfbd7bd1d23b38357cda1aa3386608003dffb0b8870802`; all 81 listed files verified before curation. The S2 survey preceded this record (owner decision O-7). On 2026-11-24 the owner accepted every item below as recommended ("accept all, accept all") and, for the candidate question, accepted the all-excluded outcome for the four roadmap candidates; no substitute candidate is added in this run (a substitute would be a future scope change).
+
+- **S2-T1** (owner, 2026-11-24): rs10757278 (Coronary artery disease) is excluded, `no-independent-confirmation`.
+- **S2-T2** (owner, 2026-11-24): rs2200733 (Atrial fibrillation) is excluded, `no-independent-confirmation`.
+- **S2-T3** (owner, 2026-11-24): rs11209026 (Crohn's disease) is excluded, `single-study`.
+- **S2-T4** (owner, 2026-11-24): rs4245791 (Gallstone disease) is excluded, `single-study`.
+- **S2-T5** (owner, 2026-11-24): the rs11887534 identity record is unchanged and stays excluded `palindromic`.
+- **S2-Q1** (owner, 2026-11-24): for rs11209026, rows a23836 (`gwas:GCST000879`), a11989582 (`gwas:GCST001438`) and a24661 (`gwas:GCST001652`) are one evidence group (the conservative reading); the overlap is recorded as this owner decision in the T4 `overlap with` cells and the T1 rationale, not as pack text.
+- **S2-Q2** (owner, 2026-11-24): an effect allele that is the majority allele (G, about 0.93, for rs11209026) is excluded; no entry of this kind in v0.4.0.
+- **S2-Q3** (owner, 2026-11-24): an odds ratio without an interval (a24661) is not a usable per-copy ratio; the row is dropped `direction-missing`.
+- **S2-Q4** (owner, 2026-11-24): Ashkenazi Jewish samples map to `other`, with the text recorded.
+- **S2-Q5** (owner, 2026-11-24): when the pack does not show the stage of a row, the T4 stage is `discovery`, recorded as a curator judgment.
+- **S2-Q6** (owner, 2026-11-24): the gene cell for rs2200733 and rs10757278 uses the request-list symbols (PITX2, CDKN2B-AS1) and the rationale states the source.
+- **S2-Q7** (owner, 2026-11-24): rs11887534 keeps its v0.3.0 row unchanged; no disease-labeled second row.
+- **S2-Q8** (owner, 2026-11-24): Catalog association rows without a study record or abstract count as in-pack citations for dropped rows.
+- **S2-Q9** (owner, 2026-11-24): no alias is approved; `data/condition_aliases.json` is unchanged.
+- **S2-V6** (owner, 2026-11-24): the outcome is all-excluded (V6, amended C-52); S3 is not run; whether to release is the owner's later decision under O-8.
+- **S2-A1** (owner, 2026-11-24, S2 survey adjacent finding): the shipped alias "coronary heart disease" in the coronary artery disease group (C-9) is deferred to any future coronary artery disease scope change; log only.
+- **S2-A2** (owner, 2026-11-24, S2 survey adjacent finding): the C-13 wording for beta rows with a label-equal trait (contract says trait-mismatch, the evaluator derives direction-missing or allele-mismatch) is deferred to the next release that curates disease rows; log only.
+- **S2-A3** (owner, 2026-11-24, S2 survey adjacent finding): the capture helper fetched no study records for sub-threshold rows and the GWAS Catalog release is not recorded; a known limit of the v0.4.0 pack, and the next capture fetches study records for every label-equal row and records the release; log only.
+- **S2-A4** (owner, 2026-11-24, S2 survey adjacent finding): GWAS Catalog v2 locations are GRCh38 while the panel is GRCh37; logged, and the AGENTS.md GRCh38 known-gotcha line names the GWAS Catalog v2.
+- **S2-A5** (owner, 2026-11-24, S2 survey adjacent finding): the GCST001438 ancestry and sample-size ambiguity is handled by S2-Q4; no further action.
+- **S2-R167-F1** (owner, 2026-11-24, r167 review, MEDIUM): the decision gates for S2-Q1, S2-Q6 and S2-V6 accepted contradictory records; fixed in the S2 FIX round by checking the decided content.
+- **S2-R167-F2** (owner, 2026-11-24, r167 review, LOW): one sentence states the frequency-spread basis and the 500-allele floor; no per-group frequency table.
+- **S2-R167-F3** (owner, 2026-11-24, r167 review, LOW): row and accession ids replace author surnames in the S2-Q1 line; place-named cohort ids are kept.
+- **S2-R168-F1** (owner, 2026-11-25, r168 review, LOW): disputed; the rs11209026 af-spread of 0.068 combines genome and exome counts and is unchanged; the S2-R167-F2 sentence states the basis.
+- **S2-R168-F2** (owner, 2026-11-25, r168 review, LOW): the af-spread values on the two excluded rows with effect allele `-` are kept, each with a note naming the screened allele and its uncounted source row, stating it is not an effect-allele frequency under C-26.
+- **S2-R168-F3** (owner, 2026-11-25, r168 review, LOW): duplicate of S2-R167-F3; same decision.
+- **S2-R168-F4** (owner, 2026-11-25, r168 review, LOW): a SHA-256 content digest of the S2 disease T1, T4 and T5 index rows is pinned in the tests; correctness against the pack stays a review duty.
+- **S2-R172-F1** (owner, 2026-11-25, r172 review, LOW): the paragraph before the af-spread basis sentence must consist of table lines only; fixed in the S4 release-close BUILD.
+
+## v0.4.0 run: S4 release-close (decisions log)
+
+- **S4-O8** (owner, O-8): the version policy is applied: panel_version and package version are 0.4.0, and the nine panel entries are byte-identical to v0.3.0 apart from the panel_version field.
+- **S4-C52** (owner, S-07): the C-52 all-excluded outcome is recorded: no disease association met the contract, no production code, schema or template change ships, and S3 is not run.
+- **S4-R162-A2** (owner, r162 adjacent finding A2): the S3 production tests named in C-5, C-6, C-34 and DA.mixed_result_type_report_validates are not built in this outcome; they are deferred to the release that includes a disease row.

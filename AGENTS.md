@@ -120,14 +120,17 @@ tests/    test_pipeline.py + test_evidence.py, test_category.py, test_cli.py,
   validator) and the guard all pass; `data/panel.sample.json` reproduces exactly
   from the ETL.
 
-## Current state (v0.3.0 release run)
+## Current state (v0.4.0 release run)
 
-v0.3.0 is merged to main and tagged. It carries a curated nine-entry panel
-(seven health entries, two trait entries), panel_version 0.3.0, the template
-report, the owner-checkpoint procedure (docs/owner-checkpoint.md) and the
-accepted-limits register (docs/accepted-limits.md). The package version is
-0.3.0. The remaining steps are owner-only: the private real-data checkpoint
-and repository branch protection.
+v0.4.0 is prepared for the owner's release decision. It adds the
+disease-association contract (docs/disease-associations.md) and its checkers.
+No disease association met the contract: all four candidates were excluded, with
+the reasons recorded in docs/panel-curation.md. It carries a curated nine-entry
+panel (seven health entries, two trait entries), unchanged from v0.3.0,
+panel_version 0.4.0, the template report (unchanged, with no disease section),
+the owner-checkpoint procedure (docs/owner-checkpoint.md) and the accepted-limits
+register (docs/accepted-limits.md). The package version is 0.4.0. The remaining steps are owner-only: the private real-data checkpoint,
+the merge, tag and publication decisions, and repository branch protection.
 
 The real-data checkpoint is owner-only, in a separate local environment. Keep
 real DNA, findings, reports, private logs, and hashes outside all agent-accessible
@@ -176,8 +179,8 @@ Priority order (rough):
 - dbSNP ref/alt is assembly-oriented; the risk allele is the curated
   `effect_allele`, not dbSNP's alt (see `rs6025`).
 - ClinVar `esearch` can return unrelated variants; selection filters by gene.
-- gnomAD/Open Targets use GRCh38 internally; dbSNP small-set uses GRCh37
-  coordinates for the panel.
+- gnomAD, Open Targets and GWAS Catalog v2 use GRCh38 internally; dbSNP small-set uses
+  GRCh37 coordinates for the panel.
 - The online path is opt-in and requires `--accept-privacy-risk`; it withholds
   raw alleles and the file hash by default.
 - SNPedia is CC BY-NC-SA 3.0 (non-commercial) and is never redistributed.

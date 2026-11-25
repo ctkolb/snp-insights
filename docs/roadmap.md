@@ -43,6 +43,8 @@ Baseline estimate is **11–16 builder and reviewer tickets**, with **3–5 for 
 
 ## v0.4.0 — Disease associations
 
+**Status: prepared for the owner's release decision.** The disease-association contract and its checkers were added. No disease association met the contract (all four candidates were excluded, with the reasons recorded in docs/panel-curation.md), so the release panel is the unchanged nine-entry panel (seven health entries, two trait entries) at panel version 0.4.0, package version 0.4.0. The report template is unchanged and renders no disease section. The real-data checkpoint, merge, tag, publication and branch protection are owner-only.
+
 Approved direction. Define and independently review a disease-association evidence and reporting contract before curating markers. The contract must cover protective and susceptibility findings, cohort and ancestry limitations, and wording that stays at the association level. Marker inclusion depends on the approved contract and source verification.
 
 | Gene or locus | Starting candidate | Condition |

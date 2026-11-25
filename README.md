@@ -3,7 +3,7 @@
 Turn a raw consumer DNA file into readable, **traceable** genetic findings —
 without handing your genome to a language model.
 
-In v0.3.0 the report is written by fixed templates, with no language model and no
+In v0.4.0 the report is written by fixed templates, with no language model and no
 network. That is the verified, private path. SNP Insights parses your raw
 AncestryDNA file locally, annotates a curated set of variants against public
 reference data, and computes every coverage state and confidence value
@@ -13,7 +13,7 @@ structured findings before anything is rendered.
 An optional narration step can have a language model phrase those sentences
 instead: a local model through Ollama by default, or an opt-in online model. That
 step is built and tested against fixtures, but it is **not verified against a live
-model** in v0.3.0. When it is used, the model writes prose only, and the same
+model** in v0.4.0. When it is used, the model writes prose only, and the same
 checks apply.
 
 > **Not medical advice.** This is a research and curiosity tool. It is not a
@@ -23,8 +23,8 @@ checks apply.
 ## Pick your path
 
 Three ways to use this repository. Start with Path A if you have never run it.
-Every path that produces a report in v0.3.0 uses `--template-only`, and nothing in
-v0.3.0 needs Ollama or a language model.
+Every path that produces a report in v0.4.0 uses `--template-only`, and nothing in
+v0.4.0 needs Ollama or a language model.
 
 - **Path A: try it on synthetic data.** Needs Python and this repository. No
   personal file, no network, about two minutes. Go to
@@ -52,7 +52,7 @@ pip install jsonschema
 python -m snp_insights --version
 ```
 
-The version command prints `snp-insights 0.3.0`. Now run the whole pipeline on the
+The version command prints `snp-insights 0.4.0`. Now run the whole pipeline on the
 synthetic fixture, with no model and no network. Put the output **outside** the
 checkout (a temporary directory is fine) so `run` has nothing to warn about:
 
@@ -91,14 +91,14 @@ glossary and troubleshooting are in [docs/getting-started.md](docs/getting-start
    `.txt` file. Save and unzip it in a private directory **outside** the
    repository; never unzip it into the checkout. Details:
    [docs/getting-started.md](docs/getting-started.md#getting-your-raw-file).
-2. **You do not need to fetch or build any reference data for v0.3.0.**
+2. **You do not need to fetch or build any reference data for v0.4.0.**
    `data/targets.release-panel.json` is already in the repository.
 3. **Run the two private commands** in the next section, which also holds the rule
    for where to keep your files.
 
 ## Release panel and your own file
 
-The release panel (panel version 0.3.0) is a small public panel of seven
+The release panel (panel version 0.4.0) is a small public panel of seven
 health-related entries and two trait entries, built reproducibly from public
 references. The curation record is
 [docs/panel-curation.md](docs/panel-curation.md), the curated evidence file is
@@ -176,12 +176,12 @@ Stage 3  Narrate   (local)   findings.json ─▶ [LLM] ─▶ report_ir.json
 
 `--template-only` skips the `[LLM]` box: fixed templates write the report from
 `findings.json`, and the same validator and renderer run. This is the only Stage 3
-path verified in v0.3.0.
+path verified in v0.4.0.
 
 - **Stages 1–2 are fully local.** Raw DNA never leaves the machine.
 - **Stage 3 has two paths.** With `--template-only` (the verified path) no model
   is used and there is no network call. Without it, a local model narrates by
-  default; that is not verified against a live model in v0.3.0. An online model is
+  default; that is not verified against a live model in v0.4.0. An online model is
   opt-in only, behind an explicit risk-acknowledgment flag.
 - **When a model is used, it authors prose only.** Numbers, caveats, citations,
   and contradictions are owned by code on both paths.
@@ -308,12 +308,12 @@ by default; Ollama (`http://localhost:11434/v1`) and OpenRouter
 
 Annotation never touches the network. Reference data (dbSNP, ClinVar, gnomAD, the
 GWAS Catalog, and optionally SNPedia) is fetched by a separate, explicit `fetch`
-step into a local cache outside the repository. For v0.3.0 you do not need it.
+step into a local cache outside the repository. For v0.4.0 you do not need it.
 [docs/reference-data.md](docs/reference-data.md) explains what each source is,
 small fetch versus `--full`, the cache, the `build-panel` flags, the manual
 downloads and the SNPedia path.
 
-## Known limitations (v0.3.0)
+## Known limitations (v0.4.0)
 
 - The array covers about 0.02% of the genome.
 - Array presence of each marker is not verified: no public array manifest is
@@ -389,13 +389,18 @@ inventory, and [SECURITY.md](SECURITY.md) to report an issue.
 
 ## Status
 
-Released as v0.3.0: panel version 0.3.0 and package version 0.3.0. The pipeline
-runs end to end on synthetic fixtures:
-parse, annotate, a curated nine-entry release panel, and a deterministic
-template report. The first real-file run is the owner's local checkpoint
-(docs/owner-checkpoint.md). Model narration (skeleton and full modes) and the
-online path exist but are not part of the verified scope. Known gaps and
-accepted limits are listed in docs/accepted-limits.md and DESIGN.md.
+Version 0.4.0 is prepared for the owner's release decision: panel version 0.4.0
+and package version 0.4.0. v0.4.0 added the disease-association contract
+(docs/disease-associations.md) and its checkers. No disease association met the
+contract, so the release panel is the unchanged nine-entry panel (seven health
+entries, two trait entries), and the report template is unchanged and renders no
+disease section. The pipeline runs end to end on synthetic fixtures: parse,
+annotate, a curated nine-entry release panel, and a deterministic template
+report. The first real-file run is the owner's local checkpoint
+(docs/owner-checkpoint.md); the merge, tag, publication and branch protection
+are owner-only. Model narration (skeleton and full modes) and the online path
+exist but are not part of the verified scope. Known gaps and accepted limits are
+listed in docs/accepted-limits.md and DESIGN.md.
 
 ## Contributing
 
