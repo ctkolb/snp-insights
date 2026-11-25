@@ -6675,6 +6675,17 @@ S2_DISPOSITION = {  # rsID: (decision record id, reason code); owner triage S2-T
 }
 S2_LABELS = {"rs10757278": "Coronary artery disease", "rs2200733": "Atrial fibrillation",
              "rs11209026": "Crohn's disease", "rs4245791": "Gallstone disease"}
+S2_Q6_GENES = {"rs10757278": "CDKN2B-AS1", "rs2200733": "PITX2"}  # S2-Q6: the request-list symbols, not the Catalog-mapped ones
+# The decided content of S2-Q1 and S2-V6, pinned word for word (S2-R167-F1): a record that reverses the
+# grouping, drops the owner attribution or lets S3 run must fail, not only a record that loses an id.
+S2_Q1_DECISION = ("for rs11209026, rows a23836 (`gwas:GCST000879`), a11989582 (`gwas:GCST001438`) and "
+                  "a24661 (`gwas:GCST001652`) are one evidence group (the conservative reading); the "
+                  "overlap is recorded as this owner decision in the T4 `overlap with` cells and the T1 "
+                  "rationale, not as pack text.")
+S2_Q1_ATTRIBUTION = ("overlap: declared on a23836, a11989582 and a24661 in both directions, "
+                     "recorded as an owner decision and not as pack text")
+S2_V6_DECISION = ("the outcome is all-excluded (V6, amended C-52); S3 is not run; "
+                  "whether to release is the owner's later decision under O-8.")
 S2_T4_ROWS = {"rs10757278": 4, "rs2200733": 6, "rs11209026": 26, "rs4245791": 114}  # own-rsID Catalog rows in the pack
 S2_DECISION_IDS = tuple([f"S2-T{i}" for i in range(1, 6)] + [f"S2-Q{i}" for i in range(1, 10)] + ["S2-V6"])
 S2_CONTEXT_ROW_SHA256 = "bd7d0e67cf64b66f27ed45c60096d374c9f1d85dd74adab6a0c04c8c323334ca"  # S2-T5 / S2-Q7: the v0.3.0 rs11887534 row, unchanged
@@ -6766,8 +6777,12 @@ def _run_disease_s2(attempt):
             _require(f"{rs} row {got} != {want}", got == want)
             items = _items(r["rationale"])
             _require(f"{rs} rationale does not cite owner-decision:{did}", f"owner-decision:{did}" in items)
-            if rs in ("rs10757278", "rs2200733"):
-                _require(f"{rs} rationale lacks owner-decision:S2-Q6 (gene cell)", "owner-decision:S2-Q6" in items)
+            if rs in S2_Q6_GENES:
+                gene = S2_Q6_GENES[rs]
+                _require(f"{rs} S2-Q6 requires the request-list gene {gene}", r["gene"] == gene)
+                _require(f"{rs} rationale lacks S2-Q6 request-list provenance",
+                         "owner-decision:S2-Q6" in items
+                         and any(item.startswith(f"gene: {gene} from the request list, ") for item in items))
             line = record.get(did, "")
             _require(f"decision record {did} does not name {rs} and `{code}`", rs in line and f"`{code}`" in line)
         return True
@@ -6777,8 +6792,8 @@ def _run_disease_s2(attempt):
         record = s2_decision_record()
         _require(f"decision record ids {sorted(record)} != {sorted(S2_DECISION_IDS)}",
                  sorted(record) == sorted(S2_DECISION_IDS))
-        _require("S2-V6 must say all-excluded and that S3 is not run",
-                 "all-excluded" in record["S2-V6"] and "S3" in record["S2-V6"])
+        _require("S2-V6 decision must preserve the all-excluded outcome and skip S3",
+                 record["S2-V6"].partition(": ")[2] == S2_V6_DECISION)
         return True
     attempt("DA.s2_decision_record_complete", decision_record_complete)
 
@@ -6786,10 +6801,16 @@ def _run_disease_s2(attempt):
         t, _ = s2_real()
         record = s2_decision_record()
         by_rs = {r["rsID"]: r for r in t["T1"]}
-        declared = {r["row id"]: r["overlap with"] for r in t["T4"]
+        _require("S2-Q1 decision must authorize the one-group overlap for rs11209026",
+                 record.get("S2-Q1", "").partition(": ")[2] == S2_Q1_DECISION)
+        _require("S2-Q1 overlap must be attributed to the owner decision",
+                 S2_Q1_ATTRIBUTION in _items(by_rs["rs11209026"]["rationale"]))
+        declared = {(r["rsID"], r["row id"]): r["overlap with"] for r in t["T4"]
                     if r["overlap with"] != "-" and r["rsID"] in S2_DISPOSITION}
         _require(f"declared overlaps {declared}", declared == {
-            "a23836": "a11989582;a24661", "a11989582": "a23836", "a24661": "a23836"})
+            ("rs11209026", "a23836"): "a11989582;a24661",
+            ("rs11209026", "a11989582"): "a23836",
+            ("rs11209026", "a24661"): "a23836"})
         for r in t["T4"]:
             if r["overlap with"] != "-" and r["rsID"] in S2_DISPOSITION:
                 items = _items(by_rs[r["rsID"]]["rationale"])

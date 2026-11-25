@@ -867,7 +867,7 @@ Evidence pack: the v0.4.0 pack (outside the repository), frozen manifest `MANIFE
 - **S2-T3** (owner, 2026-11-24): rs11209026 (Crohn's disease) is excluded, `single-study`.
 - **S2-T4** (owner, 2026-11-24): rs4245791 (Gallstone disease) is excluded, `single-study`.
 - **S2-T5** (owner, 2026-11-24): the rs11887534 identity record is unchanged and stays excluded `palindromic`.
-- **S2-Q1** (owner, 2026-11-24): for rs11209026 the Franke meta-analysis row (a23836), the Kenny row (a11989582) and the Julia row (a24661) are one evidence group (the conservative reading); the overlap is recorded as this owner decision in the T4 `overlap with` cells and the T1 rationale, not as pack text.
+- **S2-Q1** (owner, 2026-11-24): for rs11209026, rows a23836 (`gwas:GCST000879`), a11989582 (`gwas:GCST001438`) and a24661 (`gwas:GCST001652`) are one evidence group (the conservative reading); the overlap is recorded as this owner decision in the T4 `overlap with` cells and the T1 rationale, not as pack text.
 - **S2-Q2** (owner, 2026-11-24): an effect allele that is the majority allele (G, about 0.93, for rs11209026) is excluded; no entry of this kind in v0.4.0.
 - **S2-Q3** (owner, 2026-11-24): an odds ratio without an interval (a24661) is not a usable per-copy ratio; the row is dropped `direction-missing`.
 - **S2-Q4** (owner, 2026-11-24): Ashkenazi Jewish samples map to `other`, with the text recorded.
