@@ -500,7 +500,7 @@ def check_targets_shape(obj):
         return _result(["shape: top level is not an object"], 0)
     if not isinstance(obj.get("_note"), str):
         errors.append("shape: _note missing")
-    if obj.get("panel_version") != "0.3.0":
+    if obj.get("panel_version") != "0.4.0":
         errors.append(f"shape: panel_version {obj.get('panel_version')!r}")
     variants = obj.get("variants")
     if not isinstance(variants, list):
@@ -1428,17 +1428,17 @@ def _run_invariants(attempt):
         ("allele_differs", _set_row("rs9000003", allele="I"), "row-field-differs"),
     ])
     _syn(attempt, "targets_shape", lambda w: check_targets_shape(
-        {"_note": "x", "panel_version": "0.3.0", "genome_build": "GRCh37", "strand": "forward",
+        {"_note": "x", "panel_version": "0.4.0", "genome_build": "GRCh37", "strand": "forward",
          "variants": w["entries"]}), [
         ("entry_missing_field", lambda w: w["entries"][0].pop("effect_allele"), "shape"),
         ("entry_bad_rsid", _set_entry("rs9000001", rsid="9000001"), "shape"),
     ])
 
     def targets_shape_top_level():
-        base = {"_note": "x", "panel_version": "0.3.0", "variants": []}
+        base = {"_note": "x", "panel_version": "0.4.0", "variants": []}
         _clean(check_targets_shape(base), "shape/empty")
         for defect, obj in (("not an object", []), ("wrong version", dict(base, panel_version="0.1.0")),
-                            ("variants not a list", dict(base, variants={})), ("no note", {"panel_version": "0.3.0", "variants": []})):
+                            ("variants not a list", dict(base, variants={})), ("no note", {"panel_version": "0.4.0", "variants": []})):
             _has(check_targets_shape(obj), "shape", f"shape/{defect}")
         return True
     attempt("R1B.syn_targets_shape_top_level", targets_shape_top_level)
@@ -2791,7 +2791,7 @@ def _target_entry(**kw):
 
 
 def _targets_obj(*entries):
-    return {"_note": "invented", "panel_version": "0.3.0", "genome_build": "GRCh37",
+    return {"_note": "invented", "panel_version": "0.4.0", "genome_build": "GRCh37",
             "strand": "forward", "variants": list(entries)}
 
 
@@ -3385,7 +3385,7 @@ def check_evidence_file(evidence, targets, t1, t2, t5):
         errors.append(f"top_level_unknown_key: {key}")
     if not isinstance(evidence.get("_note"), str):
         errors.append("shape: _note missing")
-    if evidence.get("panel_version") != "0.3.0":
+    if evidence.get("panel_version") != "0.4.0":
         errors.append(f"shape: panel_version {evidence.get('panel_version')!r}")
     entries = evidence.get("entries")
     if not isinstance(entries, list):
@@ -3450,7 +3450,7 @@ def _evidence_world():
     target = {"rsid": "rs9000002", "gene": "GENEB", "condition": "Example condition one",
               "category": "carrier", "result_type": "carrier_status",
               "effect_allele": "G", "assayability": "snp", "strand": "forward"}
-    targets = {"_note": "invented", "panel_version": "0.3.0", "genome_build": "GRCh37",
+    targets = {"_note": "invented", "panel_version": "0.4.0", "genome_build": "GRCh37",
                "strand": "forward", "variants": [target]}
     t1 = {"rs9000002": {"rsID": "rs9000002", "label used in report": "Example condition one",
                         "sources (typed ids)":
@@ -3459,7 +3459,7 @@ def _evidence_world():
                         "matched review status": "criteria provided, multiple submitters, no conflicts"}}
     t5 = {"rs9000002": {"pack file index id":
                         "dbsnp:rs9000002;clinvar:vcv:9001001;clinvar:rcv:RCV900000001"}}
-    evidence = {"_note": "invented", "panel_version": "0.3.0", "entries": [
+    evidence = {"_note": "invented", "panel_version": "0.4.0", "entries": [
         {"rsid": "rs9000002", "condition": "Example condition one",
          "clinvar_record": "clinvar:rcv:RCV900000001", "significance": "Pathogenic",
          "review_status": "criteria provided, multiple submitters, no conflicts", "review_stars": 2}]}
@@ -4254,7 +4254,7 @@ def _run_r65(attempt):
 # compared against literal values from the reviewed N1 dbSNP capture, and the
 # curated ClinVar blocks and source labels are literals from the committed panel.
 # =============================================================================
-REVIEWED_PANEL_SHA256 = "379f050163dc37430b6e493b20749958a058c8df48124606951f6b10a0bcaa0e"
+REVIEWED_PANEL_SHA256 = "40231a7b568ac35acd3290c1e2545bf5fad3f48e5e04e9cb3dc5dd8efad05366"
 N1_DBSNP_ORACLE = {
     "rs1800562": {"chromosome": "6", "position": 26093141,
                   "reference_allele": "G", "alternate_alleles": ["A", "T"]},
@@ -4739,14 +4739,14 @@ def _run_v030_s2(attempt):
     def version_literals():
         for rel in V030_S2_DATA_FILES:
             got = _v030_read_json(rel).get("panel_version")
-            _require(f"{rel}: panel_version {got!r}, expected '0.3.0'", got == "0.3.0")
-        # The package version is the owner's tag decision and does not move with the panel.
+            _require(f"{rel}: panel_version {got!r}, expected '0.4.0'", got == "0.4.0")
+        # v0.4.0 (owner decision O-8): the package version moves with the panel version.
         with open(os.path.join(ROOT, "pyproject.toml"), encoding="utf-8") as fh:
             pyproject = re.search(r'^version\s*=\s*"([^"]+)"', fh.read(), re.M).group(1)
         with open(os.path.join(ROOT, "snp_insights", "__init__.py"), encoding="utf-8") as fh:
             package = re.search(r'^__version__\s*=\s*"([^"]+)"', fh.read(), re.M).group(1)
-        _require(f"package versions {pyproject!r} and {package!r} are not both '0.3.0'",
-                 pyproject == package == "0.3.0")
+        _require(f"package versions {pyproject!r} and {package!r} are not both '0.4.0'",
+                 pyproject == package == "0.4.0")
         return True
     attempt("V030S2.version_literals", version_literals)
 
@@ -6707,7 +6707,7 @@ S2_AF_BASIS_SENTENCE = ("For the four v0.4.0 disease rows, the `af-spread` basis
                         "allele counts combined per group (afr, amr, asj, eas, fin, nfe, sas), with groups of "
                         "fewer than 500 combined alleles omitted.")
 S2_DELIVERED_IDS = ("S2-A1", "S2-A2", "S2-A3", "S2-A4", "S2-A5", "S2-R167-F1", "S2-R167-F2", "S2-R167-F3",
-                    "S2-R168-F1", "S2-R168-F2", "S2-R168-F3", "S2-R168-F4")  # logged lines, not decision-record ids
+                    "S2-R168-F1", "S2-R168-F2", "S2-R168-F3", "S2-R168-F4", "S2-R172-F1")  # logged lines, not decision-record ids
 # SHA-256 of each delivered S2 log line in the decisions log of docs/loop-spec.md (S2-R170-F1): the
 # UTF-8 text of the whole line, from "- **ID** " to its last character, with no line ending. A line
 # that carries added, changed or contradictory text no longer matches.
@@ -6724,7 +6724,15 @@ S2_DELIVERED_LINE_SHA256 = {
     "S2-R168-F2": "4ce62a819a0f5eea94c13d4b47a4463179ee5b02f40e0f076e89a5f4154a0087",
     "S2-R168-F3": "966e6e275ae655e2f5de5763c4ab7523d168423ed6cfd8f7200916cfd1994b7f",
     "S2-R168-F4": "4a11f07061797bb1731a19604527e670ba604fde989cf6d53b8a93c2add76e9b",
+    "S2-R172-F1": "1e4cd9c5ca986894482234533439688d6e24fe4a69b33462110505257992fb2b",
 }
+# v0.4.0 S4 release-close (ticket r173): the decisions log section and its three lines, pinned whole.
+S4_LOG_TITLE = "v0.4.0 run: S4 release-close (decisions log)"
+S4_LOG_LINES = (
+    "- **S4-O8** (owner, O-8): the version policy is applied: panel_version and package version are 0.4.0, and the nine panel entries are byte-identical to v0.3.0 apart from the panel_version field.",
+    "- **S4-C52** (owner, S-07): the C-52 all-excluded outcome is recorded: no disease association met the contract, no production code, schema or template change ships, and S3 is not run.",
+    "- **S4-R162-A2** (owner, r162 adjacent finding A2): the S3 production tests named in C-5, C-6, C-34 and DA.mixed_result_type_report_validates are not built in this outcome; they are deferred to the release that includes a disease row.",
+)
 S2_AF_BASIS_MARKER = "`af-spread` basis"  # any paragraph that names the basis must be the pinned sentence
 S2_AF_BASIS_NEXT_PARAGRAPH = ("The `decision` is `included`, `excluded` or `reserve`. The `build/strand` cell "
                               "is `GRCh37/forward`, optionally followed by `;strand-ambiguous` on an excluded "
@@ -6958,7 +6966,8 @@ def _run_disease_s2(attempt):
                  flat.count(S2_AF_BASIS_SENTENCE) == 1)
         # S2-R170-F1: the sentence must be the whole paragraph, so appended wording fails, and the
         # paragraph that follows must be the one that is there now, so a new paragraph cannot slip in.
-        paragraphs = [" ".join(p.split()) for p in read_doc().split("\n\n")]
+        raw_paragraphs = read_doc().split("\n\n")  # kept before whitespace normalization (S2-R172-F1)
+        paragraphs = [" ".join(p.split()) for p in raw_paragraphs]
         basis_at = [i for i, p in enumerate(paragraphs) if S2_AF_BASIS_MARKER in p]
         _require("panel-curation must have exactly one paragraph that names the af-spread basis, and it "
                  f"must be the pinned sentence alone (S2-R170-F1): {[paragraphs[i] for i in basis_at]}",
@@ -6969,6 +6978,12 @@ def _run_disease_s2(attempt):
                  at + 1 < len(paragraphs) and paragraphs[at + 1] == S2_AF_BASIS_NEXT_PARAGRAPH)
         _require("the af-spread basis sentence must follow the T1 table directly (S2-R170-F1)",
                  at > 0 and paragraphs[at - 1].startswith("| rs"))
+        # S2-R172-F1: the whole previous paragraph is table lines. A prose line joined to the table by a
+        # single newline would keep the paragraph starting with "| rs" and pass the check above.
+        _require("every line of the paragraph before the af-spread basis sentence must start with a table "
+                 "pipe (S2-R172-F1): " + repr([ln for ln in raw_paragraphs[at - 1].splitlines()
+                                              if not ln.startswith("|")]),
+                 all(ln.startswith("|") for ln in raw_paragraphs[at - 1].splitlines()))
         by_rs = {r["rsID"]: r for r in s2_real()[0]["T1"]}
         for rs, allele, row in (("rs10757278", "G", "a6123"), ("rs2200733", "T", "a6065")):
             _require(f"{rs} lacks the screened-allele note (S2-R168-F2): {allele} from {row}",
@@ -6994,6 +7009,8 @@ def _run_disease_s2(attempt):
             nxt = log_lines[at + 1] if at + 1 < len(log_lines) else ""
             _require(f"S2 log line {did} is followed by added text (S2-R170-F1): {nxt!r}",
                      nxt == "" or nxt.startswith("- **"))
+        _require("the S2 log must end with the S2-R172-F1 line",
+                 [ln for ln in log_lines if ln.strip()][-1].startswith("- **S2-R172-F1** "))
         with open(os.path.join(ROOT, "AGENTS.md"), encoding="utf-8") as fh:
             agents_text = fh.read()
         gotcha = " ".join(agents_text.split())
@@ -7019,6 +7036,19 @@ def _run_disease_s2(attempt):
                  and gotcha.count(S2_AGENTS_GRCH_GOTCHA) == 1)
         return True
     attempt("DA.s2_log_lines_and_agents_gotcha", log_lines_and_gotcha)
+
+    def s4_log_lines():
+        with open(LOOP_SPEC_PATH, encoding="utf-8") as fh:
+            hits = [body for _, title, body in sections(fh.read()) if title == S4_LOG_TITLE]
+        _require(f"loop-spec holds {len(hits)} sections titled {S4_LOG_TITLE!r}, expected 1", len(hits) == 1)
+        got = [ln for ln in hits[0].splitlines() if ln.strip()]
+        # Whole-line equality, in order: a missing line, an added line, a continuation line or a line with
+        # appended text all fail here (no-continuation rule).
+        _require(f"S4 decisions log lines differ from the pinned lines: {got!r}", tuple(got) == S4_LOG_LINES)
+        _require("S4 decisions log has text that is not one of the pinned lines",
+                 all(ln == "" or ln in S4_LOG_LINES for ln in hits[0].splitlines()))
+        return True
+    attempt("DA.s4_release_close_log_lines", s4_log_lines)
 
     def owner_decision_justifications():
         from unittest.mock import patch

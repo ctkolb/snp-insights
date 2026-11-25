@@ -88,14 +88,17 @@ NEW_ROW_SHA256 = {
     "AL-027": "febfaee03490fa6dcdcf28a9771bf4805110a29b287af7a40cd51bac3305e20f",
 }
 
-AGENTS_CURRENT_STATE = """## Current state (v0.3.0 release run)
+AGENTS_CURRENT_STATE = """## Current state (v0.4.0 release run)
 
-v0.3.0 is merged to main and tagged. It carries a curated nine-entry panel
-(seven health entries, two trait entries), panel_version 0.3.0, the template
-report, the owner-checkpoint procedure (docs/owner-checkpoint.md) and the
-accepted-limits register (docs/accepted-limits.md). The package version is
-0.3.0. The remaining steps are owner-only: the private real-data checkpoint
-and repository branch protection.
+v0.4.0 is prepared for the owner's release decision. It adds the
+disease-association contract (docs/disease-associations.md) and its checkers.
+No disease association met the contract: all four candidates were excluded, with
+the reasons recorded in docs/panel-curation.md. It carries a curated nine-entry
+panel (seven health entries, two trait entries), unchanged from v0.3.0,
+panel_version 0.4.0, the template report (unchanged, with no disease section),
+the owner-checkpoint procedure (docs/owner-checkpoint.md) and the accepted-limits
+register (docs/accepted-limits.md). The package version is 0.4.0. The remaining steps are owner-only: the private real-data checkpoint,
+the merge, tag and publication decisions, and repository branch protection.
 
 The real-data checkpoint is owner-only, in a separate local environment. Keep
 real DNA, findings, reports, private logs, and hashes outside all agent-accessible
@@ -173,17 +176,22 @@ CURATION_RESERVES_PARAGRAPH = (
 )
 
 # The package, console script and pipeline version of this release (ticket B).
-EXPECTED_VERSION = "0.3.0"
+EXPECTED_VERSION = "0.4.0"
 
 README_STATUS = (
-    "Released as v0.3.0: panel version 0.3.0 and package version 0.3.0. "
-    "The pipeline runs end to end on "
-    "synthetic fixtures: parse, annotate, a curated nine-entry release "
-    "panel, and a deterministic template report. The first real-file run is "
-    "the owner's local checkpoint (docs/owner-checkpoint.md). Model "
-    "narration (skeleton and full modes) and the online path exist but are "
-    "not part of the verified scope. Known gaps and accepted limits are "
-    "listed in docs/accepted-limits.md and DESIGN.md."
+    "Version 0.4.0 is prepared for the owner's release decision: panel "
+    "version 0.4.0 and package version 0.4.0. v0.4.0 added the "
+    "disease-association contract (docs/disease-associations.md) and its "
+    "checkers. No disease association met the contract, so the release panel "
+    "is the unchanged nine-entry panel (seven health entries, two trait "
+    "entries), and the report template is unchanged and renders no disease "
+    "section. The pipeline runs end to end on synthetic fixtures: parse, "
+    "annotate, a curated nine-entry release panel, and a deterministic "
+    "template report. The first real-file run is the owner's local checkpoint "
+    "(docs/owner-checkpoint.md); the merge, tag, publication and branch "
+    "protection are owner-only. Model narration (skeleton and full modes) and "
+    "the online path exist but are not part of the verified scope. Known gaps "
+    "and accepted limits are listed in docs/accepted-limits.md and DESIGN.md."
 )
 
 REQUIREMENTS_PHRASE = ("Python 3.12 or 3.14 (the CI matrix); other 3.12+ "
@@ -379,13 +387,13 @@ def _readme_template_only_command():
 
 
 def _readme_limitations_list():
-    sec = _flat(_section(_read(README), "Known limitations (v0.3.0)")).lower()
+    sec = _flat(_section(_read(README), "Known limitations (v0.4.0)")).lower()
     for phrase, doc, doc_phrase in LIMITATION_KEYS:
         _require("README limitation lacks " + phrase, phrase in sec)
         if doc is not None:
             _require("%s lacks %r" % (os.path.basename(doc), doc_phrase),
                      doc_phrase in _flat(_read(doc)))
-    items = [l for l in _section(_read(README), "Known limitations (v0.3.0)")
+    items = [l for l in _section(_read(README), "Known limitations (v0.4.0)")
              .split("\n") if l.startswith("- ")]
     _require("one list item per limitation", len(items) >= len(LIMITATION_KEYS))
     return True
@@ -446,7 +454,7 @@ def _version_consistent():
     _require("getting-started version output",
              "snp-insights %s" % EXPECTED_VERSION in _flat(_read(GETTING_STARTED)))
     _require("README package-version status",
-             "panel version 0.3.0 and package version %s" % EXPECTED_VERSION
+             "panel version 0.4.0 and package version %s" % EXPECTED_VERSION
              in flat)
     _require("README no longer calls itself a release candidate",
              "Release candidate" not in flat)
@@ -493,7 +501,7 @@ def _agents_md_current_state():
              "Complete independent review of the initial CI/support stage"
              not in text)
     _require("Current state heading present",
-             re.search(r"^## Current state \(v0\.3\.0 release run\)$", text, re.M))
+             re.search(r"^## Current state \(v0\.4\.0 release run\)$", text, re.M))
     _require("current state block is exact", AGENTS_CURRENT_STATE in text)
     _require("current state precedes the roadmap",
              text.index("## Current state") < text.index("## Roadmap to beta"))
@@ -644,7 +652,7 @@ RD_HEADINGS = (
     "SNPedia (manual)",
 )
 README_KEEP_HEADINGS = (
-    "How it works", "Why", "Requirements", "Known limitations (v0.3.0)",
+    "How it works", "Why", "Requirements", "Known limitations (v0.4.0)",
     "Privacy & safety", "Status", "Contributing", "License", "Testing",
 )
 DOC_MAP_TARGETS = (
@@ -2235,16 +2243,16 @@ def _v030s3_release_wording():
     getting = _flat(_read(GETTING_STARTED))
     checkpoint = _flat(_read(CHECKPOINT))
     status = _flat(_section(_read(README), "Status"))
-    state = _flat(_section(_read(AGENTS), "Current state (v0.3.0 release run)"))
+    state = _flat(_section(_read(AGENTS), "Current state (v0.4.0 release run)"))
     facts = _flat(_section(_read(CHECKPOINT), "Current release facts"))
-    _require("README release section names panel version 0.3.0",
-             "panel version 0.3.0" in _flat(_release_section()))
-    _require("getting-started names panel version 0.3.0", "panel version 0.3.0" in getting)
-    _require("owner checkpoint names panel version 0.3.0", "panel version 0.3.0" in facts)
-    _require("README states package version 0.3.0",
-             "panel version 0.3.0 and package version 0.3.0" in status)
-    _require("AGENTS states package version 0.3.0",
-             "The package version is 0.3.0." in state)
+    _require("README release section names panel version 0.4.0",
+             "panel version 0.4.0" in _flat(_release_section()))
+    _require("getting-started names panel version 0.4.0", "panel version 0.4.0" in getting)
+    _require("owner checkpoint names panel version 0.4.0", "panel version 0.4.0" in facts)
+    _require("README states package version 0.4.0",
+             "panel version 0.4.0 and package version 0.4.0" in status)
+    _require("AGENTS states package version 0.4.0",
+             "The package version is 0.4.0." in state)
     _require("the old v0.2.0 panel statement is gone from the owner checkpoint",
              "The v0.2.0 release panel" not in checkpoint)
     _require("the old v0.2.0 panel statement is gone from getting-started",
@@ -2273,6 +2281,83 @@ def _v030s3g_no_release_claim_in_release_docs():
     bad = _flat(_read(GETTING_STARTED)) + " The v0.3.0 package has been released."
     _require("the control claim is not detected",
              any(re.search(p, bad, re.I) for p in RELEASE_CLAIM_PATTERNS))
+    return True
+
+
+ROADMAP = os.path.join(DOCS, "roadmap.md")
+ROADMAP_V040_STATUS = (
+    "**Status: prepared for the owner's release decision.** The "
+    "disease-association contract and its checkers were added. No disease "
+    "association met the contract (all four candidates were excluded, with the "
+    "reasons recorded in docs/panel-curation.md), so the release panel is the "
+    "unchanged nine-entry panel (seven health entries, two trait entries) at "
+    "panel version 0.4.0, package version 0.4.0. The report template is "
+    "unchanged and renders no disease section. The real-data checkpoint, "
+    "merge, tag, publication and branch protection are owner-only."
+)
+V040_VERSION = "0.4.0"
+V040_DATA_FILES = ("data/targets.release.json", "data/targets.release-evidence.json",
+                   "data/targets.release-panel.json")
+# Words that claim the v0.4.0 release happened (owner decision O-8: the owner decides whether to release).
+V040_CLAIM_PATTERNS = (r"\bReleased as v0\.4\.0\b", r"\bv0\.4\.0 (?:is|was|has been) "
+                       r"(?:released|published|tagged|merged)\b", r"\bmerged to main\b")
+
+
+def _v040_s4_version_literals_agree():
+    """O-8: every version literal of the release is 0.4.0 (S4 release-close, r173)."""
+    import json
+    import snp_insights
+    import snp_insights.cli as cli
+    with open(os.path.join(ROOT, "pyproject.toml"), "rb") as fh:
+        _require("pyproject version is not 0.4.0", tomllib.load(fh)["project"]["version"] == V040_VERSION)
+    _require("__version__ is not 0.4.0", snp_insights.__version__ == V040_VERSION)
+    _require("PIPELINE_VERSION is not 0.4.0 (it tracks the package version)",
+             cli._tool_module("annotate").PIPELINE_VERSION == V040_VERSION)
+    for rel in V040_DATA_FILES:
+        got = json.loads(_read(os.path.join(ROOT, *rel.split("/")))).get("panel_version")
+        _require("%s panel_version is %r, not 0.4.0" % (rel, got), got == V040_VERSION)
+    code, out, _ = _cli(["--version"])
+    _require("--version does not print snp-insights 0.4.0: %r" % out,
+             code == 0 and out.strip() == "snp-insights " + V040_VERSION)
+    _require("README Status must name panel and package version 0.4.0",
+             "panel version 0.4.0 and package version 0.4.0" in _flat(_section(_read(README), "Status")))
+    _require("a data file kept a different panel_version than the others",
+             len({json.loads(_read(os.path.join(ROOT, *rel.split("/")))).get("panel_version")
+                  for rel in V040_DATA_FILES}) == 1)
+    return True
+
+
+def _v040_s4_roadmap_status_exact():
+    """The v0.4.0 roadmap section carries exactly one status line, equal to the pinned text."""
+    sec = _section(_read(ROADMAP), "v0.4.0")
+    lines = [ln for ln in sec.split("\n") if ln.startswith("**Status")]
+    _require("v0.4.0 roadmap section must hold exactly one status line: %r" % lines, len(lines) == 1)
+    _require("v0.4.0 roadmap status line changed: %r" % lines[0], lines[0] == ROADMAP_V040_STATUS)
+    return True
+
+
+def _v040_s4_no_release_claim():
+    """No v0.4.0 sentence claims a release, a merge, a tag or a publication. The word "shipped" is checked
+    where status is stated (README Status, roadmap v0.4.0 section); README Path B uses it for the file in the
+    repository."""
+    texts = {"README": _flat(_read(README)), "AGENTS": _flat(_read(AGENTS)),
+             "getting-started": _flat(_read(GETTING_STARTED)), "owner checkpoint": _flat(_read(CHECKPOINT)),
+             "roadmap v0.4.0 section": _flat(_section(_read(ROADMAP), "v0.4.0"))}
+    status = {"README Status": _flat(_section(_read(README), "Status")),
+              "AGENTS current state": texts["AGENTS"][texts["AGENTS"].index("## Current state"):
+                                                      texts["AGENTS"].index("## Roadmap to beta")],
+              "roadmap v0.4.0 section": texts["roadmap v0.4.0 section"]}
+    for label, text in texts.items():
+        for pattern in V040_CLAIM_PATTERNS:
+            hit = re.search(pattern, text)
+            _require("%s claims the v0.4.0 release: %r" % (label, hit.group(0) if hit else ""), hit is None)
+    for label, text in status.items():
+        hit = re.search(r"\bshipped\b", text, re.I)
+        _require("%s says shipped: %r" % (label, hit.group(0) if hit else ""), hit is None)
+    bad = {k: v + " Released as v0.4.0." for k, v in texts.items()}
+    _require("the control claim is not detected",
+             all(any(re.search(p, v) for p in V040_CLAIM_PATTERNS) for v in bad.values()))
+    _require("the shipped control is not detected", re.search(r"\bshipped\b", "Status: shipped.", re.I))
     return True
 
 
@@ -3003,6 +3088,9 @@ def run(check):
             _s3b_release_paragraph_gate_rejects_contradictions)
     attempt("L.runner_copies_guard_selftest_files", _runner_copies_guard_selftest_files)
     attempt("V030S3.release_wording", _v030s3_release_wording)
+    attempt("V040S4.version_literals_agree", _v040_s4_version_literals_agree)
+    attempt("V040S4.roadmap_status_exact", _v040_s4_roadmap_status_exact)
+    attempt("V040S4.no_release_claim", _v040_s4_no_release_claim)
     attempt("V030S3.accepted_limits_rows", _v030s3_accepted_limits_rows)
     attempt("V030S3F.docs_excerpt_reflects_equal_reference_sentence",
             _v030s3f_excerpt_reflects_equal_reference_sentence)
