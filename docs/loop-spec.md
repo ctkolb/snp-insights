@@ -806,3 +806,38 @@ identifiers only (rsIDs, gene names); no machine paths.
 - **D-P4 (owner, 2026-11-24).** The roadmap gains a shipped-status line under the v0.3.0 heading, and nothing else in the roadmap changes.
 - **D-P5 (owner, 2026-11-24).** `stage2/annotate.py` `PIPELINE_VERSION` is bumped to 0.3.0 as version metadata (it stamps `provenance.pipeline_version` and `tests/test_docs_release.py` pins it); no other findings content changes.
 - **D-P6 (owner, 2026-11-24).** `scripts/loop_mutations.py` changes only the two anchor strings that named 0.2.0 (the `S4 pyproject version mismatch` and `S4 __version__ changed` mutants); the owner accepts this tooling edit without independent review.
+
+## v0.4.0 run: S1 disease-association contract (decisions log)
+
+- **Branch (owner, 2026-11-24).** The v0.4.0 work is on
+  `feat/v0.4.0-disease-associations`, cut from debf910.
+- **Stage order and labels (owner decision O-3, 2026-11-24).** S1 contract and
+  checkers; S2 curation; owner triage; S3 production support, only if at least
+  one marker is included; S4 rebuild and verification. The all-excluded branch
+  skips S3.
+- **Owner decisions O-1 to O-15 (owner, "Accept all", 2026-11-24).** The
+  recommended answers are accepted as stated:
+  - **O-1** a new pair (`disease`, `disease_association`); `risk_association` is not reused.
+  - **O-2** schema version 1.3.0 for a document with a disease finding; others stay 1.2.0.
+  - **O-3** the stage order above.
+  - **O-4** odds ratios are recorded in curation only, never printed.
+  - **O-5** the D-3 frequency screen: record the spread, flag at 0.20, a flagged row is excluded unless the owner includes it with a decision id; the ancestry caveat is mandatory.
+  - **O-6** two independent groups, each with an association row at p at or below 5e-8.
+  - **O-7** a survey precedes the S2 build.
+  - **O-8** the release version policy applies to an all-excluded outcome; the owner decides whether to release.
+  - **O-9** the `gnomad:` typed id is added.
+  - **O-10** disease claims are code-owned; no model narration in this release.
+  - **O-11** the rare caveat applies at `rare` and `ultra_rare` only.
+  - **O-12** reason codes `proxy-only` and `ancestry-unrecorded` are added; `label-mismatch` is reused.
+  - **O-13** "protect" is banned in report text; the report says "lower odds".
+  - **O-14** GWAS rows for rs11887534 and the context rsIDs are captured after the owner confirms each; no ClinVar capture unless asked.
+  - **O-15** the study-record cap of 60 for coronary artery disease is a stop line, decided at capture.
+- **R158 findings F1 to F8 (owner, "Fold into S1 BUILD", 2026-11-24).** All
+  eight specification-review findings (F1, F2, F3, F4, F5, F6, F7 and F8) are accepted with the reviewer's
+  required corrections and folded into S1; there is no separate contract
+  revision or second specification round. The S1 build records the corrected
+  contract in `docs/disease-associations.md`, each corrected clause marked
+  "(amended: R158-F<n>)". Enforcement of F1 (full-mode and online routing keep
+  disease findings away from any model) and F6 (an unknown result type raises)
+  is production work deferred to S3; S1 states the clauses and their required
+  tests.

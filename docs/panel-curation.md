@@ -106,6 +106,17 @@ Every other pair, a missing field, or a value outside these vocabularies
 table T1 whatever its decision (`included`, `reserve` or `excluded`), not only
 to the entries placed in the targets file.
 
+The disease-association contract ([disease-associations.md](disease-associations.md),
+C-3) defines one more pair for table T1 only:
+
+| result type | category | meaning |
+|---|---|---|
+| `disease_association` | `disease` | GWAS association of one allele with higher or lower odds of one named disease; population-level association wording only, never a diagnosis, a personal risk or carrier wording |
+
+A T1 row may carry this pair now. The targets file and the build still reject it
+until the production support of stage S3 lands; the section Disease
+associations below holds its rules.
+
 ## Exclusion rule AUTO-1
 
 The release panel is autosomal only. No marker whose GRCh37 chromosome from the
@@ -294,7 +305,8 @@ of models:
 
 Allowed combinations of model, result type and supporting group: `AR` with
 `carrier_status` and `P`; `AD-IP` or `SUSC` with `risk_association` and `P` or
-`RF`; `n/a` with `trait`. Every other combination is an error. Each health row
+`RF`; `n/a` with `trait`; `SUSC` with `disease_association` and no
+supporting group (`-`; contract C-31). Every other combination is an error. Each health row
 needs at least one inheritance source of type `genereviews`, `medgen`, `clingen`
 or `pmid` (a ClinVar id alone never qualifies). For `AR` the one-copy meaning
 contains the word carrier and the two-copy meaning is not empty. For `AD-IP`
@@ -360,7 +372,10 @@ The `counted` cell of T4 is a claim the checker recomputes.
 Evidence is cited by typed id, `<type>:<id>`, separated by `;`. Types:
 `dbsnp:rs<digits>`, `clinvar:vcv:<digits>`, `clinvar:rcv:RCV<digits>`,
 `gwas:GCST<digits>`, `pmid:<digits>`, `genereviews:NBK<digits>`,
-`medgen:<id>`, `clingen:<id>`, `manifest:<id>`. Dates are ISO calendar dates
+`medgen:<id>`, `clingen:<id>`, `manifest:<id>`, and
+`gnomad:<chrom>-<pos>-<ref>-<alt>` (grammar `[0-9XY]+-\d+-[ACGT]+-[ACGT]+`
+after the prefix; the gnomAD answer behind a recorded allele frequency,
+contract C-50). Dates are ISO calendar dates
 (`YYYY-MM-DD`, UTC). An id without a type, with an unknown type, or an invalid
 date is an error on any included or reserve row.
 
@@ -385,7 +400,83 @@ Excluded rows carry exactly one code; included and reserve rows carry a dash.
 - `inheritance-out-of-scope`
 - `no-independent-confirmation`
 - `evidence-not-in-pack`
+- `proxy-only` (disease rows: the candidate has no T4 row under its own rsID,
+  and the pack holds rows only for rsIDs linked to it; never used when any row
+  exists under the candidate rsID, which is `label-mismatch` when every such
+  row reports a different phenotype; contract C-12, C-49)
+- `ancestry-unrecorded` (disease rows: the rows that would count lack a
+  recorded ancestry or sample size for their stage, so fewer than the required
+  groups remain; contract C-25, C-49)
 - `x-linked-out-of-scope` (retired; replaced by the autosomal code above)
+
+## Disease associations
+
+Rows of the pair `disease_association` / `disease` follow the contract in
+[disease-associations.md](disease-associations.md) (clauses C-1 to C-54). Its
+curation rules use the existing tables T1, T3, T4 and T5 (no new table, no new
+column); `tests/test_release_panel.py` checks each rule below on invented
+fixtures.
+
+Phenotype: a T4 row counts only when its reported trait equals the label or an
+alias-file member after normalization; containment never counts, so a
+composite such as "X or Y" is dropped `trait-mismatch` (C-7).
+
+Evidence groups: an entry needs two independent groups, each holding a counted
+association row with p at or below 5e-8; a functional row never counts and
+is dropped `functional-not-counted` (C-15). Disease cohort ids start with a
+kind prefix: `meta-` (a meta-analysis),
+`consortium-` (one consortium lineage), `biobank-` (one biobank) or `study-`
+(any other cohort). By default every `meta-` row is clustered with every other
+`meta-`, `consortium-` and `biobank-` row; only an `independence:` token for
+that cohort pair separates them. A status of `not-significant` maps to
+`no-independent-confirmation`.
+
+Stage, ancestry and size (C-22): the `sample ancestry` cell is
+`<stage>:<code>[+<code>...]` and the `sample size` cell is
+`<stage>:<cases>/<controls>` or `<stage>:n=<total>`, where `<stage>` is
+`discovery`, `replication` or `combined` and is the same in both cells, and
+each code is from the closed vocabulary `european`, `east-asian`,
+`south-asian`, `african`, `hispanic-latino`, `middle-eastern`, `oceanian`,
+`mixed`, `other`. A row with `-` in either cell is dropped
+`ancestry-unrecorded`; when fewer than two significant groups remain because of
+such rows, the entry is excluded `ancestry-unrecorded`.
+
+T1 `direction/meaning` of an included or reserve disease row is exactly
+`susceptibility: each copy of the <X> allele is associated with higher odds of <label> in studies; association wording only`
+or
+`protective: each copy of the <X> allele is associated with lower odds of <label> in studies; association wording only`,
+with the T1 effect allele and label; the word equals the direction of the
+counted rows (`up` is susceptibility, `down` is protective).
+
+Tokens on an included or reserve disease row, each a `; `-separated item:
+
+- rationale `independence:<cohort-a>|<cohort-b>=<typed id>[,<typed id>...] (<basis>)`,
+  one for every pair of counted groups; each typed id is in the evidence pack;
+- rationale `or:<row id>=<value> (<low>-<high>)` for the strongest counted row
+  (lowest p) of every counted group; the value is above one for `up` and below
+  one for `down`, and lies within its interval;
+- rationale `af-spread:<number> over <group>[,<group>...]`, a number from 0 to 1
+  over two or more of `afr`, `amr`, `asj`, `eas`, `fin`, `nfe`, `sas`;
+- rationale `alias-review:<alias>=<sameness reason>` for every alias a counted
+  row used;
+- limitations `ancestry-scope:<code>[,<code>...]`, in vocabulary order, equal to
+  the codes of the counted rows at p at or below 5e-8.
+
+T3: a kept disease row has model `SUSC`, the copy meanings
+`one copy: higher association with <label>` and
+`two copies: further higher association with <label>` (`lower` for a
+protective row), and a `pmid`, `genereviews`, `medgen` or `clingen` source. A
+disease row has no T2 row.
+
+Exclusions: `label-mismatch` needs at least one T4 row under the candidate
+rsID, every one dropped `trait-mismatch`; `proxy-only` needs none (C-12, C-49).
+A disease label matching a forbidden report pattern of contract C-43, other
+than through the word "disease", is an error (C-44).
+
+Scope (C-52): the candidates rs10757278, rs2200733, rs11209026 and rs4245791
+each have a disease T1 row with a decision, and the existing rs11887534 row has
+a decision; included disease rows and disease entries of the targets file are
+the same set. An all-excluded outcome is valid.
 
 ## Tables
 
