@@ -974,4 +974,5 @@ python3.12 -B tools/build_panel.py --targets data/targets.release.json \
 ```
 
 - Determinism: two builds from the same cache were byte-identical (`cmp`), and the first eight entries equal the v0.2.0 entries field for field. The test suite rebuilds the panel twice from a cache reconstructed from in-repository data (the panel's coordinates and frequencies and the main-effect T4 rows) and requires both builds to equal the committed file.
-- Panel file sha256: 379f050163dc37430b6e493b20749958a058c8df48124606951f6b10a0bcaa0e
+- v0.4.0 verification: the three data files change only in `panel_version`, now 0.4.0; the nine entries are byte-identical to the v0.3.0 entries and no disease entry is added, because all four v0.4.0 candidates are excluded. The build inputs, cache and command above are unchanged, and the `--retrieved-at` time is unchanged.
+- Panel file sha256: 40231a7b568ac35acd3290c1e2545bf5fad3f48e5e04e9cb3dc5dd8efad05366
