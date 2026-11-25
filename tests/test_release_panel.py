@@ -6654,6 +6654,211 @@ def _run_disease_fix(attempt):
     attempt("DA.fix_s02_publication_bound", binding_positive)
 
 
+# =============================================================================
+# v0.4.0 S2 BUILD r165: the disease checkers applied to the real tables (S1 FIX r162
+# adjacent finding A1). Outcome S2-V6: all four candidates are excluded, so the real
+# tables hold excluded disease rows only and the targets file has no disease entry.
+# =============================================================================
+LOOP_SPEC_PATH = os.path.join(ROOT, "docs", "loop-spec.md")
+S2_LOG_TITLE = "v0.4.0 run: S2 evidence and curation (decisions log)"
+# The approved frequency-spread exceptions that C-25 item 5 reads, keyed by rsID, value = the
+# owner decision id recorded in the S2 decisions log of docs/loop-spec.md. Empty on purpose:
+# S2-V6 (all-excluded) leaves no included disease row, so no flagged spread needs approval.
+REAL_AF_EXCEPTIONS = {}
+S2_DISPOSITION = {  # rsID: (decision record id, reason code); owner triage S2-T1 to S2-T4
+    "rs10757278": ("S2-T1", "no-independent-confirmation"),
+    "rs2200733": ("S2-T2", "no-independent-confirmation"),
+    "rs11209026": ("S2-T3", "single-study"),
+    "rs4245791": ("S2-T4", "single-study"),
+}
+S2_LABELS = {"rs10757278": "Coronary artery disease", "rs2200733": "Atrial fibrillation",
+             "rs11209026": "Crohn's disease", "rs4245791": "Gallstone disease"}
+S2_T4_ROWS = {"rs10757278": 4, "rs2200733": 6, "rs11209026": 26, "rs4245791": 114}  # own-rsID Catalog rows in the pack
+S2_DECISION_IDS = tuple([f"S2-T{i}" for i in range(1, 6)] + [f"S2-Q{i}" for i in range(1, 10)] + ["S2-V6"])
+S2_CONTEXT_ROW_SHA256 = "bd7d0e67cf64b66f27ed45c60096d374c9f1d85dd74adab6a0c04c8c323334ca"  # S2-T5 / S2-Q7: the v0.3.0 rs11887534 row, unchanged
+S2_C52_SENTENCE = ("No disease association met the disease-association contract, "
+                   "so the release panel has no disease entry.")
+
+
+def s2_decision_record():
+    """{decision id: log line} from the S2 decisions log of docs/loop-spec.md; the section must
+    exist exactly once (this is the owner decision record that af_exceptions is wired to)."""
+    _require(f"{LOOP_SPEC_PATH} missing", os.path.exists(LOOP_SPEC_PATH))
+    with open(LOOP_SPEC_PATH, encoding="utf-8") as fh:
+        text = fh.read()
+    hits = [body for _, title, body in sections(text) if title == S2_LOG_TITLE]
+    _require(f"loop-spec holds {len(hits)} sections titled {S2_LOG_TITLE!r}, expected 1", len(hits) == 1)
+    record = {}
+    for line in hits[0].splitlines():
+        for m in re.finditer(r"\*\*(S2-[TQV]\d+)\*\*", line):
+            _require(f"decision {m.group(1)} recorded twice", m.group(1) not in record)
+            record[m.group(1)] = line
+    return record
+
+
+def s2_real():
+    t = doc_tables(read_doc())
+    return t, read_targets()
+
+
+def _row_digest(row):
+    return hashlib.sha256("\x1f".join(row[h] for h in T1_HEADER).encode("utf-8")).hexdigest()
+
+
+def _run_disease_s2(attempt):
+    def real_tables_checked():
+        t, _ = s2_real()
+        res = check_disease_table(t["T1"], t["T2"], t["T3"], t["T4"],
+                                  __import__("evidence").load_aliases(ALIASES_PATH),
+                                  pack_ids_from_inventory(t["T5"]), af_exceptions=REAL_AF_EXCEPTIONS)
+        _require("; ".join(res), not res)
+        want = len(S2_DISPOSITION) + sum(S2_T4_ROWS.values())
+        _require(f"checked {res.rows_checked} disease rows and T4 rows, expected {want}", res.rows_checked == want)
+        print(f"  detail DA.s2_real_disease_table_checked: rows_checked={res.rows_checked}")
+        return True
+    attempt("DA.s2_real_disease_table_checked", real_tables_checked)
+
+    def real_scope_pin():
+        t, targets = s2_real()
+        res = check_disease_scope(t["T1"], _entries(targets))
+        _require("; ".join(res), not res)
+        _require("scope pin counted the five rows", res.rows_checked == 5)
+        _require("the release targets file has a disease entry",
+                 not [e for e in _entries(targets) if e.get("result_type") == DISEASE_RT or e.get("category") == "disease"])
+        kept = [r["rsID"] for r in t["T1"] if r["result type"] == DISEASE_RT and r["decision"] != "excluded"]
+        _require(f"disease rows kept in the all-excluded outcome: {kept}", not kept)
+        return True
+    attempt("DA.s2_real_scope_pin_and_bijection", real_scope_pin)
+
+    def real_dispositions():
+        t, _ = s2_real()
+        record = s2_decision_record()
+        by_rs = {r["rsID"]: r for r in t["T1"]}
+        for rs, (did, code) in S2_DISPOSITION.items():
+            _require(f"{rs} has no T1 row", rs in by_rs)
+            r = by_rs[rs]
+            got = (r["result type"], r["category"], r["label used in report"], r["decision"], r["reason code"],
+                   r["direction/meaning"], r["build/strand"], r["assayability_status"], r["assayability_source"],
+                   r["retrieved (UTC date)"])
+            want = (DISEASE_RT, "disease", S2_LABELS[rs], "excluded", code, "not applicable", "GRCh37/forward",
+                    "unknown-provisional", "-", "2026-11-25")
+            _require(f"{rs} row {got} != {want}", got == want)
+            items = _items(r["rationale"])
+            _require(f"{rs} rationale does not cite owner-decision:{did}", f"owner-decision:{did}" in items)
+            if rs in ("rs10757278", "rs2200733"):
+                _require(f"{rs} rationale lacks owner-decision:S2-Q6 (gene cell)", "owner-decision:S2-Q6" in items)
+            line = record.get(did, "")
+            _require(f"decision record {did} does not name {rs} and `{code}`", rs in line and f"`{code}`" in line)
+        return True
+    attempt("DA.s2_real_dispositions_match_decision_record", real_dispositions)
+
+    def decision_record_complete():
+        record = s2_decision_record()
+        _require(f"decision record ids {sorted(record)} != {sorted(S2_DECISION_IDS)}",
+                 sorted(record) == sorted(S2_DECISION_IDS))
+        _require("S2-V6 must say all-excluded and that S3 is not run",
+                 "all-excluded" in record["S2-V6"] and "S3" in record["S2-V6"])
+        return True
+    attempt("DA.s2_decision_record_complete", decision_record_complete)
+
+    def overlap_backed_by_decision():
+        t, _ = s2_real()
+        record = s2_decision_record()
+        by_rs = {r["rsID"]: r for r in t["T1"]}
+        declared = {r["row id"]: r["overlap with"] for r in t["T4"]
+                    if r["overlap with"] != "-" and r["rsID"] in S2_DISPOSITION}
+        _require(f"declared overlaps {declared}", declared == {
+            "a23836": "a11989582;a24661", "a11989582": "a23836", "a24661": "a23836"})
+        for r in t["T4"]:
+            if r["overlap with"] != "-" and r["rsID"] in S2_DISPOSITION:
+                items = _items(by_rs[r["rsID"]]["rationale"])
+                ids = [d.group(1) for d in map(OWNER_DECISION_RE.fullmatch, items) if d]
+                _require(f"{r['row id']} overlap has no owner decision id in the {r['rsID']} rationale", "S2-Q1" in ids)
+                _require("S2-Q1 is not in the decision record", "S2-Q1" in record)
+        # without the declared overlap the same rows would form two groups and the entry would
+        # be replicated, so the declaration (and its decision) is what keeps the row excluded
+        rows = [dict(r, **{"overlap with": "-"}) for r in t["T4"] if r["rsID"] == "rs11209026"]
+        base = by_rs["rs11209026"]
+        status = evaluate_disease(rows, base["effect allele (fwd, GRCh37)"], base["label used in report"],
+                                  __import__("evidence").load_aliases(ALIASES_PATH),
+                                  pack_ids_from_inventory(t["T5"]), frozenset())[0]
+        _require(f"rs11209026 without the overlap declaration is {status}", status == "replicated")
+        return True
+    attempt("DA.s2_real_overlap_backed_by_owner_decision", overlap_backed_by_decision)
+
+    def owner_decision_rows():
+        t, _ = s2_real()
+        by = {r["row id"]: r for r in t["T4"]}
+        for need in ("a24661", "a11989582", "a23836", "a17524500"):
+            _require(f"T4 row {need} is missing", need in by)
+        got = (by["a24661"]["counted"], by["a24661"]["direction"])
+        _require(f"a24661 (S2-Q3) {got}", got == ("no:direction-missing", "-"))
+        _require("a11989582 ancestry (S2-Q4)", by["a11989582"]["sample ancestry"] == "discovery:other")
+        for rid in ("a23836", "a11989582", "a17524500"):
+            _require(f"{rid} counted", by[rid]["counted"] == "yes" and by[rid]["sample ancestry"].startswith("discovery:"))
+        counted = sorted(r["row id"] for r in t["T4"] if r["counted"] == "yes" and r["rsID"] in S2_DISPOSITION)
+        _require(f"counted rows {counted}", counted == ["a11989582", "a17524500", "a23836"])
+        text = {r["rsID"]: r["rationale"] for r in t["T1"]}["rs11209026"]
+        for token in ("owner-decision:S2-Q2", "owner-decision:S2-Q3", "owner-decision:S2-Q4", "owner-decision:S2-Q5",
+                      "owner-decision:S2-Q9"):
+            _require(f"rs11209026 rationale lacks {token}", token in _items(text))
+        return True
+    attempt("DA.s2_real_owner_decision_cells", owner_decision_rows)
+
+    def t5_matches_t1():
+        t, _ = s2_real()
+        t5 = {r["rsID"]: r for r in t["T5"]}
+        disease = [r for r in t["T1"] if r["result type"] == DISEASE_RT]
+        _require(f"{len(disease)} disease T1 rows, expected {len(S2_DISPOSITION)}", len(disease) == len(S2_DISPOSITION))
+        for base in disease:
+            rs = base["rsID"]
+            _require(f"{rs} has no T5 row", rs in t5)
+            inv = split_ids(t5[rs]["pack file index id"])
+            src = split_ids(base["sources (typed ids)"])
+            _require(f"{rs} T5 ids differ from T1 sources", sorted(inv) == sorted(src) and len(set(inv)) == len(inv))
+            _require(f"{rs} T5 lists ClinVar records", t5[rs]["ClinVar VariationIDs in pack (all assemblies)"] == "-")
+            own = [r for r in t["T4"] if r["rsID"] == rs]
+            _require(f"{rs} has {len(own)} T4 rows", len(own) == S2_T4_ROWS[rs])
+            for r in own:
+                for need in (f"gwas:{r['study accession']}", f"pmid:{r['PMID']}", r["orientation source"], r["cohort source"]):
+                    _require(f"{rs} T5 lacks {need} (row {r['row id']})", need in inv)
+            _require(f"{rs} T5 lacks its gnomAD id", any(i.startswith("gnomad:") for i in inv))
+        return True
+    attempt("DA.s2_real_t5_inventory_matches_t1_and_t4", t5_matches_t1)
+
+    def limitations_c52():
+        t, _ = s2_real()
+        text = read_doc()
+        body = section_body(text, "Limitations") or ""
+        _require("Limitations lacks the C-52 sentence", " ".join(body.split()).count(S2_C52_SENTENCE) == 1)
+        kept = [r for r in t["T1"] if r["result type"] == DISEASE_RT and r["decision"] != "excluded"]
+        _require("the C-52 sentence is false: a disease row is kept", not kept)
+        return True
+    attempt("DA.s2_real_limitations_state_no_disease_met_contract", limitations_c52)
+
+    def context_row_unchanged():
+        t, _ = s2_real()
+        row = [r for r in t["T1"] if r["rsID"] == "rs11887534"]
+        _require("rs11887534 rows: %d" % len(row), len(row) == 1)
+        got = _row_digest(row[0])
+        _require(f"rs11887534 T1 row changed (S2-Q7): digest {got}", got == S2_CONTEXT_ROW_SHA256)
+        return True
+    attempt("DA.s2_real_context_row_unchanged", context_row_unchanged)
+
+    def af_exceptions_wired():
+        t, _ = s2_real()
+        record = s2_decision_record()
+        kept = {r["rsID"] for r in t["T1"] if r["result type"] == DISEASE_RT and r["decision"] in ("included", "reserve")}
+        for rs, did in REAL_AF_EXCEPTIONS.items():
+            _require(f"af exception {rs} is not an included disease row", rs in kept)
+            _require(f"af exception {rs}: {did!r} is not an id of the decision record", did in record)
+            _require(f"af exception {rs}: {did!r} is not an owner-decision id form",
+                     OWNER_DECISION_RE.fullmatch(f"owner-decision:{did}") is not None)
+        _require("S2-V6 (all-excluded) leaves no flagged exception to approve", not kept and not REAL_AF_EXCEPTIONS)
+        return True
+    attempt("DA.s2_af_exceptions_wired_to_decision_record", af_exceptions_wired)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -6696,6 +6901,7 @@ def run(check):
     _run_r67_report_safety(attempt)
     _run_disease(attempt)
     _run_disease_fix(attempt)
+    _run_disease_s2(attempt)
 
 
 def main():
