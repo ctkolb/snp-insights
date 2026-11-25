@@ -176,16 +176,23 @@ counted row is justified in the T1 `rationale` cell as
 change with the reason recorded. Enforcement: NEW-CHECK (S1: every alias used
 by a counted disease row has an `alias-review:` token), CURATOR, REVIEW.
 
-**C-10 Effect allele and orientation.** The T1 effect allele is a forward-strand
+**C-10 Effect allele and orientation.** (amended: R161-02) The T1 effect allele is a forward-strand
 GRCh37 letter taken from the captured dbSNP record; the strand is stated. The
 effect allele is the allele the counted rows report (C-17): the curator never
 inverts an odds ratio to turn a protective allele into a risk allele or the
 reverse. Orientation is `verified` for a row only when the site is
 non-palindromic, the row's allele letter is one of the two dbSNP forward
 alleles, no counted row reports the complement letter, and the orientation
-source is the typed id `dbsnp:rs<digits>`. Enforcement: EXISTING
+source is the typed id `dbsnp:rs<digits>` of the row's own rsID. A counted row
+is bound to its own pack records: its orientation source is `dbsnp:` plus the
+row's own rsID (never another marker's record), and its `gwas:<study
+accession>` and `pmid:<PMID>` are in the candidate's T5 inventory and cited in
+its T1 sources; otherwise the row is dropped `evidence-not-in-pack`. No record
+is fetched during checking; the curator still verifies that the captured
+variant and study are the ones named. Enforcement: EXISTING
 (`allele-mismatch`, `orientation-unverified`, palindromic exclusion,
-`check_effect_alleles`, `check_strand`), CURATOR (the strand statement).
+`check_effect_alleles`, `check_strand`), NEW-CHECK (S1: own-rsID dbSNP binding,
+GCST and PMID in the pack and in T1), CURATOR (the strand statement).
 
 **C-11 Frequency cross-check (recorded, not decisive).** For each counted row
 that reports `risk_frequency`, the curator records in the T1 rationale whether
@@ -195,25 +202,31 @@ of an unreported strand flip). A row whose frequency is closer to the
 complement letter is not counted (orientation unverified). Enforcement:
 CURATOR + REVIEW.
 
-**C-12 LD proxies never substitute.** (amended: R158-F7) Evidence reported for a
+**C-12 LD proxies never substitute.** (amended: R158-F7) (amended: R160-F2) (amended: R161-05) Evidence reported for a
 different rsID in linkage disequilibrium with the candidate never counts for
 the candidate, whatever the r-squared. A candidate with no T4 row under its own
-rsID is excluded `proxy-only` when rows for linked rsIDs exist in the pack, and
-`no-independent-confirmation` otherwise. A candidate that has rows under its own
-rsID is never `proxy-only`: if all of them are phenotype mismatches it is
-`label-mismatch` (C-7). Evidence recorded for the excluded palindromic ABCG8
+rsID is excluded `proxy-only` only when its rationale names a linked rsID as
+`proxy:rs<digits>` (not the candidate itself), that rsID's dbSNP record is in
+the pack, and at least one T4 row under that rsID reports the exact label;
+otherwise it is excluded `no-independent-confirmation`. A candidate that has
+rows under its own rsID is never `proxy-only`: if all of them are phenotype
+mismatches it is `label-mismatch` and no other evidence code (C-7). Each
+evidence state therefore allows exactly one of these reason codes. The linkage
+itself is curator-reviewed and its basis is recorded in the rationale. Evidence recorded for the excluded palindromic ABCG8
 rs11887534 cannot be borrowed for rs4245791, and the reverse. (owner decision
-O-12) Enforcement: NEW-CHECK (S1: `proxy-only` and `label-mismatch` are
-mutually exclusive by the rows under the candidate rsID), CURATOR.
+O-12) Enforcement: NEW-CHECK (S1: one reason code per evidence state; the
+`proxy:` token, its dbSNP record and its exact-label T4 row), CURATOR.
 
-**C-13 Direction and its vocabulary.** The T4 `direction` of a disease row is
+**C-13 Direction and its vocabulary.** (amended: R161-06) The T4 `direction` of a disease row is
 `up` when the reported effect allele goes with higher odds of the disease (odds
 ratio above one) and `down` when it goes with lower odds (odds ratio below
 one). A row without an odds ratio or a usable direction is dropped
 `direction-missing`. The entry's `association_direction` is `susceptibility`
 when every counted direction is `up` and `protective` when every counted
-direction is `down`; mixed directions are `conflicting-evidence` and the entry
-is excluded. A row that reports a beta is a quantitative trait, a different
+direction is `down`; mixed directions among the counted rows are
+`conflicting-evidence` and the entry is excluded. Only counted rows decide a
+conflict: a dropped row (functional, ancestry-unrecorded, another allele, not in
+the pack) never vetoes the counted groups. A row that reports a beta is a quantitative trait, a different
 phenotype, and is dropped `trait-mismatch`. Enforcement: EXISTING (direction
 rules, conflict status), NEW-CHECK (S1: the T1 `direction/meaning` cell follows
 C-14 and its word equals the one derived from T4).
@@ -281,17 +294,21 @@ unverified orientation, unknown cohort or missing pack evidence,
 Every sample size, ancestry and cohort statement cites the pack record it came
 from. Enforcement: EXISTING (`evidence-not-in-pack`), REVIEW.
 
-**C-20 Effect-size recording.** Odds ratio and interval are captured, never
-computed: for the strongest counted row (lowest p) of each counted group the
-curator records `or:<row id>=<value> (<low>-<high>)` in the T1 rationale, as
-published, per copy of the effect allele. A ratio on the wrong side of one for
+**C-20 Effect-size recording.** (amended: R161-08) Odds ratio and interval are
+captured, never computed. For each counted GWAS association row, the published
+per-copy odds ratio and interval are retained in the frozen pack
+(`or_value`/`or_per_copy_num` and `ci_lower`/`ci_upper`) and recorded in the T1
+rationale as `or:<row id>=<value> (<low>-<high>)`; a row without a usable
+per-copy ratio is dropped `direction-missing`. The token of the strongest
+counted row (lowest p) of each group is that group's summary. A ratio on the wrong side of one for
 the row's direction is an error, and the value lies within its interval. A row
 that reports a per-genotype or recessive-model ratio is recorded but not
 counted. The report prints no odds ratio and no interval (owner decision O-4);
 if the owner later wants them, the sentence is fixed: `In the cited study the
 odds ratio per copy was <value> (<low> to <high>); this is a relative measure
 from a study population and not an estimate of your own risk.` Enforcement:
-NEW-CHECK (S1: an `or:` token per counted group, side and interval), CURATOR.
+NEW-CHECK (S1: an `or:` token for every counted row, side and interval),
+CURATOR.
 
 **C-21 No absolute, lifetime or conditional risk.** Absolute risk, lifetime
 risk, penetrance, relative risk against an unstated baseline, number needed to
@@ -329,29 +346,34 @@ A study ancestry text that does not map is `other` and its text is recorded in
 the rationale. The vocabulary describes study samples; the report never states
 or infers the user's ancestry. Enforcement: NEW-CHECK (S1), CURATOR.
 
-**C-25 When a finding is caveated, and when it is withheld.**
+**C-25 When a finding is caveated, and when it is withheld.** (amended: R161-03) (amended: R161-06)
 1. One ancestry in the scope: included with the ancestry caveat (C-27).
 2. Two or more ancestries with equal direction: included; the claim names the
    scope (C-39).
-3. Counted rows disagree in direction: excluded `conflicting-evidence`.
+3. Counted rows disagree in direction: excluded `conflicting-evidence`;
+   dropped rows never decide this (C-13).
 4. A row whose ancestry or size is not recorded is not counted; if fewer than
    the required groups remain because of such rows, the entry is excluded
    `ancestry-unrecorded` (owner decision O-12).
-5. The allele-frequency screen flags the entry (C-26): excluded unless the
-   owner includes it with a decision id cited in `limitations`; the caveat of
-   C-27 is mandatory either way (owner decision O-5).
-Enforcement: NEW-CHECK (S1: 1 to 4), EXISTING pattern for 5 (decision ids),
-CURATOR.
+5. The allele-frequency screen flags the entry when the spread is at or above
+   0.20 (C-26): the row cannot be included or kept as reserve unless the owner
+   approves its inclusion with a decision id, cited in `limitations` as
+   `owner-decision:<id>` and equal to the approved exception recorded for that
+   rsID; the caveat of C-27 is mandatory either way (owner decision O-5).
+Enforcement: NEW-CHECK (S1: 1 to 5; the approved exceptions are a checker
+input that S2 wires to the decision record), CURATOR.
 
-**C-26 Allele-frequency context.** As in v0.3.0 D-3, the gnomAD v2.1.1 frequency
+**C-26 Allele-frequency context.** (amended: R161-03) As in v0.3.0 D-3, the gnomAD v2.1.1 frequency
 of the effect allele is recorded per continental group (afr, amr, asj, eas,
 fin, nfe, sas where covered, with the 500-allele floor stated) and the spread is
 recorded in the T1 rationale as `af-spread:<number> over <group>[,<group>...]`;
-the flag threshold is 0.20 (owner decision O-5). The screen is a recorded
+the flag threshold is 0.20 inclusive (a spread of 0.20 is flagged, 0.199 is
+not; owner decision O-5), and a flagged row follows C-25 item 5. The screen is a recorded
 number, not an ancestry inference by the report. The effect allele's rarity
 class is shown as a finding field and C-35 applies when it is `rare` or
 `ultra_rare`. Enforcement: NEW-CHECK (S1: token present and parseable on an
-included or reserve row), EXISTING (rarity derivation).
+included or reserve row; the inclusive flag and its owner decision), EXISTING
+(rarity derivation).
 
 **C-27 Required ancestry caveat.** (amended: R158-F4) New caveat id
 `disease_ancestry`, fixed text: "The studies behind this association sampled
@@ -370,11 +392,15 @@ pack. No tracked file says a marker is on the array. Enforcement: EXISTING
 (`check_assayability`, docs scan).
 
 **C-29 Call states for a disease_association finding.** (amended: R158-F2)
-(amended: R158-F4) Every state has one exact claim frame (two for
+(amended: R158-F4) (amended: R161-10) Every state has one exact claim frame (two for
 covered_reference, chosen by whether both reference copies are provable, as in
 the existing A7 and G-1 rules) and a fixed caveat list. No frame says or implies
 anything about disease status, protection or absence of risk. Every state
 carries `array_limits` and `disease_ancestry`; `rare_ppv` is added under C-35.
+Each frame is bound to its state, zygosity and direction columns: a het frame
+says one copy and a hom_alt frame says two copies, and a claim is checked only
+against the frame of its own finding's state, zygosity and direction, so a
+one-copy/two-copy swap fails.
 Placeholders: `<label>` the T1 label, `<gene>` the gene symbol, `<X>` the
 effect allele letter, `<tier>` one of the tier words (established, replicated,
 single study, conflicting, unknown), `<scope>` the scope words of C-39,
@@ -508,27 +534,43 @@ byte-identical to today's:
 The tier definitions are unchanged. Enforcement: CODE (tools/caveats.py,
 tools/render_report.py), NEW-CHECK (S3).
 
-**C-43 What a report never says for a disease_association.** (amended: R158-F2) The list below is exact, not illustrative. Validator rule R11 applies
-it, case-insensitively, to every claim, caveat text, notice and limitation of a
-report that carries a disease_association finding; the list is a data constant
-in tools/validate_report.py (S3) and must equal this block.
+**C-43 What a report never says for a disease_association.** (amended: R158-F2) (amended: R160-F1) (amended: R161-01) (amended: R161-04) (amended: R161-09) The pattern list below is exact, not illustrative; it is a data constant
+in tools/validate_report.py (S3) and must equal this block. Scope (validator
+rule R11): Apply FP-01 through FP-33 to each disease-association claim and to
+the caveats, notices and limitations used for disease-association reporting.
+Existing result-type claims and legacy Summary claims retain their existing
+validation and exact template wording. A report that mixes result types must
+pass with the existing carrier-status, ClinVar association and trait wording
+intact, and must fail if prohibited wording is introduced in the disease claim
+or its associated text. The S3 production test
+`DA.mixed_result_type_report_validates` (tests/test_report_readability.py)
+renders such a mixed template report and proves both halves of that rule.
 
-Procedure:
-1. Before scanning, remove only exact instances of the fixed association
-   sentence (with the finding's `<condition>`), `TEMPLATE_NOTICE`, each fixed
-   `LIMITATIONS` sentence (including the C-42 line), and the exact
-   `array_limits` caveat text, as listed in the exemption block. Nothing else is
-   removed; a sentence that differs by one character is scanned in full.
-2. Remove rsIDs and gene symbols with the validator's existing expressions
+Procedure, applied to disease text only:
+0. Canonical text: apply Unicode NFKC normalization and collapse every run of
+   whitespace to one space. Any non-ASCII letter left in disease text is an
+   error, so a confusable letter (for example a Cyrillic or full-width form) is
+   never read as its Latin lookalike.
+1. Closed registry: every disease caveat, notice and limitation is rendered
+   from its code-owned id and must equal the exact text of the registry block
+   below; any other text in those slots is an error. Every disease claim must
+   equal one of the frames FR-01 to FR-10 of C-29, bound to its finding's
+   state, zygosity and direction; no other claim text is permitted.
+2. Exemptions: remove an exempt string of the exemption block only where it is
+   a whole sentence: it starts the text or follows a sentence end (`.`, `!` or
+   `?`) and one space, and it ends the text or is followed by a space. The same
+   bytes glued to other text, inside a longer sentence, or altered by one
+   character are scanned in full.
+3. Remove rsIDs and gene symbols with the validator's existing expressions
    `ID_RE` = `\b(?:rs\d+|f_[0-9a-f]+|c_[0-9a-f]+|cl_[0-9a-f]+|s_[0-9a-z_]+)\b`
    and `GENE_RE` = `\b[A-Z][A-Za-z]*\d[A-Za-z0-9]*\b(?!\.\d)`, and the tokens
    `GRCh37` and `GRCh38`, so that a symbol such as IL23R does not trip the
    digit pattern.
-3. Scan all remaining text with every pattern; any match is an error.
-4. Each disease claim must also equal one of the exact frames of C-29 (FR-01 to
-   FR-10); no other claim text is permitted.
-Tests show that appending forbidden text next to an exempt sentence still
-fails.
+4. Scan all remaining text with every pattern, case-insensitively; any match
+   is an error.
+Tests show that forbidden text next to an exempt sentence fails, that a glued
+exemption is scanned, and that reassurance, absent-follow-up and confusable
+text is rejected while every registered caveat passes.
 
 <!-- r11-forbidden-patterns:begin -->
 ```text
@@ -537,10 +579,10 @@ FP-02 diagnosis-status \byou (?:have|had)\b
 FP-03 diagnosis-status \byou (?:are|were) (?:diagnosed|affected|ill|sick)\b
 FP-04 diagnosis-status \bsuffer
 FP-05 diagnosis-status \bpatients?\b
-FP-06 personal-risk \byour (?:own )?(?:risk|chance|odds|likelihood|probability)\b
+FP-06 personal-risk \byour (?:own )?(?:risks?|chances?|odds|likelihoods?|probability|probabilities)\b
 FP-07 personal-risk \bat (?:(?:a )?(?:high|higher|increased|elevated|low|lower|reduced|greater|some) )?risk\b
 FP-08 personal-risk \brisk (?:of|for) (?:developing|getting)\b
-FP-09 personal-risk \b(?:will|would|could|might|may|can|likely to|going to) (?:develop|get|contract)\b
+FP-09 personal-risk \b(?:will|would|could|might|may|can|likely to|going to) (?:develop|get|contract|end up with|come down with)\b
 FP-10 personal-risk \b(?:lifetime|absolute|penetran)
 FP-11 personal-risk \bpercent|%
 FP-12 personal-risk \d
@@ -563,6 +605,8 @@ FP-28 personal-clinical \babnormal
 FP-29 inheritance-family \b(?:carrier|hereditary|inherit|family history|relatives)
 FP-30 method-overreach \b(?:polygenic|risk score|sequencing|sequenced|whole[- ]genome|whole[- ]exome)
 FP-31 method-overreach \b(?:definitely|definitive|certainly|guaranteed|proven|fatal|you will)\b
+FP-32 reassurance \b(?:nothing (?:to|you need to) (?:worry|be concerned)|no (?:need|reason|cause) (?:to worry|for (?:worry|concern|alarm))|(?:do not|don.t|need not|needn.t|not to) worry|worry[- ]free|all clear|reassur|good news|you(?:.re| are) (?:fine|ok|okay|healthy|in the clear))
+FP-33 absent-follow-up \b(?:no|not|without) (?:further |additional |more |any )?(?:follow[- ]?ups?|action|testing|tests?|checks?|care|treatment|monitoring)\b
 ```
 <!-- r11-forbidden-patterns:end -->
 
@@ -602,6 +646,8 @@ near-miss (no pattern matches it):
 | FP-29 | The allele is hereditary. | The allele is common. |
 | FP-30 | The polygenic odds are higher. | The studied odds are higher. |
 | FP-31 | The finding is definitive. | The finding is an association. |
+| FP-32 | There is nothing to worry about. | There is nothing more to report. |
+| FP-33 | No further testing is required. | No further studies are cited. |
 
 Exemption block (exact strings; removed only where they occur whole):
 
@@ -622,10 +668,37 @@ EX-12 array_limits Array-based genotyping covers a small fraction of the genome 
 ```
 <!-- r11-exemptions:end -->
 
+Disease registry block (step 1: the only texts allowed in the caveat, notice
+and limitation slots of disease reporting):
+
+<!-- r11-disease-registry:begin -->
+```text
+RG-01 caveat array_limits Array-based genotyping covers a small fraction of the genome (~0.02%), is chip-dependent, and is not diagnostic grade.
+RG-02 caveat disease_ancestry The studies behind this association sampled people of the ancestries named in the finding. The association may not apply in the same way to people of other ancestries, and this report does not infer your ancestry.
+RG-03 caveat no_call This position is on the array but genotyping did not return a call.
+RG-04 caveat uninterpretable This position was measured, but the reported alleles do not match the known reference or alternate allele, so the genotype cannot be interpreted.
+RG-05 caveat not_covered This marker was not measured by the array; no genotype or confidence applies.
+RG-06 caveat not_assayable This locus cannot be assessed from SNP-array data.
+RG-07 caveat rare_ppv Rare array calls can be inaccurate; a rare result should be confirmed by a clinical-grade test.
+RG-08 notice TEMPLATE_NOTICE This report was generated by fixed templates on this machine from structured findings; no language model was used to write it. It is a research and curiosity tool, not medical advice or a diagnostic test.
+RG-09 limitation LIMITATIONS The array covers about 0.02% of the genome.
+RG-10 limitation LIMITATIONS Genotypes are reported on the forward-strand against build GRCh37.
+RG-11 limitation LIMITATIONS The release uses a small public panel; the Summary counts its markers by kind.
+RG-12 limitation LIMITATIONS This report is not medical advice, and no result is a diagnosis.
+RG-13 limitation LIMITATIONS A rare array call should be confirmed by a clinical-grade test.
+RG-14 limitation LIMITATIONS Only template-only narration is verified in this release.
+RG-15 limitation LIMITATIONS No marker's presence on the array was verified, because no public array manifest is available.
+RG-16 limitation LIMITATIONS Whether the panel covers enough is the owner's aggregate judgment.
+RG-17 limitation C-42-line Disease associations come from published population studies; they do not describe your own risk, and the studies sampled the ancestries named in each finding.
+```
+<!-- r11-disease-registry:end -->
+
 The exemption strings EX-02 to EX-10 and EX-12 equal the production constants
 in tools/caveats.py, and a test pins that equality. The other fixed caveat
 texts (`disease_ancestry`, `no_call`, `uninterpretable`, `not_covered`,
 `not_assayable`, `rare_ppv`) are not exempt and pass the scan as written. The
+registry strings equal tools/caveats.py, the C-27 caveat and the C-42 line, and
+a test pins that equality. The
 review corpus of round r158 (38 sentences: 23 to reject, 15 to allow) is
 classified as its oracle says, including the mandatory `array_limits` caveat
 and the five sentences the illustrative draft missed (a personal LDL claim, a
@@ -662,27 +735,33 @@ Enforcement: EXISTING (R1), NEW-CHECK (S1: pattern; S3: rendered claims).
 may be `reserve` only if it meets every inclusion criterion. Enforcement:
 EXISTING.
 
-**C-49 Reason codes.** (amended: R158-F7) The closed list gains two codes
+**C-49 Reason codes.** (amended: R158-F7) (amended: R160-F2) (amended: R161-05) The closed list gains two codes
 (owner decision O-12):
-- `proxy-only`: the candidate has no T4 row under its own rsID, and the pack
-  holds rows only for rsIDs linked to it;
+- `proxy-only`: the candidate has no T4 row under its own rsID, and its
+  rationale cites a linked rsID (`proxy:rs<digits>`) whose dbSNP record is in the
+  pack and which has an exact-label T4 row (C-12);
 - `ancestry-unrecorded`: the rows that would count lack a recorded ancestry or
   sample size for their stage, so fewer than the required groups remain.
 `label-mismatch` is reused for a candidate whose own-rsID rows all report a
-phenotype that is not the label or an approved synonym. The two are exclusive:
-a candidate with any row under its own rsID is never `proxy-only`. Other codes
+phenotype that is not the label or an approved synonym. Exactly one code fits
+each evidence state: own rows that all mismatch give `label-mismatch`; no own
+rows with cited linked evidence give `proxy-only`; no own rows and no linked
+evidence give `no-independent-confirmation`. Other codes
 used: `palindromic`, `conflicting-evidence`, `single-study`,
 `no-independent-confirmation`, `evidence-not-in-pack`, `ancestry-informative`,
 `owner-declined`. `inheritance-*` and the ClinVar codes do not apply to disease
 rows. Enforcement: EXISTING (`check_reason_code_list`), NEW-CHECK (S1).
 
-**C-50 Typed public source records.** Each row cites the typed ids of the
+**C-50 Typed public source records.** (amended: R161-02) Each row cites the typed ids of the
 public records used: `dbsnp:rs<digits>`, `gwas:GCST<digits>`, `pmid:<digits>`,
 optional `clinvar:vcv:<digits>` (context), `genereviews`, `medgen` or `clingen`
 for an inheritance source, `manifest:<id>` only for a public array manifest, and
 the new `gnomad:<chrom>-<pos>-<ref>-<alt>` for the gnomAD answers behind C-26,
 grammar `gnomad:` plus `[0-9XY]+-\d+-[ACGT]+-[ACGT]+` (owner decision O-9).
-Enforcement: EXISTING (typed-id checkers), NEW-CHECK (S1: the new type).
+Cite `gwas:GCST<digits>` for every counted or dropped GWAS study and
+`pmid:<digits>` for each publication used. Enforcement: EXISTING (typed-id
+checkers), NEW-CHECK (S1: the new type; every own-rsID GWAS row's study and
+publication cited in T1).
 
 **C-51 Evidence recorded for every scoped marker, including exclusions.** Every
 scoped marker has a T1 row with the rsID, gene, GRCh37 chromosome, label,
@@ -697,21 +776,23 @@ tokens; the replication status first), limitations (including
 included and reserve rows; an excluded row needs its reason code and typed
 sources. Enforcement: EXISTING (T1 shape), NEW-CHECK (S1).
 
-**C-52 The all-excluded outcome (V6).** An all-excluded release is valid when
+**C-52 The all-excluded outcome (V6).** (amended: R161-07) An all-excluded release is valid when
 every candidate has a T1 row with decision `excluded`, one reason code and
 typed sources; no disease entry is in `data/targets.release.json`; the T1
 status line counts the rows; the Limitations paragraph says that no disease
-association met this contract; the contract, the new reason codes and the
-template changes (tested with invented fixtures) still ship; the existing nine
-entries are byte-identical; and the version policy of owner decision O-8
-applies. The release itself is the owner's decision. Scope pin: the four
+association met this contract; the existing nine entries are byte-identical;
+and the version policy of owner decision O-8 applies. In the all-excluded
+outcome no production code, schema or template change ships; only the contract
+document and the S1 checkers ship, with the documented exclusions, the
+unchanged nine-entry panel and the O-8 version policy. S3 is not run. The release itself is the owner's decision. Scope pin: the four
 candidates rs10757278, rs2200733, rs11209026 and rs4245791 each have a disease
 T1 row with a decision, the existing rs11887534 record has a T1 row with a
 decision, and the included disease rows and the disease entries of the targets
 file are the same set. A panel without a disease entry renders no disease
-section and no sentence about disease markers. Enforcement: NEW-CHECK (S1:
-scope pin and an all-excluded fixture; S2: applied to the real tables; S3:
-rendering), EXISTING (bijection).
+section and no sentence about disease markers; in the all-excluded outcome this
+is the existing template, unchanged. Enforcement: NEW-CHECK (S1: scope pin and
+an all-excluded fixture; S2: applied to the real tables), EXISTING (bijection;
+the existing template renders no disease section).
 
 ## G. Privacy
 

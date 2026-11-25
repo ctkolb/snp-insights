@@ -22,6 +22,7 @@ import shlex
 import sys
 import tempfile
 import tomllib
+import unicodedata
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for _d in ("", "scripts"):
@@ -2317,8 +2318,9 @@ DA_MARKERS = {
     "C-22": ("F5",), "C-23": ("F5",), "C-27": ("F4",), "C-29": ("F2", "F4"), "C-34": ("F6",),
     "C-40": ("F4",), "C-43": ("F2",), "C-46": ("F1",), "C-49": ("F7",), "C-53": ("F1",),
 }
-DA_PATTERN_BLOCK_SHA256 = "b6c120912d83b65582cccd1d34fbad931a0359c500784aadb3f9d0cfc444b51e"
-DA_PATTERN_COUNT = 31
+# r162: re-pinned for FP-06, FP-09 widened and FP-32, FP-33 added; was b6c120912d83b65582cccd1d34fbad931a0359c500784aadb3f9d0cfc444b51e.
+DA_PATTERN_BLOCK_SHA256 = "5ccfaf1c8bdc34ab8ae3d1b4649c0ba50011b7122ae5e4396f7a0f94089df45a"
+DA_PATTERN_COUNT = 33  # r162: was 31; FP-32 and FP-33 added (R160-F1, R161-09)
 DA_ANCESTRY_CODES = ("european", "east-asian", "south-asian", "african", "hispanic-latino",
                      "middle-eastern", "oceanian", "mixed", "other")
 DA_TIER_WORDS = ("established", "replicated", "single study", "conflicting", "unknown")
@@ -2367,6 +2369,9 @@ DA_CORPUS = (
     (38, 'allow', 'Atrial fibrillation (PITX2): one copy of the effect allele C was detected. Evidence tier: replicated, from the GWAS Catalog association count. In published studies of East Asian and South Asian ancestry, this allele was associated with higher odds of atrial fibrillation. This is a statistical association at the population level; it is not a diagnosis of atrial fibrillation and not an estimate of your own risk.'),
 )
 DA_CORPUS_CONDITIONS = ("Crohn's disease", "atrial fibrillation", "coronary artery disease")
+# r162 (R161-10): each archived claim is bound to the one frame of its state and zygosity.
+DA_FRAME_EXPECT = {24: "FR-01", 25: "FR-03", 26: "FR-02", 27: "FR-04", 28: "FR-07", 29: "FR-08",
+                   30: "FR-09", 31: "FR-10", 32: "FR-06", 33: "FR-01", 34: "FR-02", 38: "FR-01"}
 
 
 def _da_text():
@@ -2397,17 +2402,57 @@ def _da_quoted(text, name):
     return m.group(1) if m else None
 
 
+def _da_canon(text):
+    """C-43 step 0 (R160-F1): NFKC, then one space for every whitespace run."""
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text)).strip()
+
+
 def _da_scan(text, doc, conditions=()):
-    """C-43 procedure: remove exact exemptions, then rsIDs, gene symbols and build names,
-    then every pattern (case-insensitive). Returns the ids of the matching patterns."""
+    """C-43 procedure: canonical text (a non-ASCII letter is the error NONASCII), remove
+    exemptions only as whole sentences, then rsIDs, gene symbols and build names, then
+    every pattern (case-insensitive). Returns the ids of the errors found."""
+    text = _da_canon(text)
+    hits = ["NONASCII"] if any(ch.isalpha() and not ch.isascii() for ch in text) else []
     for _, _, ex in _da_exemptions(doc):
         for s in ([ex.replace("<condition>", c) for c in conditions] if "<condition>" in ex else [ex]):
-            text = text.replace(s, " ")
+            text = re.sub(r"(?:\A|(?<=[.!?] ))" + re.escape(s) + r"(?= |\Z)", " ", text)  # R161-04
     id_re, gene_re = _da_quoted(doc, "ID_RE"), _da_quoted(doc, "GENE_RE")
     _require("C-43 quotes ID_RE and GENE_RE", id_re and gene_re)
     t = re.sub(gene_re, " ", re.sub(id_re, " ", text, flags=re.I))
     t = t.replace("GRCh37", " ").replace("GRCh38", " ")
-    return [pid for pid, _, rx in _da_patterns(doc) if re.search(rx, t, re.I)]
+    return hits + [pid for pid, _, rx in _da_patterns(doc) if re.search(rx, t, re.I)]
+
+
+def _da_registry(text):
+    """[(id, role, registry id, text)] from the C-43 disease registry block."""
+    return [re.fullmatch(r"(RG-\d{2}) (caveat|notice|limitation) (\S+) (\S.*)", ln).groups()
+            for ln in _da_block(text, "disease-registry").splitlines() if ln.startswith("RG-")]
+
+
+def _da_report_errors(items, doc, conditions=()):
+    """C-43 (R161-01, R161-09): items are (role, text). Only disease roles are checked:
+    a disease claim must equal a C-29 frame (or the frame named by its role suffix), a
+    disease caveat, notice or limitation must equal a registry text of that role, and
+    all disease text passes the scan. Other result-type claims keep their own validation."""
+    errors = []
+    registry = {(role, s) for _, role, _, s in _da_registry(doc)}
+    _require("disease registry parsed", registry)
+    frames = {r["frame"]: _da_frame_re(r["text"], doc) for r in _da_frames(doc)}
+    for role, text in items:
+        if not role.startswith("disease-"):
+            continue  # R161-01: existing carrier, ClinVar association and trait claims
+        canon = _da_canon(text)
+        kind, _, frame = role[len("disease-"):].partition(":")
+        if kind == "claim":
+            pool = [frames[frame]] if frame else list(frames.values())
+            if not any(rx.fullmatch(canon) for rx in pool):
+                errors.append("claim-not-a-frame: %r" % text[:60])
+        elif (kind, canon) not in registry:
+            errors.append("unregistered-%s: %r" % (kind, text[:60]))
+        hits = _da_scan(text, doc, conditions)
+        if hits:
+            errors.append("forbidden %s: %r" % (hits, text[:60]))
+    return errors
 
 
 def _da_clauses(text):
@@ -2570,6 +2615,12 @@ def _da_state_frames_and_caveats():
         want = caveats.STATE_CAVEAT.get(r["state"])
         _require("%s state caveat %s" % (r["frame"], cav[2:]), cav[2:] == ([want] if want else []))
         _require("%s frame starts with label and gene" % r["frame"], r["text"].startswith("<label> (<gene>): "))
+        copies = {"het": "one copy of the effect allele <X> was detected",
+                  "hom_alt": "two copies of the effect allele <X> were detected"}
+        if r["zygosity"] in copies:  # R161-10: the frame text is bound to its zygosity column
+            other = copies["hom_alt" if r["zygosity"] == "het" else "het"]
+            _require("%s says %s" % (r["frame"], r["zygosity"]),
+                     copies[r["zygosity"]] in r["text"] and other not in r["text"])
         detected = r["state"] == "detected"
         word = {"susceptibility": "higher odds of", "protective": "lower odds of"}.get(r["direction"])
         _require("%s direction words" % r["frame"],
@@ -2586,6 +2637,8 @@ def _da_state_frames_and_caveats():
         hits = [rows[i]["frame"] for i, rx in enumerate(regs) if rx.fullmatch(sentence)]
         if 24 <= n <= 34 or n == 38:
             _require("corpus claim %d matches exactly one frame: %s" % (n, hits), len(hits) == 1)
+            _require("corpus claim %d matches its own frame %s, got %s" % (n, DA_FRAME_EXPECT[n], hits),
+                     hits == [DA_FRAME_EXPECT[n]])  # R161-10
         elif oracle == "reject":
             _require("corpus case %d matches no frame" % n, not hits)
     return True
@@ -2728,6 +2781,127 @@ def _da_fix_loop_spec_dispositions():
     return True
 
 
+
+DA_MIXED_OTHER = (
+    ("carrier-claim", "Example carrier condition (GENE2): one copy of the effect allele T was detected (carrier "
+                      "status for example carrier condition; one copy is not the condition itself)."),
+    ("association-claim", "Example thrombophilia (GENE4): one copy of the effect allele A was detected. This is an "
+                          "association with example thrombophilia; this report does not diagnose the condition."),
+    ("trait-claim", "Example trait (GENE3): one copy of the effect allele C was detected. Evidence tier: "
+                    "replicated, from the GWAS Catalog association count. This is a statistical association with "
+                    "example trait in published studies; it is not a measurement of example trait and not a "
+                    "diagnosis."),
+)
+
+
+def _da_mixed_items(doc):
+    import caveats
+    claim = next(s for n, _, s in DA_CORPUS if n == 24)
+    reg = {rid: s for _, _, rid, s in _da_registry(doc)}
+    return list(DA_MIXED_OTHER) + [
+        ("disease-claim:FR-01", claim), ("disease-caveat", reg["array_limits"]),
+        ("disease-caveat", reg["disease_ancestry"]), ("disease-notice", caveats.TEMPLATE_NOTICE),
+        ("disease-limitation", reg["C-42-line"])]
+
+
+def _da_fix_registry_pinned():
+    import caveats
+    text = _da_text()
+    _, clauses = _da_clauses(text)
+    c27 = re.search(r'"(The studies behind this association[^"]+)"', clauses.get("C-27", ""))
+    c42 = re.search(r"`(Disease associations come from[^`]+)`", clauses.get("C-42", ""))
+    _require("C-27 and C-42 quote their texts", c27 and c42)
+    want = ([("caveat", "array_limits", caveats.CAVEAT_REGISTRY["array_limits"]),
+             ("caveat", "disease_ancestry", " ".join(c27.group(1).split()))]
+            + [("caveat", k, caveats.CAVEAT_REGISTRY[k])
+               for k in ("no_call", "uninterpretable", "not_covered", "not_assayable", "rare_ppv")]
+            + [("notice", "TEMPLATE_NOTICE", caveats.TEMPLATE_NOTICE)]
+            + [("limitation", "LIMITATIONS", s) for s in caveats.LIMITATIONS]
+            + [("limitation", "C-42-line", c42.group(1))])
+    got = [(role, rid, s) for _, role, rid, s in _da_registry(text)]
+    _require("registry block %s != production strings" % got, got == want)
+    _require("ids RG-01..", [r[0] for r in _da_registry(text)] == ["RG-%02d" % n for n in range(1, len(want) + 1)])
+    for role, rid, s in want:
+        _require("registered %s passes the report check" % rid,
+                 not _da_report_errors([("disease-" + role, s)], text))
+    return True
+
+
+def _da_fix_mixed_report():
+    text = _da_text()
+    items = _da_mixed_items(text)
+    errs = _da_report_errors(items, text, ("Crohn's disease",))
+    _require("mixed report passes with legacy wording intact: %s" % errs, not errs)
+    _require("the legacy carrier claim alone would trip FP-29", "FP-29" in _da_scan(DA_MIXED_OTHER[0][1], text))
+    bad = [list(items) for _ in range(4)]
+    bad[0][3] = ("disease-claim:FR-01", items[3][1] + " You have Crohn's disease.")
+    bad[1][5] = ("disease-caveat", items[5][1] + " Nothing to worry about.")
+    bad[2][4] = ("disease-caveat", "This result is limited to the cited studies.")
+    bad[3][3] = ("disease-claim:FR-01", items[3][1].replace("one copy", "two copies").replace("was detected",
+                                                                                         "were detected"))
+    for i, b in enumerate(bad):
+        _require("mixed report variant %d fails" % i, _da_report_errors(b, text, ("Crohn's disease",)))
+    return True
+
+
+def _da_fix_r160_cases_rejected_as_report_text():
+    text = _da_text()
+    _require("notice 'Nothing to worry about.' rejected",
+             _da_report_errors([("disease-notice", "Nothing to worry about.")], text))
+    _require("claim with a Cyrillic letter rejected",
+             _da_report_errors([("disease-claim", "You hаve Crohn's disease.")], text))
+    _require("Cyrillic letter reported as NONASCII", "NONASCII" in _da_scan("You hаve Crohn's disease.", text))
+    return True
+
+
+def _da_fix_lf1_compatibility_forms():
+    """C-43 step 0: NFKC maps compatibility forms to the characters the patterns read."""
+    text = _da_text()
+    _require("full-width percent read as %", "FP-11" in _da_scan("The odds rose by ten \uff05.", text))
+    _require("full-width letters read as Latin", "FP-02" in _da_scan("\uff39\uff4fu have the condition.", text))
+    _require("no-break space collapsed", "FP-02" in _da_scan("You\u00a0have the condition.", text))
+    _require("a registered caveat passes after canonicalization",
+             not _da_scan("Rare array calls can be inaccurate;  a rare result should be confirmed by a "
+                          "clinical-grade test.", text))
+    return True
+
+
+def _da_with_doc(doc, fn):
+    global _da_text
+    real = _da_text
+    _da_text = lambda: doc
+    try:
+        fn()
+    except _Gate:
+        return False
+    finally:
+        _da_text = real
+    return True
+
+
+def _da_fix_frame_bindings_independent():
+    doc = _da_text()
+    rows = {r["frame"]: r for r in _da_frames(doc)}
+    # (a) zygosity column changed, text unchanged: only the zygosity binding sees it.
+    a = doc.replace("| FR-01 | detected | het |", "| FR-01 | detected | hom_alt |", 1)
+    _require("column edit applied", a != doc)
+    _require("zygosity column bound to the frame text", not _da_with_doc(a, _da_state_frames_and_caveats))
+    # (b) FR-01 and FR-03 rows trade ids: each row stays self-consistent, the claim binding fails.
+    l1 = next(ln for ln in doc.splitlines() if ln.startswith("| FR-01 |"))
+    l3 = next(ln for ln in doc.splitlines() if ln.startswith("| FR-03 |"))
+    b = doc.replace(l1, "\x00").replace(l3, l1.replace("| FR-01 |", "| FR-03 |")).replace(
+        "\x00", l3.replace("| FR-03 |", "| FR-01 |"))
+    _require("row trade applied", b != doc and rows)
+    _require("archived claims bound to their frame ids", not _da_with_doc(b, _da_state_frames_and_caveats))
+    for sentence, frame in (("Example disease (GENE1): both copies match the reference at this position; the "
+                             "effect allele was not found in the genotype.", "FR-05"),
+                            ("Example disease (GENE1): no copy of the effect allele was found in the genotype at "
+                             "this position.", "FR-06")):
+        hits = [f for f, r in rows.items() if _da_frame_re(r["text"], doc).fullmatch(sentence)]
+        _require("reference claim matches %s only: %s" % (frame, hits), hits == [frame])
+    return True
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -2832,6 +3006,11 @@ def run(check):
     attempt("DA.fix_s10_frame_swap_rejected", _da_fix_s10_frame_swap_rejected)
     attempt("DA.fix_s07_c52_all_excluded_sentence", _da_fix_s07_c52_sentence)
     attempt("DA.fix_loop_spec_records_dispositions", _da_fix_loop_spec_dispositions)
+    attempt("DA.fix_s09_registry_pinned_and_passes", _da_fix_registry_pinned)
+    attempt("DA.fix_s01_mixed_report_template_text", _da_fix_mixed_report)
+    attempt("DA.fix_lf1_r160_cases_rejected_as_report_text", _da_fix_r160_cases_rejected_as_report_text)
+    attempt("DA.fix_s10_frame_bindings_independent", _da_fix_frame_bindings_independent)
+    attempt("DA.fix_lf1_compatibility_forms_normalized", _da_fix_lf1_compatibility_forms)
 
 
 def main():

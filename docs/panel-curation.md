@@ -421,6 +421,12 @@ Phenotype: a T4 row counts only when its reported trait equals the label or an
 alias-file member after normalization; containment never counts, so a
 composite such as "X or Y" is dropped `trait-mismatch` (C-7).
 
+Own pack records (C-10, C-50): a counted row's `orientation source` is `dbsnp:`
+plus the row's own rsID, and its `gwas:<study accession>` and `pmid:<PMID>` are
+in the evidence pack; otherwise the row is dropped `evidence-not-in-pack`. The
+T1 sources cite `gwas:` and `pmid:` for every own-rsID GWAS row, counted or
+dropped.
+
 Evidence groups: an entry needs two independent groups, each holding a counted
 association row with p at or below 5e-8; a functional row never counts and
 is dropped `functional-not-counted` (C-15). Disease cohort ids start with a
@@ -429,7 +435,8 @@ kind prefix: `meta-` (a meta-analysis),
 (any other cohort). By default every `meta-` row is clustered with every other
 `meta-`, `consortium-` and `biobank-` row; only an `independence:` token for
 that cohort pair separates them. A status of `not-significant` maps to
-`no-independent-confirmation`.
+`no-independent-confirmation`. Only counted rows decide `conflicting-evidence`;
+a dropped row never vetoes the counted groups (C-13).
 
 Stage, ancestry and size (C-22): the `sample ancestry` cell is
 `<stage>:<code>[+<code>...]` and the `sample size` cell is
@@ -452,11 +459,15 @@ Tokens on an included or reserve disease row, each a `; `-separated item:
 
 - rationale `independence:<cohort-a>|<cohort-b>=<typed id>[,<typed id>...] (<basis>)`,
   one for every pair of counted groups; each typed id is in the evidence pack;
-- rationale `or:<row id>=<value> (<low>-<high>)` for the strongest counted row
-  (lowest p) of every counted group; the value is above one for `up` and below
-  one for `down`, and lies within its interval;
+- rationale `or:<row id>=<value> (<low>-<high>)` for every counted row, as
+  published per copy; the value is above one for `up` and below one for `down`,
+  and lies within its interval; the token of the strongest counted row (lowest
+  p) of each group is that group's summary (C-20);
 - rationale `af-spread:<number> over <group>[,<group>...]`, a number from 0 to 1
-  over two or more of `afr`, `amr`, `asj`, `eas`, `fin`, `nfe`, `sas`;
+  over two or more of `afr`, `amr`, `asj`, `eas`, `fin`, `nfe`, `sas`; a spread
+  at or above 0.20 is flagged and the row may only be included, never kept as
+  reserve, with limitations `owner-decision:<id>` equal to the approved
+  exception for that rsID (C-25, C-26, owner decision O-5);
 - rationale `alias-review:<alias>=<sameness reason>` for every alias a counted
   row used;
 - limitations `ancestry-scope:<code>[,<code>...]`, in vocabulary order, equal to
@@ -468,15 +479,20 @@ T3: a kept disease row has model `SUSC`, the copy meanings
 protective row), and a `pmid`, `genereviews`, `medgen` or `clingen` source. A
 disease row has no T2 row.
 
-Exclusions: `label-mismatch` needs at least one T4 row under the candidate
-rsID, every one dropped `trait-mismatch`; `proxy-only` needs none (C-12, C-49).
+Exclusions: exactly one reason code fits each evidence state (C-12, C-49).
+`label-mismatch` needs at least one T4 row under the candidate rsID, every one
+dropped `trait-mismatch`; `proxy-only` needs no own row and a rationale token
+`proxy:rs<digits>` naming a linked rsID whose dbSNP record is in the pack and
+which has an exact-label T4 row; with neither, the code is
+`no-independent-confirmation`.
 A disease label matching a forbidden report pattern of contract C-43, other
 than through the word "disease", is an error (C-44).
 
 Scope (C-52): the candidates rs10757278, rs2200733, rs11209026 and rs4245791
 each have a disease T1 row with a decision, and the existing rs11887534 row has
 a decision; included disease rows and disease entries of the targets file are
-the same set. An all-excluded outcome is valid.
+the same set. An all-excluded outcome is valid; it ships no production code,
+schema or template change (C-52).
 
 ## Tables
 

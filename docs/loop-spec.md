@@ -841,3 +841,19 @@ identifiers only (rsIDs, gene names); no machine paths.
   disease findings away from any model) and F6 (an unknown result type raises)
   is production work deferred to S3; S1 states the clauses and their required
   tests.
+- **S1 code-review dispositions (owner, "Approve as proposed", 2026-11-24).**
+  The findings of the two S1 code reviews (r160 as L, r161 as S) go to FIX
+  round 1 (r162):
+  - **S-01** the C-43 scope covers disease-association claims and the caveats, notices and limitations used for disease reporting; existing result-type claims keep their validation and wording; a mixed-report test is added and the S3 production test is named.
+  - **S-02** every counted disease row is bound to its own pack records: its own rsID's dbSNP record and its GCST in T1 and T5.
+  - **S-03** a frequency spread at or above 0.20 blocks inclusion unless an approved owner decision id is cited in limitations (O-5 enforced).
+  - **S-04** exemptions apply only to whole sentences at sentence boundaries; glued text is scanned.
+  - **S-05** exactly one reason code per evidence state (same finding as L-F2).
+  - **S-06** only counted rows decide conflicting-evidence.
+  - **S-07** C-52 amended (see the C-52 amendment below).
+  - **S-08** the published per-copy odds ratio and interval are captured for every counted row; the group token summarizes the strongest counted row; O-4 unchanged.
+  - **S-09** disease caveats, notices and limitations must equal exact registry strings (with L-F1).
+  - **S-10** each detected frame is bound to its zygosity; a one-copy/two-copy swap fails.
+  - **L-F1** disease text is NFKC-normalized, non-ASCII letters are rejected, and reassurance and absent-follow-up patterns are added.
+  - **L-F2** proxy-only only with linked-rsID evidence; label-mismatch only when own rows all mismatch; no-independent-confirmation when neither.
+  - **C-52 amendment** in the all-excluded outcome no production code, schema or template change ships; only the contract document and the S1 checkers ship, with the documented exclusions, the unchanged nine-entry panel and the O-8 version policy; S3 is not run.
