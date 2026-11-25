@@ -2624,6 +2624,110 @@ def _da_loop_spec_s1_record():
     return True
 
 
+
+# ------------------------------------- v0.4.0 S1 FIX r162: r160/r161 review regressions
+
+DA_FIX_MARKERS = {  # clause -> the r160/r161 findings that amended it (owner dispositions, 2026-11-24)
+    "C-10": ("R161-02",), "C-12": ("R160-F2", "R161-05"), "C-13": ("R161-06",), "C-20": ("R161-08",),
+    "C-25": ("R161-03", "R161-06"), "C-26": ("R161-03",), "C-29": ("R161-10",),
+    "C-43": ("R160-F1", "R161-01", "R161-04", "R161-09"), "C-49": ("R160-F2", "R161-05"),
+    "C-50": ("R161-02",), "C-52": ("R161-07",),
+}
+DA_C43_SCOPE = ("Apply FP-01 through FP-33 to each disease-association claim and to the caveats, notices "
+                "and limitations used for disease-association reporting. Existing result-type claims and "
+                "legacy Summary claims retain their existing validation and exact template wording. A report "
+                "that mixes result types must pass with the existing carrier-status, ClinVar association and "
+                "trait wording intact, and must fail if prohibited wording is introduced in the disease claim "
+                "or its associated text.")
+DA_C52_ALL_EXCLUDED = ("In the all-excluded outcome no production code, schema or template change ships; only "
+                       "the contract document and the S1 checkers ship, with the documented exclusions, the "
+                       "unchanged nine-entry panel and the O-8 version policy. S3 is not run.")
+DA_REASSURANCE_CASES = (
+    "Nothing to worry about.", "There is nothing to worry about.", "No need to worry about this result.",
+    "You do not need to worry.", "Don't worry about this result.", "This result is reassuring.",
+    "No follow-up is needed for this result.", "No further testing is required.",
+    "No follow up needed.", "You are fine.", "Your chances could be higher.",
+    "You could end up with Crohn's disease.",
+)
+DA_CONFUSABLE_CASES = ("You hаve Crohn's disease.", "You were diаgnosed.", "Your rіsk is higher.",
+                       "You have Crohn's disease.", "Ｙou have Crohn's disease.")
+
+
+def _da_fix_r160_r161_markers():
+    text = _da_text()
+    _, clauses = _da_clauses(text)
+    _require("clauses parsed", clauses)
+    for cid, body in clauses.items():
+        got = tuple(sorted(set(re.findall(r"\(amended: (R16[01]-(?:F\d|\d\d))\)", body))))
+        _require("%s markers %s != %s" % (cid, got, DA_FIX_MARKERS.get(cid, ())),
+                 got == tuple(sorted(DA_FIX_MARKERS.get(cid, ()))))
+    return True
+
+
+def _da_fix_s01_scope_sentence():
+    _, clauses = _da_clauses(_da_text())
+    _require("C-43 states the R161-01 scope", _flat(DA_C43_SCOPE) in _flat(clauses.get("C-43", "")))
+    return True
+
+
+def _da_fix_lf1_reassurance_and_confusables():
+    text = _da_text()
+    for case in DA_REASSURANCE_CASES + DA_CONFUSABLE_CASES:
+        _require("rejected: %r" % case, _da_scan(case, text, ("Crohn's disease",)))
+    return True
+
+
+def _da_fix_s04_glued_exemptions_scanned():
+    text = _da_text()
+    exs = {eid: s for eid, _, s in _da_exemptions(text)}
+    _require("exemptions parsed", exs)
+    assoc = exs["EX-01"].replace("<condition>", "Example disease")
+    for s in (exs["EX-12"], assoc, exs["EX-06"], exs["EX-02"]):
+        _require("standalone exemption passes", not _da_scan(s, text, ("Example disease",)))
+        for variant in ("X" + s, s + "X", "Note:" + s, s[:-1] + " today."):
+            _require("glued exemption is scanned: %r" % variant[:50], _da_scan(variant, text, ("Example disease",)))
+    return True
+
+
+def _da_fix_s10_frame_swap_rejected():
+    global _da_text
+    real = _da_text
+    doc = real()
+    swapped = doc.replace("one copy of the effect allele <X> was detected", "\x00ONE\x00") \
+        .replace("two copies of the effect allele <X> were detected", "one copy of the effect allele <X> was detected") \
+        .replace("\x00ONE\x00", "two copies of the effect allele <X> were detected")
+    _require("swap changed the frames", swapped != doc)
+    _da_text = lambda: swapped
+    try:
+        try:
+            _da_state_frames_and_caveats()
+        except _Gate:
+            return True
+        _require("a one-copy/two-copy frame swap is rejected by the frame gate", False)
+    finally:
+        _da_text = real
+    return True
+
+
+def _da_fix_s07_c52_sentence():
+    _, clauses = _da_clauses(_da_text())
+    body = _flat(clauses.get("C-52", ""))
+    _require("C-52 states the amended all-excluded outcome", _flat(DA_C52_ALL_EXCLUDED) in body)
+    _require("C-52 no longer ships template changes in the all-excluded outcome",
+             "the template changes (tested with invented fixtures) still ship" not in body)
+    return True
+
+
+def _da_fix_loop_spec_dispositions():
+    text = open(LOOP_SPEC, encoding="utf-8").read()
+    head = "## v0.4.0 run: S1 disease-association contract (decisions log)"
+    _require("S1 heading", head in text)
+    tail = _flat(text[text.index(head):])
+    for d in ["**S-%02d" % n for n in range(1, 11)] + ["**L-F1", "**L-F2", "**C-52 amendment"]:
+        _require("S1 record lacks %r" % d, d in tail)
+    return True
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -2721,6 +2825,13 @@ def run(check):
     attempt("DA.scope_words_equal_vocabulary", _da_scope_vocabulary)
     attempt("DA.panel_curation_records_contract", _da_panel_curation_records_contract)
     attempt("DA.loop_spec_records_s1_decisions", _da_loop_spec_s1_record)
+    attempt("DA.fix_r160_r161_markers_on_amended_clauses", _da_fix_r160_r161_markers)
+    attempt("DA.fix_s01_c43_scope_sentence", _da_fix_s01_scope_sentence)
+    attempt("DA.fix_lf1_reassurance_and_confusables_rejected", _da_fix_lf1_reassurance_and_confusables)
+    attempt("DA.fix_s04_glued_exemptions_scanned", _da_fix_s04_glued_exemptions_scanned)
+    attempt("DA.fix_s10_frame_swap_rejected", _da_fix_s10_frame_swap_rejected)
+    attempt("DA.fix_s07_c52_all_excluded_sentence", _da_fix_s07_c52_sentence)
+    attempt("DA.fix_loop_spec_records_dispositions", _da_fix_loop_spec_dispositions)
 
 
 def main():

@@ -6026,15 +6026,25 @@ def disease_world():
     return {"t1": [_d1()], "t2": [], "t3": t3, "t4": rows, "aliases": {}, "entries": []}
 
 
+def _dpack(w):
+    """The fixture evidence pack: T4 provenance plus the typed sources of the disease T1
+    rows (standing in for the candidate's T5 inventory)."""
+    ids = set(_pack_ids(w["t4"]))
+    for r in w["t1"]:
+        if r["result type"] == DISEASE_RT:
+            ids.update(i for i in split_ids(r["sources (typed ids)"]) if typed_id_ok(i))
+    return ids
+
+
 def _dcheck(w, pack=None):
-    pack = _pack_ids(w["t4"]) if pack is None else pack
+    pack = _dpack(w) if pack is None else pack
     return check_disease_table(w["t1"], w["t2"], w["t3"], w["t4"], w["aliases"], pack)
 
 
 def _dstatus(w, separated=frozenset()):
     b = w["t1"][0]
     return evaluate_disease(w["t4"], b["effect allele (fwd, GRCh37)"], b["label used in report"],
-                            w["aliases"], _pack_ids(w["t4"]), separated)
+                            w["aliases"], _dpack(w), separated)
 
 
 def _scope_t1(decision="excluded"):
@@ -6440,6 +6450,91 @@ def _run_disease(attempt):
     attempt("DA.real_doc_disease_rules", real_doc_disease_rules)
 
 
+# =============================================================================
+# v0.4.0 S1 FIX r162: regressions for the r160/r161 code-review findings.
+# =============================================================================
+def _run_disease_fix(attempt):
+    # S-02 / R161-02: a counted row is bound to its own rsID's dbSNP record and its own GCST.
+    def wrong_rsid_dbsnp():
+        w = disease_world()
+        w["t4"][1]["orientation source"] = "dbsnp:rs9100099"
+        drops = _dstatus(w)[2]
+        _require(f"row oriented by another marker's dbSNP record is dropped, got {drops}",
+                 drops["d2"] == "evidence-not-in-pack")
+        _has(_dcheck(w), "disease-not-replicated: rs9100001 is single-study", "wrong-rsID dbSNP record")
+        return True
+    attempt("DA.fix_s02_wrong_rsid_dbsnp_drops_row", wrong_rsid_dbsnp)
+
+    def missing_gcst():
+        w = disease_world()
+        b = w["t1"][0]
+        b[SHORT["src"]] = b[SHORT["src"]].replace("gwas:GCST9100002;", "")
+        drops = _dstatus(w)[2]
+        _require(f"row whose GCST is not in the pack is dropped, got {drops}", drops["d2"] == "evidence-not-in-pack")
+        res = _dcheck(w)
+        _has(res, "disease-not-replicated: rs9100001 is single-study", "GCST missing from T1 and the pack")
+        _has(res, "disease-t1-source-missing: rs9100001 gwas:GCST9100002", "GCST missing from T1 sources")
+        return True
+    attempt("DA.fix_s02_missing_gcst_drops_row", missing_gcst)
+
+    # S-03 / R161-03: a spread at or above 0.20 needs an owner decision (O-5).
+    def af_flag():
+        for spread in ("0.20", "0.200", "0.45"):
+            w = disease_world()
+            w["t1"][0]["rationale"] = w["t1"][0]["rationale"].replace("af-spread:0.05", f"af-spread:{spread}")
+            _has(_dcheck(w), "disease-af-flagged: rs9100001", f"spread {spread} without an owner decision")
+        w = disease_world()
+        w["t1"][0]["rationale"] = w["t1"][0]["rationale"].replace("af-spread:0.05", "af-spread:0.199")
+        _clean(_dcheck(w), "spread 0.199 needs no decision")
+        return True
+    attempt("DA.fix_s03_af_flag_inclusive_needs_owner_decision", af_flag)
+
+    # L-F2 = S-05 / R160-F2, R161-05: one reason code per evidence state.
+    def reason_state():
+        w = disease_world()
+        w["t4"] = []
+        w["t1"][0].update({SHORT["dec"]: "excluded", SHORT["code"]: "proxy-only", SHORT["meaning"]: "not applicable"})
+        _has(_dcheck(w), "disease-proxy-only-unsubstantiated: rs9100001", "proxy-only with no linked evidence")
+        w = disease_world()
+        for r in w["t4"]:
+            r["trait (reported)"] = "LDL cholesterol levels"
+            r["counted"] = "no:trait-mismatch"
+        w["t1"][0].update({SHORT["dec"]: "excluded", SHORT["code"]: "no-independent-confirmation",
+                           SHORT["meaning"]: "not applicable"})
+        _has(_dcheck(w), "disease-reason-state: rs9100001", "own rows all mismatched need label-mismatch")
+        return True
+    attempt("DA.fix_s05_one_reason_code_per_evidence_state", reason_state)
+
+    # S-06 / R161-06: only counted rows decide conflicting-evidence.
+    def dropped_rows_do_not_conflict():
+        w = disease_world()
+        fn = _d4("f1", 9100009, "study-gamma", "-", direction="down", counted="no:functional-not-counted")
+        fn["study accession"] = "-"
+        w["t4"].append(fn)
+        status = _dstatus(w)[0]
+        _require(f"a contrary functional row does not veto two groups, got {status}", status == "replicated")
+        w = disease_world()
+        w["t4"].append(_d4("d9", 9100002, "biobank-beta", "1e-9", direction="down", anc="-",
+                           counted="no:ancestry-unrecorded"))
+        status = _dstatus(w)[0]
+        _require(f"a contrary ancestry-unrecorded row does not veto two groups, got {status}", status == "replicated")
+        w = disease_world()
+        w["t4"][1]["direction"] = "down"
+        _require("a counted contrary row still conflicts", _dstatus(w)[0] == "conflicting-evidence")
+        return True
+    attempt("DA.fix_s06_dropped_rows_do_not_decide_conflict", dropped_rows_do_not_conflict)
+
+    # S-08 / R161-08: the odds ratio and interval are recorded for every counted row.
+    def or_every_counted_row():
+        w = disease_world()
+        w["t4"].append(_d4("d3", 9100003, "study-alpha", "3e-8"))
+        b = w["t1"][0]
+        b[SHORT["src"]] += ";gwas:GCST9100003;pmid:9100003"
+        _has(_dcheck(w), "disease-or-missing: rs9100001 d3", "second counted row of a group without or:")
+        return True
+    attempt("DA.fix_s08_or_token_for_every_counted_row", or_every_counted_row)
+
+
 def run(check):
     def attempt(name, fn):
         try:
@@ -6481,6 +6576,7 @@ def run(check):
     _run_r67_identity(attempt)
     _run_r67_report_safety(attempt)
     _run_disease(attempt)
+    _run_disease_fix(attempt)
 
 
 def main():
