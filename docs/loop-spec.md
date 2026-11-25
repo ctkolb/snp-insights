@@ -857,3 +857,23 @@ identifiers only (rsIDs, gene names); no machine paths.
   - **L-F1** disease text is NFKC-normalized, non-ASCII letters are rejected, and reassurance and absent-follow-up patterns are added.
   - **L-F2** proxy-only only with linked-rsID evidence; label-mismatch only when own rows all mismatch; no-independent-confirmation when neither.
   - **C-52 amendment** in the all-excluded outcome no production code, schema or template change ships; only the contract document and the S1 checkers ship, with the documented exclusions, the unchanged nine-entry panel and the O-8 version policy; S3 is not run.
+
+## v0.4.0 run: S2 evidence and curation (decisions log)
+
+Evidence pack: the v0.4.0 pack (outside the repository), frozen manifest `MANIFEST.sha256` sha256 `8895f896ccba13e1f9dfbd7bd1d23b38357cda1aa3386608003dffb0b8870802`; all 81 listed files verified before curation. The S2 survey preceded this record (owner decision O-7). On 2026-11-24 the owner accepted every item below as recommended ("accept all, accept all") and, for the candidate question, accepted the all-excluded outcome for the four roadmap candidates; no substitute candidate is added in this run (a substitute would be a future scope change).
+
+- **S2-T1** (owner, 2026-11-24): rs10757278 (Coronary artery disease) is excluded, `no-independent-confirmation`.
+- **S2-T2** (owner, 2026-11-24): rs2200733 (Atrial fibrillation) is excluded, `no-independent-confirmation`.
+- **S2-T3** (owner, 2026-11-24): rs11209026 (Crohn's disease) is excluded, `single-study`.
+- **S2-T4** (owner, 2026-11-24): rs4245791 (Gallstone disease) is excluded, `single-study`.
+- **S2-T5** (owner, 2026-11-24): the rs11887534 identity record is unchanged and stays excluded `palindromic`.
+- **S2-Q1** (owner, 2026-11-24): for rs11209026 the Franke meta-analysis row (a23836), the Kenny row (a11989582) and the Julia row (a24661) are one evidence group (the conservative reading); the overlap is recorded as this owner decision in the T4 `overlap with` cells and the T1 rationale, not as pack text.
+- **S2-Q2** (owner, 2026-11-24): an effect allele that is the majority allele (G, about 0.93, for rs11209026) is excluded; no entry of this kind in v0.4.0.
+- **S2-Q3** (owner, 2026-11-24): an odds ratio without an interval (a24661) is not a usable per-copy ratio; the row is dropped `direction-missing`.
+- **S2-Q4** (owner, 2026-11-24): Ashkenazi Jewish samples map to `other`, with the text recorded.
+- **S2-Q5** (owner, 2026-11-24): when the pack does not show the stage of a row, the T4 stage is `discovery`, recorded as a curator judgment.
+- **S2-Q6** (owner, 2026-11-24): the gene cell for rs2200733 and rs10757278 uses the request-list symbols (PITX2, CDKN2B-AS1) and the rationale states the source.
+- **S2-Q7** (owner, 2026-11-24): rs11887534 keeps its v0.3.0 row unchanged; no disease-labeled second row.
+- **S2-Q8** (owner, 2026-11-24): Catalog association rows without a study record or abstract count as in-pack citations for dropped rows.
+- **S2-Q9** (owner, 2026-11-24): no alias is approved; `data/condition_aliases.json` is unchanged.
+- **S2-V6** (owner, 2026-11-24): the outcome is all-excluded (V6, amended C-52); S3 is not run; whether to release is the owner's later decision under O-8.
