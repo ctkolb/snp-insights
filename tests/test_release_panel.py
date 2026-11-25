@@ -6703,6 +6703,11 @@ S2_TRACE_SHA256 = {
     "T5": "0cb4984d937f1a1b7d4147573a992869613cc7151d9714538e07c865b0ae8f13",
 }
 S2_TRACE_HEADERS = (("T1", T1_HEADER), ("T4", T4_HEADER), ("T5", T5_HEADER))
+S2_AF_BASIS_SENTENCE = ("For the four v0.4.0 disease rows, the `af-spread` basis is gnomAD v2.1.1 genome and exome "
+                        "allele counts combined per group (afr, amr, asj, eas, fin, nfe, sas), with groups of "
+                        "fewer than 500 combined alleles omitted.")
+S2_DELIVERED_IDS = ("S2-A1", "S2-A2", "S2-A3", "S2-A4", "S2-A5", "S2-R167-F1", "S2-R167-F2", "S2-R167-F3",
+                    "S2-R168-F1", "S2-R168-F2", "S2-R168-F3", "S2-R168-F4")  # logged lines, not decision-record ids
 S2_C52_SENTENCE = ("No disease association met the disease-association contract, "
                    "so the release panel has no disease entry.")
 
@@ -6923,6 +6928,33 @@ def _run_disease_s2(attempt):
             _require(f"S2 {name} trace rows changed (S2-R168-F4): digest {got}", got == S2_TRACE_SHA256[name])
         return True
     attempt("DA.s2_real_trace_rows_pinned", trace_rows_pinned)
+
+    def afspread_basis_sentence():
+        flat = " ".join(read_doc().split())
+        _require("panel-curation lacks the af-spread basis sentence (S2-R167-F2, S2-R168-F1)",
+                 flat.count(S2_AF_BASIS_SENTENCE) == 1)
+        by_rs = {r["rsID"]: r for r in s2_real()[0]["T1"]}
+        for rs, allele, row in (("rs10757278", "G", "a6123"), ("rs2200733", "T", "a6065")):
+            _require(f"{rs} lacks the screened-allele note (S2-R168-F2): {allele} from {row}",
+                     f"screened allele: {allele}, taken from the uncounted" in by_rs[rs]["rationale"]
+                     and f"({row}, " in by_rs[rs]["rationale"]
+                     and "is not an effect-allele frequency under C-26" in by_rs[rs]["rationale"])
+        return True
+    attempt("DA.s2_real_afspread_basis_and_screened_allele", afspread_basis_sentence)
+
+    def log_lines_and_gotcha():
+        with open(LOOP_SPEC_PATH, encoding="utf-8") as fh:
+            log = [body for _, title, body in sections(fh.read()) if title == S2_LOG_TITLE]
+        _require("S2 decisions log section missing", len(log) == 1)
+        for did in S2_DELIVERED_IDS:
+            _require(f"S2 log lacks one line for {did}",
+                     sum(1 for ln in log[0].splitlines() if ln.startswith(f"- **{did}** ")) == 1)
+        with open(os.path.join(ROOT, "AGENTS.md"), encoding="utf-8") as fh:
+            gotcha = " ".join(fh.read().split())
+        _require("AGENTS.md GRCh38 gotcha must name the GWAS Catalog v2 (S2-A4)",
+                 "gnomAD, Open Targets and GWAS Catalog v2 use GRCh38 internally" in gotcha)
+        return True
+    attempt("DA.s2_log_lines_and_agents_gotcha", log_lines_and_gotcha)
 
     def owner_decision_justifications():
         from unittest.mock import patch
