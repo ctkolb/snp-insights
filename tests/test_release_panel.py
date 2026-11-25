@@ -2856,7 +2856,8 @@ def _run_r50(attempt):
 # edited. The pool is the 23 DRAFT rsIDs of data/targets.carrier.json and
 # data/targets.traits.json (read-only), in ticket order, followed by the 11 v0.2.0
 # candidates (added by the v0.2.0 curation ticket), followed by the 10 v0.3.0
-# rows (nine candidates and the rs11887534 identity record; ticket S1 r139).
+# rows (nine candidates and the rs11887534 identity record; ticket S1 r139), followed by
+# the four v0.4.0 disease candidates (ticket S2 r165, all excluded, decisions S2-T1 to S2-T4).
 # =============================================================================
 POOL_RSIDS = (
     "rs334", "rs33930165", "rs113993960", "rs1800562", "rs1799945", "rs6025",
@@ -2867,6 +2868,7 @@ POOL_RSIDS = (
     "rs1799807", "rs121908529", "rs185803104", "rs180177314", "rs11591147",
     "rs10455872", "rs3798220", "rs6544713", "rs2282679", "rs10741657",
     "rs601338", "rs6795970", "rs174537", "rs1801133", "rs11887534",
+    "rs10757278", "rs2200733", "rs11209026", "rs4245791",
 )
 NON_AUTOSOMAL_POOL = ("rs1050828", "rs6152")
 GOAL_BOUND = 7

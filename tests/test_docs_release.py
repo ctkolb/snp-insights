@@ -2014,6 +2014,12 @@ V020_GROWTH = (11, 34, 5, 6)  # candidates, T1 rows after v0.2.0, included, excl
 V030_POOL = ("rs10455872", "rs3798220", "rs6544713", "rs2282679", "rs10741657",
              "rs601338", "rs6795970", "rs174537", "rs1801133", "rs11887534")
 V030_GROWTH = (10, 44, 1, 9)  # candidates, T1 rows after v0.3.0, included, excluded
+# v0.4.0 S2 (r165, all-excluded outcome S2-V6): four disease candidates, 48 T1 rows, none included.
+V040_POOL = ("rs10757278", "rs2200733", "rs11209026", "rs4245791")
+V040_GROWTH = (4, 48, 0, 4)  # candidates, T1 rows after v0.4.0, included, excluded
+# C-52: the Limitations paragraph says that no disease association met the contract.
+C52_SENTENCE = ("No disease association met the disease-association contract, "
+                "so the release panel has no disease entry.")
 
 
 def _t1_dicts():
@@ -2071,9 +2077,12 @@ def _s3b_curation_release_paragraph_matches_tables():
     # its numbers and the v0.3.0 rows have their own sentence. The strict
     # no-reserve rule holds for every T1 row now that rs10741657 is `included`
     # (R141-F3, S2).
+    v040 = [r for r in new if r["rsID"] in V040_POOL]
     v030 = [r for r in new if r["rsID"] in V030_POOL]
-    v020 = [r for r in new if r["rsID"] not in V030_POOL]
+    v020 = [r for r in new if r["rsID"] not in V030_POOL and r["rsID"] not in V040_POOL]
+    rows_v030 = len(rows) - len(v040)  # the T1 row count after v0.3.0, before the v0.4.0 rows
     _require("T1 lacks a v0.3.0 pool row", sorted(r["rsID"] for r in v030) == sorted(V030_POOL))
+    _require("T1 lacks a v0.4.0 pool row", sorted(r["rsID"] for r in v040) == sorted(V040_POOL))
     inc2 = [r for r in v020 if r["decision"] == "included"]
     exc2 = [r for r in v020 if r["decision"] == "excluded"]
     _require("v0.2.0 rows changed: %d rows, %d included, %d excluded" % (len(v020), len(inc2), len(exc2)),
@@ -2089,12 +2098,22 @@ def _s3b_curation_release_paragraph_matches_tables():
     _require("no reserve row may exist: %s" % [r["rsID"] for r in rows if r["decision"] == "reserve"],
              not res3 and not [r for r in rows if r["decision"] == "reserve"])
     _require("v0.3.0 rows changed: %d rows, %d included, %d excluded" % (len(v030), len(inc3), len(exc3)),
-             (len(v030), len(rows), len(inc3), len(exc3)) == V030_GROWTH)
+             (len(v030), rows_v030, len(inc3), len(exc3)) == V030_GROWTH)
+    inc4 = [r for r in v040 if r["decision"] == "included"]
+    exc4 = [r for r in v040 if r["decision"] == "excluded"]
+    _require("v0.4.0 rows changed: %d rows, %d included, %d excluded" % (len(v040), len(inc4), len(exc4)),
+             (len(v040), len(rows), len(inc4), len(exc4)) == V040_GROWTH)
     growth030 = ("For v0.3.0 the pool grew by %s candidates to %d T1 rows, of which %s was included, "
                  "none is a reserve and %s were excluded."
-                 % (w(len(v030)), len(rows), w(len(inc3)), w(len(exc3))))
+                 % (w(len(v030)), rows_v030, w(len(inc3)), w(len(exc3))))
     _require("v0.3.0 pool growth must be stated exactly once, as the whole sentence, from T1",
              [s for s in sentences if s.startswith("For v0.3.0 the pool grew by ")] == [growth030])
+    growth040 = ("For v0.4.0 the pool grew by %s candidates to %d T1 rows, of which none was included, "
+                 "none is a reserve and %s were excluded." % (w(len(v040)), len(rows), w(len(exc4))))
+    _require("v0.4.0 pool growth must be stated exactly once, as the whole sentence, from T1",
+             [s for s in sentences if s.startswith("For v0.4.0 the pool grew by ")] == [growth040])
+    _require("the C-52 sentence must be stated exactly once, and only while no disease row is kept",
+             sentences.count(C52_SENTENCE) == 1 and not inc4)
     _require("the paragraph names an rsID other than the added T1 candidates",
              set(re.findall(r"\brs\d+\b", para)) == {r["rsID"] for r in new})
     for r in new:
@@ -2119,7 +2138,8 @@ def _s3b_curation_release_paragraph_matches_tables():
     # statement, one of the three exact growth/no-reserves sentences, or a decision sentence
     # naming T1 rsIDs; anything else (a paraphrase of growth or reserves) fails.
     exact = set(CURATION_METHOD_SENTENCES) | {
-        growth020, growth030, "No reserves exist for v0.2.0 either: none of its rows is a `reserve`."}
+        growth020, growth030, growth040, C52_SENTENCE,
+        "No reserves exist for v0.2.0 either: none of its rows is a `reserve`."}
     for s in sentences:
         known = (s in exact
                  or (s.startswith(("For the v0.1.0 curation ", "In the v0.1.0 curation "))
