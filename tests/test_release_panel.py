@@ -6860,6 +6860,19 @@ def _run_disease_s2(attempt):
         return True
     attempt("DA.s2_af_exceptions_wired_to_decision_record", af_exceptions_wired)
 
+    def provenance_names_v040_pack():
+        digest = "8895f896ccba13e1f9dfbd7bd1d23b38357cda1aa3386608003dffb0b8870802"
+        flat = " ".join((section_body(read_doc(), "Provenance block") or "").split())
+        _require("provenance block lacks the v0.4.0 pack record",
+                 "v0.4.0 evidence pack: evidence/v0.4.0 (outside the repository)" in flat
+                 and f"MANIFEST.sha256 sha256 {digest}" in flat and "captured 2026-11-25 (UTC)" in flat)
+        _require("Retrieval dates lack the v0.4.0 pack date", "; v0.4.0 pack 2026-11-25" in flat)
+        with open(LOOP_SPEC_PATH, encoding="utf-8") as fh:
+            log = [body for _, title, body in sections(fh.read()) if title == S2_LOG_TITLE]
+        _require("the decision record does not carry the pack digest", len(log) == 1 and digest in log[0])
+        return True
+    attempt("DA.s2_provenance_names_v040_pack", provenance_names_v040_pack)
+
 
 def run(check):
     def attempt(name, fn):
