@@ -176,8 +176,8 @@ Priority order (rough):
 - dbSNP ref/alt is assembly-oriented; the risk allele is the curated
   `effect_allele`, not dbSNP's alt (see `rs6025`).
 - ClinVar `esearch` can return unrelated variants; selection filters by gene.
-- gnomAD/Open Targets use GRCh38 internally; dbSNP small-set uses GRCh37
-  coordinates for the panel.
+- gnomAD, Open Targets and GWAS Catalog v2 use GRCh38 internally; dbSNP small-set uses
+  GRCh37 coordinates for the panel.
 - The online path is opt-in and requires `--accept-privacy-risk`; it withholds
   raw alleles and the file hash by default.
 - SNPedia is CC BY-NC-SA 3.0 (non-commercial) and is never redistributed.

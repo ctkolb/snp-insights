@@ -877,3 +877,15 @@ Evidence pack: the v0.4.0 pack (outside the repository), frozen manifest `MANIFE
 - **S2-Q8** (owner, 2026-11-24): Catalog association rows without a study record or abstract count as in-pack citations for dropped rows.
 - **S2-Q9** (owner, 2026-11-24): no alias is approved; `data/condition_aliases.json` is unchanged.
 - **S2-V6** (owner, 2026-11-24): the outcome is all-excluded (V6, amended C-52); S3 is not run; whether to release is the owner's later decision under O-8.
+- **S2-A1** (owner, 2026-11-24, S2 survey adjacent finding): the shipped alias "coronary heart disease" in the coronary artery disease group (C-9) is deferred to any future coronary artery disease scope change; log only.
+- **S2-A2** (owner, 2026-11-24, S2 survey adjacent finding): the C-13 wording for beta rows with a label-equal trait (contract says trait-mismatch, the evaluator derives direction-missing or allele-mismatch) is deferred to the next release that curates disease rows; log only.
+- **S2-A3** (owner, 2026-11-24, S2 survey adjacent finding): the capture helper fetched no study records for sub-threshold rows and the GWAS Catalog release is not recorded; a known limit of the v0.4.0 pack, and the next capture fetches study records for every label-equal row and records the release; log only.
+- **S2-A4** (owner, 2026-11-24, S2 survey adjacent finding): GWAS Catalog v2 locations are GRCh38 while the panel is GRCh37; logged, and the AGENTS.md GRCh38 known-gotcha line names the GWAS Catalog v2.
+- **S2-A5** (owner, 2026-11-24, S2 survey adjacent finding): the GCST001438 ancestry and sample-size ambiguity is handled by S2-Q4; no further action.
+- **S2-R167-F1** (owner, 2026-11-24, r167 review, MEDIUM): the decision gates for S2-Q1, S2-Q6 and S2-V6 accepted contradictory records; fixed in the S2 FIX round by checking the decided content.
+- **S2-R167-F2** (owner, 2026-11-24, r167 review, LOW): one sentence states the frequency-spread basis and the 500-allele floor; no per-group frequency table.
+- **S2-R167-F3** (owner, 2026-11-24, r167 review, LOW): row and accession ids replace author surnames in the S2-Q1 line; place-named cohort ids are kept.
+- **S2-R168-F1** (owner, 2026-11-25, r168 review, LOW): disputed; the rs11209026 af-spread of 0.068 combines genome and exome counts and is unchanged; the S2-R167-F2 sentence states the basis.
+- **S2-R168-F2** (owner, 2026-11-25, r168 review, LOW): the af-spread values on the two excluded rows with effect allele `-` are kept, each with a note naming the screened allele and its uncounted source row, stating it is not an effect-allele frequency under C-26.
+- **S2-R168-F3** (owner, 2026-11-25, r168 review, LOW): duplicate of S2-R167-F3; same decision.
+- **S2-R168-F4** (owner, 2026-11-25, r168 review, LOW): a SHA-256 content digest of the S2 disease T1, T4 and T5 index rows is pinned in the tests; correctness against the pack stays a review duty.
