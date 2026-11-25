@@ -6708,6 +6708,29 @@ S2_AF_BASIS_SENTENCE = ("For the four v0.4.0 disease rows, the `af-spread` basis
                         "fewer than 500 combined alleles omitted.")
 S2_DELIVERED_IDS = ("S2-A1", "S2-A2", "S2-A3", "S2-A4", "S2-A5", "S2-R167-F1", "S2-R167-F2", "S2-R167-F3",
                     "S2-R168-F1", "S2-R168-F2", "S2-R168-F3", "S2-R168-F4")  # logged lines, not decision-record ids
+# SHA-256 of each delivered S2 log line in the decisions log of docs/loop-spec.md (S2-R170-F1): the
+# UTF-8 text of the whole line, from "- **ID** " to its last character, with no line ending. A line
+# that carries added, changed or contradictory text no longer matches.
+S2_DELIVERED_LINE_SHA256 = {
+    "S2-A1": "09d04388506c18f1b75a85e720f03da1f1b3b5eeca048dabae57e35bb19f4741",
+    "S2-A2": "9f99e6c581105763208f7bdcd21b54775a83bccbb7c16b13e0abd66bac12a84d",
+    "S2-A3": "14256904bff0b3015828aa3138a685a3a83e0598939b3addc05d1ea6e39c6ad4",
+    "S2-A4": "c06f176cd87ad25472e11e9f6f6d462f5575764de99f979ed38c54b72b4ec208",
+    "S2-A5": "956f57894f3c20a5028e40e8889f2389c49f9e19d5537873fff1d74b6d30de05",
+    "S2-R167-F1": "e7667bf5536efdb41da083017499e1fadc5f20229297495e5c2fbb87c093ba99",
+    "S2-R167-F2": "e79d55bcaf2e6024b7a2cbeb3363773f145f25fd967e69a641e3bf7ed9ed31d7",
+    "S2-R167-F3": "763e1d55a1887bb78ce056f971c0ff54128b8e4141d7ba02059ebd8839ff2576",
+    "S2-R168-F1": "76d5da689b4fe600b407c2a5674cc2c0c6cd8e7e0e5951d22d800e6343ee71e3",
+    "S2-R168-F2": "4ce62a819a0f5eea94c13d4b47a4463179ee5b02f40e0f076e89a5f4154a0087",
+    "S2-R168-F3": "966e6e275ae655e2f5de5763c4ab7523d168423ed6cfd8f7200916cfd1994b7f",
+    "S2-R168-F4": "4a11f07061797bb1731a19604527e670ba604fde989cf6d53b8a93c2add76e9b",
+}
+S2_AF_BASIS_MARKER = "`af-spread` basis"  # any paragraph that names the basis must be the pinned sentence
+S2_AF_BASIS_NEXT_PARAGRAPH = ("The `decision` is `included`, `excluded` or `reserve`. The `build/strand` cell "
+                              "is `GRCh37/forward`, optionally followed by `;strand-ambiguous` on an excluded "
+                              "palindromic row; an excluded row may carry `-`.")
+S2_AGENTS_GRCH_GOTCHA = ("gnomAD, Open Targets and GWAS Catalog v2 use GRCh38 internally; "
+                         "dbSNP small-set uses GRCh37 coordinates for the panel.")
 S2_C52_SENTENCE = ("No disease association met the disease-association contract, "
                    "so the release panel has no disease entry.")
 
@@ -6933,6 +6956,19 @@ def _run_disease_s2(attempt):
         flat = " ".join(read_doc().split())
         _require("panel-curation lacks the af-spread basis sentence (S2-R167-F2, S2-R168-F1)",
                  flat.count(S2_AF_BASIS_SENTENCE) == 1)
+        # S2-R170-F1: the sentence must be the whole paragraph, so appended wording fails, and the
+        # paragraph that follows must be the one that is there now, so a new paragraph cannot slip in.
+        paragraphs = [" ".join(p.split()) for p in read_doc().split("\n\n")]
+        basis_at = [i for i, p in enumerate(paragraphs) if S2_AF_BASIS_MARKER in p]
+        _require("panel-curation must have exactly one paragraph that names the af-spread basis, and it "
+                 f"must be the pinned sentence alone (S2-R170-F1): {[paragraphs[i] for i in basis_at]}",
+                 [paragraphs[i] for i in basis_at] == [S2_AF_BASIS_SENTENCE])
+        at = basis_at[0]
+        _require("the paragraph after the af-spread basis sentence changed or a paragraph was inserted "
+                 f"(S2-R170-F1): {paragraphs[at + 1] if at + 1 < len(paragraphs) else None!r}",
+                 at + 1 < len(paragraphs) and paragraphs[at + 1] == S2_AF_BASIS_NEXT_PARAGRAPH)
+        _require("the af-spread basis sentence must follow the T1 table directly (S2-R170-F1)",
+                 at > 0 and paragraphs[at - 1].startswith("| rs"))
         by_rs = {r["rsID"]: r for r in s2_real()[0]["T1"]}
         for rs, allele, row in (("rs10757278", "G", "a6123"), ("rs2200733", "T", "a6065")):
             _require(f"{rs} lacks the screened-allele note (S2-R168-F2): {allele} from {row}",
@@ -6949,10 +6985,38 @@ def _run_disease_s2(attempt):
         for did in S2_DELIVERED_IDS:
             _require(f"S2 log lacks one line for {did}",
                      sum(1 for ln in log[0].splitlines() if ln.startswith(f"- **{did}** ")) == 1)
+        # S2-R170-F1: each delivered line is pinned whole, and none may carry a continuation line.
+        log_lines = log[0].splitlines()
+        for did in S2_DELIVERED_IDS:
+            at = next(i for i, ln in enumerate(log_lines) if ln.startswith(f"- **{did}** "))
+            got = hashlib.sha256(log_lines[at].encode("utf-8")).hexdigest()
+            _require(f"S2 log line {did} changed (S2-R170-F1): digest {got}", got == S2_DELIVERED_LINE_SHA256[did])
+            nxt = log_lines[at + 1] if at + 1 < len(log_lines) else ""
+            _require(f"S2 log line {did} is followed by added text (S2-R170-F1): {nxt!r}",
+                     nxt == "" or nxt.startswith("- **"))
         with open(os.path.join(ROOT, "AGENTS.md"), encoding="utf-8") as fh:
-            gotcha = " ".join(fh.read().split())
+            agents_text = fh.read()
+        gotcha = " ".join(agents_text.split())
         _require("AGENTS.md GRCh38 gotcha must name the GWAS Catalog v2 (S2-A4)",
                  "gnomAD, Open Targets and GWAS Catalog v2 use GRCh38 internally" in gotcha)
+        # S2-R170-F1: the gotcha bullet equals the expected sentence, once, and no other text in the file
+        # names a genome build or a second GWAS Catalog v2 claim.
+        bullets, cur = [], None
+        for ln in agents_text.splitlines():
+            if ln.startswith("- "):
+                cur = [ln[2:]]
+                bullets.append(cur)
+            elif cur is not None and ln.startswith(" ") and ln.strip():
+                cur.append(ln)
+            else:
+                cur = None
+        bullets = [" ".join(" ".join(b).split()) for b in bullets]
+        _require("AGENTS.md must have exactly one bullet that names a genome build, equal to the pinned "
+                 f"GRCh38 gotcha (S2-R170-F1): {[b for b in bullets if 'GRCh' in b]}",
+                 [b for b in bullets if "GRCh" in b] == [S2_AGENTS_GRCH_GOTCHA])
+        _require("AGENTS.md names a genome build or GWAS Catalog v2 outside the pinned gotcha (S2-R170-F1)",
+                 gotcha.count("GRCh") == 2 and gotcha.count("GWAS Catalog v2") == 1
+                 and gotcha.count(S2_AGENTS_GRCH_GOTCHA) == 1)
         return True
     attempt("DA.s2_log_lines_and_agents_gotcha", log_lines_and_gotcha)
 
