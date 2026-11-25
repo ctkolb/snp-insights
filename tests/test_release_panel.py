@@ -6678,6 +6678,20 @@ S2_LABELS = {"rs10757278": "Coronary artery disease", "rs2200733": "Atrial fibri
 S2_T4_ROWS = {"rs10757278": 4, "rs2200733": 6, "rs11209026": 26, "rs4245791": 114}  # own-rsID Catalog rows in the pack
 S2_DECISION_IDS = tuple([f"S2-T{i}" for i in range(1, 6)] + [f"S2-Q{i}" for i in range(1, 10)] + ["S2-V6"])
 S2_CONTEXT_ROW_SHA256 = "bd7d0e67cf64b66f27ed45c60096d374c9f1d85dd74adab6a0c04c8c323334ca"  # S2-T5 / S2-Q7: the v0.3.0 rs11887534 row, unchanged
+# S2 FIX r169 (S2-R168-F4): content digests of the S2 disease trace rows, so that any later edit to a
+# recorded value (coordinate, frequency spread, p-value, odds ratio or interval, sample size, source id,
+# note) fails here. Byte basis: for each table (T1, T4, T5) take the parsed rows whose rsID is one of the
+# four S2 candidates, in document order; each row is its cells in the table's header order, as stripped
+# by the table parser, joined by U+001F; the rows are joined by U+000A; the digest is the SHA-256 of that
+# text encoded as UTF-8 (the same cell basis as _row_digest). The digests pin the recorded content only:
+# whether a value is correct against the frozen evidence pack is a review duty, because the pack lives
+# outside the repository and is not available to this offline suite.
+S2_TRACE_SHA256 = {
+    "T1": "e1acc2f78ba252fb37b8b27234d53c6c64b68695e74ce77589cf53dfbcd00a68",
+    "T4": "0fc00a56580c7cc831443ba6e4681ca55b83414c9e9997c0bdcefa2262e371ae",
+    "T5": "0cb4984d937f1a1b7d4147573a992869613cc7151d9714538e07c865b0ae8f13",
+}
+S2_TRACE_HEADERS = (("T1", T1_HEADER), ("T4", T4_HEADER), ("T5", T5_HEADER))
 S2_C52_SENTENCE = ("No disease association met the disease-association contract, "
                    "so the release panel has no disease entry.")
 
@@ -6701,6 +6715,11 @@ def s2_decision_record():
 def s2_real():
     t = doc_tables(read_doc())
     return t, read_targets()
+
+
+def _s2_trace_digest(rows, header):
+    text = "\n".join("\x1f".join(r[h] for h in header) for r in rows)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _row_digest(row):
@@ -6872,6 +6891,51 @@ def _run_disease_s2(attempt):
         _require("the decision record does not carry the pack digest", len(log) == 1 and digest in log[0])
         return True
     attempt("DA.s2_provenance_names_v040_pack", provenance_names_v040_pack)
+
+    def trace_rows_pinned():
+        t, _ = s2_real()
+        for name, header in S2_TRACE_HEADERS:
+            rows = [r for r in t[name] if r["rsID"] in S2_DISPOSITION]
+            want = len(S2_DISPOSITION) if name != "T4" else sum(S2_T4_ROWS.values())
+            _require(f"S2 {name} trace rows: {len(rows)}, expected {want}", len(rows) == want)
+            got = _s2_trace_digest(rows, header)
+            _require(f"S2 {name} trace rows changed (S2-R168-F4): digest {got}", got == S2_TRACE_SHA256[name])
+        return True
+    attempt("DA.s2_real_trace_rows_pinned", trace_rows_pinned)
+
+    def owner_decision_justifications():
+        from unittest.mock import patch
+
+        def rejected(check, expected, **overrides):
+            with patch.multiple(sys.modules[__name__], **overrides):
+                try:
+                    check()
+                except AssertionError as exc:
+                    _require(f"expected {expected!r}, got {exc!r}", expected in str(exc))
+                else:
+                    raise AssertionError(f"accepted a contradiction of {expected}")
+
+        record = s2_decision_record()
+        reversed_overlap = dict(record, **{"S2-Q1": record["S2-Q1"].replace(
+            "are one evidence group (the conservative reading)", "are three independent groups")})
+        rejected(overlap_backed_by_decision, "S2-Q1", s2_decision_record=lambda: reversed_overlap)
+        reversed_s3 = dict(record, **{"S2-V6": record["S2-V6"].replace(
+            "S3 is not run", "S3 will run")})
+        rejected(decision_record_complete, "S2-V6", s2_decision_record=lambda: reversed_s3)
+
+        tables, targets = s2_real()
+        for rsid, cell, content, gate, decision in (
+                ("rs11209026", "rationale", "established by the captured studies",
+                 overlap_backed_by_decision, "S2-Q1"),
+                ("rs2200733", "gene", "LINC01438", real_dispositions, "S2-Q6")):
+            selected = next(row for row in tables["T1"] if row["rsID"] == rsid)
+            if cell == "rationale":
+                content = selected[cell].replace("recorded as an owner decision and not as pack text", content)
+            altered = [dict(row, **{cell: content}) if row is selected else row for row in tables["T1"]]
+            changed = dict(tables, T1=altered)
+            rejected(gate, decision, s2_real=lambda: (changed, targets))
+        return True
+    attempt("DA.s2_real_owner_decision_justifications", owner_decision_justifications)
 
 
 def run(check):
