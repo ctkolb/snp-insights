@@ -889,3 +889,10 @@ Evidence pack: the v0.4.0 pack (outside the repository), frozen manifest `MANIFE
 - **S2-R168-F2** (owner, 2026-11-25, r168 review, LOW): the af-spread values on the two excluded rows with effect allele `-` are kept, each with a note naming the screened allele and its uncounted source row, stating it is not an effect-allele frequency under C-26.
 - **S2-R168-F3** (owner, 2026-11-25, r168 review, LOW): duplicate of S2-R167-F3; same decision.
 - **S2-R168-F4** (owner, 2026-11-25, r168 review, LOW): a SHA-256 content digest of the S2 disease T1, T4 and T5 index rows is pinned in the tests; correctness against the pack stays a review duty.
+- **S2-R172-F1** (owner, 2026-11-25, r172 review, LOW): the paragraph before the af-spread basis sentence must consist of table lines only; fixed in the S4 release-close BUILD.
+
+## v0.4.0 run: S4 release-close (decisions log)
+
+- **S4-O8** (owner, O-8): the version policy is applied: panel_version and package version are 0.4.0, and the nine panel entries are byte-identical to v0.3.0 apart from the panel_version field.
+- **S4-C52** (owner, S-07): the C-52 all-excluded outcome is recorded: no disease association met the contract, no production code, schema or template change ships, and S3 is not run.
+- **S4-R162-A2** (owner, r162 adjacent finding A2): the S3 production tests named in C-5, C-6, C-34 and DA.mixed_result_type_report_validates are not built in this outcome; they are deferred to the release that includes a disease row.
