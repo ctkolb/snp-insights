@@ -183,8 +183,13 @@ validated before `tests/test_pipeline.py` runs.
 
 ## 5. CI
 
-`.github/workflows/ci.yml` runs four separate jobs on pushes and PRs to
-`main`, all with `permissions: contents: read`:
+`.github/workflows/ci.yml` runs four separate jobs on pushes to `main` and on
+non-draft PRs targeting `main`, all with `permissions: contents: read`. Pushes
+to other branches do not trigger CI by themselves, and draft PRs are skipped
+by a job-level `if` on every job; marking a draft ready for review
+(`ready_for_review`) runs the checks. Skipped jobs report as skipped, which
+required-status-check rules treat as passing, so branch protection still
+requires the checks to be green on the non-draft PR before merge:
 
 1. `test` — `python tests/test_pipeline.py` on Python 3.12/3.14.
 2. `privacy-guard` — `guard.py --full` on the exact event commit with

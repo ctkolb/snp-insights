@@ -1826,7 +1826,11 @@ def _ci_static(check):
     privacy = text[text.index("  privacy-guard:"):text.index("  secret-scan:")]
     check("CI.triggers_unchanged",
           "on:\n  push:\n    branches: [main]\n  pull_request:\n    branches: [main]\n" in text
+          and "    types: [opened, synchronize, reopened, ready_for_review]\n" in text
           and "pull_request_target" not in text and "workflow_run" not in text)
+    check("CI.draft_pull_requests_skipped_on_every_job",
+          text.count("    if: github.event_name != 'pull_request' || "
+                     "!github.event.pull_request.draft\n") == 4)
     check("CI.permissions_and_jobs_unchanged",
           "permissions:\n  contents: read\n" in text
           and all(k in text for k in ("  test:\n    name: test (py${{ matrix.python }})",
@@ -1948,6 +1952,14 @@ def _ci_dispatch(check):
                          ref="refs/pull/1/merge")
         return rc == 0 and "history selected=2 scanned=2 complete=yes" in out
     guarded("CI.dispatch_pull_request_merge_tuple_accepted", pr_ok)
+
+    def pr_ready_for_review_ok():
+        repo, base, main, feature, merge = setup("pr")
+        event = pr_event(main, feature)
+        event["action"] = "ready_for_review"
+        rc, out, _ = run(repo, base, "pull_request", event, merge, ref="refs/pull/1/merge")
+        return rc == 0 and "history selected=2 scanned=2 complete=yes" in out
+    guarded("CI.dispatch_ready_for_review_accepted", pr_ready_for_review_ok)
 
     def pr_attached_is_normalized_and_branch_is_data():
         repo, base, main, feature, merge = setup("pr")
