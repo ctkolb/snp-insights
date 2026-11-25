@@ -6,6 +6,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # Draft pull requests are skipped (see the job-level `if`); ready_for_review
+    # runs the checks when a draft is promoted. Pushes to other branches never
+    # trigger CI on their own — only an open, non-draft pull request does.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # Least privilege for every job; no job needs to write.
 permissions:
@@ -18,6 +22,7 @@ concurrency:
 jobs:
   test:
     name: test (py${{ matrix.python }})
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
@@ -37,6 +42,7 @@ jobs:
 
   privacy-guard:
     name: privacy guard
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -122,7 +128,7 @@ jobs:
           elif name == "pull_request":
               pr = obj(event.get("pull_request"))
               target, source = obj(pr.get("base")), obj(pr.get("head"))
-              if event.get("action") not in ("opened", "synchronize", "reopened"):
+              if event.get("action") not in ("opened", "synchronize", "reopened", "ready_for_review"):
                   refuse("unsupported pull request action")
               if target.get("ref") != "main" or obj(target.get("repo")).get("full_name") != repository:
                   refuse("pull request does not target main in this repository")
@@ -146,6 +152,7 @@ jobs:
 
   secret-scan:
     name: secret scan
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -168,6 +175,7 @@ jobs:
 
   actionlint:
     name: actionlint
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
