@@ -88,8 +88,10 @@ Do not share per-marker coverage.
 
 ## Current release facts
 
-The release panel (panel version 0.3.0) is a small public panel of seven health
-entries (five carrier status, two risk association) and two trait entries. The array covers about 0.02% of the genome. A rare array call should be
+The release panel (panel version 0.4.0) is a small public panel of seven health
+entries (five carrier status, two risk association) and two trait entries. No
+disease association met the v0.4.0 contract, so the panel has no disease entry and
+the report has no disease section. The array covers about 0.02% of the genome. A rare array call should be
 confirmed by a clinical-grade test. No reserves exist for v0.1.0, so a coverage-poor outcome is reported
 and decided by the owner; no reserve swap is possible in this release. If you
 report `coverage-poor`, that is the recorded outcome, not a failure of the run.
